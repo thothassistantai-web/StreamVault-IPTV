@@ -155,7 +155,8 @@ fun AddToGroupDialog(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Star,
-                                    contentDescription = null,
+                                    contentDescription = if (isFavorite) stringResource(R.string.add_group_remove_favorites)
+                                        else stringResource(R.string.add_group_add_favorites),
                                     tint = Color.Black
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -195,7 +196,7 @@ fun AddToGroupDialog(
                             ) {
                                     Icon(
                                         imageVector = Icons.Default.Add,
-                                        contentDescription = null,
+                                        contentDescription = stringResource(R.string.multiview_add_to_split),
                                         tint = if (isFocused) Color.Black else Color.White
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -289,7 +290,7 @@ fun AddToGroupDialog(
                                 contentColor = if (isFocused) Color.Black else AppColors.TextPrimary
                             )
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null)
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_group_create_new_btn))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(stringResource(R.string.add_group_create_new_btn))
                         }

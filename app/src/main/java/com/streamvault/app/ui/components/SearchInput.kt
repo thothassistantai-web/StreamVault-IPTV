@@ -81,7 +81,7 @@ fun SearchInput(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = null,
+                contentDescription = placeholder,
                 tint = if (isFocused) Primary else OnSurfaceDim,
                 modifier = Modifier.padding(end = 6.dp)
             )

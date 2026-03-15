@@ -88,7 +88,7 @@ fun LiveChannelRowCard(
                 if (!channel.logoUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = channel.logoUrl,
-                        contentDescription = null,
+                        contentDescription = channel.name,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(logoPadding),
@@ -287,7 +287,7 @@ fun EpisodeRowCard(episode: Episode, modifier: Modifier = Modifier) {
                 if (!episode.coverUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = episode.coverUrl,
-                        contentDescription = null,
+                        contentDescription = episode.title,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )

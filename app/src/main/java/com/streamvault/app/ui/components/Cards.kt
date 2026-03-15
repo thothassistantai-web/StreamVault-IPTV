@@ -145,7 +145,7 @@ fun ChannelCard(
         if (!channel.logoUrl.isNullOrBlank() && !isLocked) {
             AsyncImage(
                 model = channel.logoUrl,
-                contentDescription = null,
+                contentDescription = channel.name,
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(RoundedCornerShape(10.dp)),

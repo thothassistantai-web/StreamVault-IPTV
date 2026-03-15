@@ -211,7 +211,7 @@ fun BrowseHeroPanel(
             if (!imageUrl.isNullOrBlank()) {
                 AsyncImage(
                     model = imageUrl,
-                    contentDescription = null,
+                    contentDescription = title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )

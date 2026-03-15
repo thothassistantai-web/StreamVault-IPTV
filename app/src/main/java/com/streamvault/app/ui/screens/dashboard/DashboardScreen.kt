@@ -127,6 +127,7 @@ fun DashboardScreen(
                     DashboardHomeSection.RECENT_CHANNELS -> CategoryRow(
                         title = stringResource(R.string.dashboard_recent_channels),
                         items = uiState.recentChannels,
+                        keySelector = { it.id },
                         onSeeAll = { onNavigate(Routes.liveTv(com.streamvault.domain.model.VirtualCategoryIds.RECENT)) }
                     ) { channel ->
                         ChannelCard(
@@ -143,6 +144,7 @@ fun DashboardScreen(
                     DashboardHomeSection.RECENT_MOVIES -> CategoryRow(
                         title = stringResource(R.string.dashboard_recent_movies),
                         items = uiState.recentMovies,
+                        keySelector = { it.id },
                         onSeeAll = { onNavigate(Routes.MOVIES) }
                     ) { movie ->
                         MovieCard(
@@ -154,6 +156,7 @@ fun DashboardScreen(
                     DashboardHomeSection.RECENT_SERIES -> CategoryRow(
                         title = stringResource(R.string.dashboard_recent_series),
                         items = uiState.recentSeries,
+                        keySelector = { it.id },
                         onSeeAll = { onNavigate(Routes.SERIES) }
                     ) { series ->
                         SeriesCard(
@@ -259,7 +262,7 @@ private fun DashboardStatRow(
     )
 
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(statItems) { statLabel ->
+        items(statItems, key = { it }) { statLabel ->
             Surface(
                 shape = RoundedCornerShape(999.dp),
                 colors = SurfaceDefaults.colors(

@@ -220,7 +220,7 @@ private fun SeriesDetailContent(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             contentPadding = PaddingValues(vertical = 2.dp)
                         ) {
-                            items(series.seasons) { season ->
+                            items(series.seasons, key = { it.seasonNumber }) { season ->
                                 SeasonChip(
                                     season = season,
                                     isSelected = season == selectedSeason,
@@ -247,7 +247,7 @@ private fun SeriesDetailContent(
                         )
                     }
                 }
-                items(season.episodes) { episode ->
+                items(season.episodes, key = { it.id }) { episode ->
                     EpisodeItem(episode = episode, onClick = { onEpisodeClick(episode) })
                 }
             }

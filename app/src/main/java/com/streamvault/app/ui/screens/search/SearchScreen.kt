@@ -302,7 +302,7 @@ fun SearchScreen(
                 androidx.compose.foundation.lazy.LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(SearchTab.values().toList()) { tab ->
+                    items(SearchTab.values().toList(), key = { it.name }) { tab ->
                         FilterChip(
                             selected = tab == selectedTab,
                             onClick = { viewModel.onTabSelected(tab) },
@@ -339,7 +339,7 @@ fun SearchScreen(
                     androidx.compose.foundation.lazy.LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(recentQueries) { recentQuery ->
+                        items(recentQueries, key = { it }) { recentQuery ->
                             FilterChip(
                                 selected = recentQuery.equals(query, ignoreCase = true),
                                 onClick = {
@@ -403,7 +403,7 @@ fun SearchScreen(
                                         SectionHeader(stringResource(R.string.search_live_tv))
                                     }
                                 }
-                                items(uiState.channels) { channel ->
+                                items(uiState.channels, key = { it.id }) { channel ->
                                     val isLocked = (channel.isAdult || channel.isUserProtected) && uiState.parentalControlLevel == 1
                                     ChannelCard(
                                         channel = channel,
@@ -427,7 +427,7 @@ fun SearchScreen(
                                         SectionHeader(stringResource(R.string.search_movies))
                                     }
                                 }
-                                items(uiState.movies) { movie ->
+                                items(uiState.movies, key = { it.id }) { movie ->
                                     val isLocked = (movie.isAdult || movie.isUserProtected) && uiState.parentalControlLevel == 1
                                     MovieCard(
                                         movie = movie,
@@ -451,7 +451,7 @@ fun SearchScreen(
                                         SectionHeader(stringResource(R.string.search_series))
                                     }
                                 }
-                                items(uiState.series) { series ->
+                                items(uiState.series, key = { it.id }) { series ->
                                     val isLocked = (series.isAdult || series.isUserProtected) && uiState.parentalControlLevel == 1
                                     SeriesCard(
                                         series = series,
@@ -512,7 +512,7 @@ private fun SearchResultsSummaryRow(
         androidx.compose.foundation.lazy.LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(summaryChips) { chip ->
+            items(summaryChips, key = { it.tab.name }) { chip ->
                 FilterChip(
                     selected = chip.tab == selectedTab,
                     onClick = { onTabSelected(chip.tab) },
