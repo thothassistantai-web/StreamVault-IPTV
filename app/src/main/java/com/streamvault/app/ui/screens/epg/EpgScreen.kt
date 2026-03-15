@@ -338,7 +338,7 @@ fun FullEpgScreen(
                                 label = stringResource(R.string.epg_program_progress_label),
                                 value = stringResource(
                                     R.string.epg_program_progress_value,
-                                    (program.progressPercent * 100f).roundToInt(),
+                                    (program.progressPercent() * 100f).roundToInt(),
                                     stringResource(R.string.epg_minutes_remaining, ((program.endTime - now) / 60_000L).coerceAtLeast(0L))
                                 )
                             )

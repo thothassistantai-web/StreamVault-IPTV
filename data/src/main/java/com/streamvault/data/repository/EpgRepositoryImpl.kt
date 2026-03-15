@@ -26,6 +26,10 @@ class EpgRepositoryImpl @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner
 ) : EpgRepository {
 
+    companion object {
+        private const val MAX_EPG_SIZE_BYTES = 200L * 1_048_576 // 200 MB
+    }
+
     override fun getProgramsForChannel(
         providerId: Long,
         channelId: String,
@@ -88,6 +92,12 @@ class EpgRepositoryImpl @Inject constructor(
 
                 if (!response.isSuccessful) {
                     return@withContext Result.error("Failed to download EPG: HTTP ${response.code}")
+                }
+
+                val contentLength = response.header("Content-Length")?.toLongOrNull() ?: -1L
+                if (contentLength > MAX_EPG_SIZE_BYTES) {
+                    response.close()
+                    return@withContext Result.error("EPG file too large (${contentLength / 1_048_576}MB)")
                 }
 
                 val body = response.body ?: return@withContext Result.error("Empty EPG response")

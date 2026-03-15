@@ -1,9 +1,11 @@
 package com.streamvault.data.util
 
+import java.text.Normalizer
 import java.util.Locale
 
 object AdultContentClassifier {
     private val keywords = listOf(
+        // English
         "xxx",
         "adult",
         "18+",
@@ -16,7 +18,28 @@ object AdultContentClassifier {
         "hustler",
         "playboy",
         "redlight",
-        "red light"
+        "red light",
+        // Spanish
+        "adulto",
+        "adultos",
+        // French
+        "adulte",
+        "adultes",
+        "erotique",
+        // German
+        "erwachsene",
+        "erotik",
+        // Russian (transliterated)
+        "vzroslye",
+        "dlya vzroslykh",
+        // Arabic (transliterated)
+        "lilkbar",
+        // Turkish
+        "yetiskin",
+        // Common IPTV labels
+        "for adults",
+        "pour adultes",
+        "para adultos"
     )
 
     fun isAdultCategoryName(name: String?): Boolean {
@@ -34,7 +57,9 @@ object AdultContentClassifier {
     }
 
     private fun normalize(value: String): String {
-        return value
+        val decomposed = Normalizer.normalize(value, Normalizer.Form.NFD)
+        return decomposed
+            .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
             .lowercase(Locale.ROOT)
             .replace(Regex("[^a-z0-9+]+"), " ")
             .trim()

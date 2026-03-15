@@ -104,13 +104,13 @@ class Media3PlayerEngine @Inject constructor(
             )
         }
 
-        // Optimize for multi-stream (reduce memory pressure/buffer)
+        // Tuned for IPTV live streams: larger buffer for variable network conditions
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                15000, // min buffer
-                30000, // max buffer
-                2500,  // buffer for playback
-                5000   // buffer for rebuffering
+                30_000, // min buffer
+                60_000, // max buffer
+                2500,   // buffer for playback
+                5000    // buffer for rebuffering
             )
             .build()
 
@@ -381,11 +381,6 @@ class Media3PlayerEngine @Inject constructor(
 
     override fun selectAudioTrack(trackId: String) {
         exoPlayer?.let { player ->
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                .build()
-
             val tracks = player.currentTracks
             for (group in tracks.groups) {
                 if (group.mediaTrackGroup.type == C.TRACK_TYPE_AUDIO) {
@@ -395,6 +390,7 @@ class Media3PlayerEngine @Inject constructor(
                         if (id == trackId) {
                             player.trackSelectionParameters = player.trackSelectionParameters
                                 .buildUpon()
+                                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                                 .setOverrideForType(
                                     androidx.media3.common.TrackSelectionOverride(
                                         group.mediaTrackGroup,
@@ -419,11 +415,6 @@ class Media3PlayerEngine @Inject constructor(
                     .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                     .build()
             } else {
-                player.trackSelectionParameters = player.trackSelectionParameters
-                    .buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .build()
-
                 val tracks = player.currentTracks
                 for (group in tracks.groups) {
                     if (group.mediaTrackGroup.type == C.TRACK_TYPE_TEXT) {
@@ -433,6 +424,7 @@ class Media3PlayerEngine @Inject constructor(
                             if (id == trackId) {
                                 player.trackSelectionParameters = player.trackSelectionParameters
                                     .buildUpon()
+                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                                     .setOverrideForType(
                                         androidx.media3.common.TrackSelectionOverride(
                                             group.mediaTrackGroup,

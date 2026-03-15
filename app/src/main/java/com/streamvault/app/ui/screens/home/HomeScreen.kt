@@ -943,7 +943,7 @@ private fun LivePreviewPane(
                             color = OnSurfaceDim
                         )
                         LinearProgressIndicator(
-                            progress = { program.progressPercent },
+                            progress = { program.progressPercent() },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(4.dp),

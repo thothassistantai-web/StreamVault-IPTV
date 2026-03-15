@@ -158,6 +158,7 @@ class M3uParser {
 
     private fun parseEntry(extinf: ParsedExtinf, url: String, globalUserAgent: String?): M3uEntry? {
         if (url.isBlank() || extinf.name.isBlank()) return null
+        if (!isAllowedStreamUrl(url)) return null
         return M3uEntry(
             name = extinf.name.take(500),
             groupTitle = (extinf.groupTitle ?: "Uncategorized").take(200),
@@ -356,6 +357,15 @@ class M3uParser {
                 group.contains("movie") ||
                 group.contains("vod") ||
                 group.contains("film")
+    }
+
+    private fun isAllowedStreamUrl(url: String): Boolean {
+        val trimmed = url.trim()
+        if (trimmed.length > 8192) return false
+        val lower = trimmed.lowercase()
+        if (lower.contains("%0a") || lower.contains("%0d")) return false
+        val allowedPrefixes = listOf("http://", "https://", "rtsp://", "rtmp://", "mms://")
+        return allowedPrefixes.any { lower.startsWith(it) }
     }
 
     private companion object {

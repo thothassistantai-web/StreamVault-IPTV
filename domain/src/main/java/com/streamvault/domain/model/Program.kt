@@ -15,11 +15,9 @@ data class Program(
     val durationMinutes: Int
         get() = ((endTime - startTime) / 60000).toInt()
 
-    val progressPercent: Float
-        get() {
-            if (!isNowPlaying) return 0f
-            val now = System.currentTimeMillis()
-            if (now < startTime || endTime <= startTime) return 0f
-            return ((now - startTime).toFloat() / (endTime - startTime).toFloat()).coerceIn(0f, 1f)
-        }
+    fun progressPercent(currentTimeMillis: Long = System.currentTimeMillis()): Float {
+        if (!isNowPlaying) return 0f
+        if (currentTimeMillis < startTime || endTime <= startTime) return 0f
+        return ((currentTimeMillis - startTime).toFloat() / (endTime - startTime).toFloat()).coerceIn(0f, 1f)
+    }
 }
