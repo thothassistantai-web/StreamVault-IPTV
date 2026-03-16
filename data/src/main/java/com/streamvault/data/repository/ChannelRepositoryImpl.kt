@@ -167,6 +167,7 @@ class ChannelRepositoryImpl @Inject constructor(
     override suspend fun getChannel(channelId: Long): Channel? =
         channelDao.getById(channelId)?.toDomain()
 
+    @Deprecated("Use getStreamInfo() instead", ReplaceWith("getStreamInfo(channel)"))
     override suspend fun getStreamUrl(channel: Channel): Result<String> =
         if (channel.streamUrl.isNotBlank()) {
             Result.success(channel.streamUrl)

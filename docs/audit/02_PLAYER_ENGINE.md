@@ -154,7 +154,7 @@ These should be combined into a single parameter update to avoid an intermediate
 
 ---
 
-## 10. ⏭️ REMAINING — Polling Redundant with Position Discontinuity Listener
+## 10. ✅ FIXED — Polling Redundant with Position Discontinuity Listener
 
 **File:** `player/src/main/java/com/streamvault/player/Media3PlayerEngine.kt` (lines 427–437)  
 **Severity:** 🟡 MEDIUM
@@ -167,7 +167,7 @@ For multi-view (4 players), this means 4 × 2Hz = 8 position updates per second 
 
 ---
 
-## 11. ⏭️ DEFERRED — No Bitrate / Quality Metrics for Diagnostics
+## 11. ✅ FIXED — No Bitrate / Quality Metrics for Diagnostics
 
 **File:** `player/src/main/java/com/streamvault/player/PlayerEngine.kt` (PlayerStats data class)  
 **Severity:** 🟡 MEDIUM

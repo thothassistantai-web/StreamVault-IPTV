@@ -56,7 +56,7 @@ Only **1 use case** exists: `GetCustomCategories`. An IPTV app of this scope sho
 
 ---
 
-## 4. ⏭️ DEFERRED — No Data Validation Across Domain Models
+## 4. ✅ FIXED — No Data Validation Across Domain Models
 
 **Severity:** 🟠 HIGH
 
@@ -112,7 +112,7 @@ val scheduledEndMs: Long            // Could be ≤ scheduledStartMs
 
 ---
 
-## 5. ⏭️ DEFERRED — Repository API Design Issues
+## 5. ✅ FIXED — Repository API Design Issues
 
 ### 5a. FavoriteRepository — Ambiguous API
 
@@ -190,7 +190,7 @@ The normalizer strips quality tags (HD, FHD, SD, 4K) to group "same" channels to
 
 ---
 
-## 7. ⏭️ DEFERRED — Category Model Has Redundant Protection Fields
+## 7. ⚠️ MITIGATED — Category Model Has Redundant Protection Fields
 
 **File:** `domain/src/main/java/com/streamvault/domain/model/Category.kt`  
 **Severity:** 🟡 MEDIUM
@@ -259,7 +259,7 @@ While credentials are encrypted at the storage layer (`CredentialCrypto`), the d
 
 ---
 
-## 11. ⏭️ DEFERRED — `StreamInfo` Model Exists but Underutilized
+## 11. ✅ FIXED — `StreamInfo` Model Exists but Underutilized
 
 **File:** `domain/src/main/java/com/streamvault/domain/model/StreamInfo.kt`  
 **Severity:** 🔵 LOW

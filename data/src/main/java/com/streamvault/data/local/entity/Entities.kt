@@ -2,6 +2,7 @@ package com.streamvault.data.local.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Fts4
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -30,6 +31,12 @@ data class ProviderEntity(
 
 @Entity(
     tableName = "channels",
+    foreignKeys = [ForeignKey(
+        entity = ProviderEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["provider_id"],
+        onDelete = ForeignKey.CASCADE
+    )],
     indices = [
         Index(value = ["provider_id"]),
         Index(value = ["provider_id", "category_id"]),
@@ -61,6 +68,12 @@ data class ChannelEntity(
 
 @Entity(
     tableName = "movies",
+    foreignKeys = [ForeignKey(
+        entity = ProviderEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["provider_id"],
+        onDelete = ForeignKey.CASCADE
+    )],
     indices = [
         Index(value = ["provider_id"]),
         Index(value = ["provider_id", "category_id"]),
@@ -98,6 +111,12 @@ data class MovieEntity(
 
 @Entity(
     tableName = "series",
+    foreignKeys = [ForeignKey(
+        entity = ProviderEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["provider_id"],
+        onDelete = ForeignKey.CASCADE
+    )],
     indices = [
         Index(value = ["provider_id"]),
         Index(value = ["provider_id", "category_id"]),
@@ -148,6 +167,12 @@ data class SeriesFtsEntity(
 
 @Entity(
     tableName = "episodes",
+    foreignKeys = [ForeignKey(
+        entity = ProviderEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["provider_id"],
+        onDelete = ForeignKey.CASCADE
+    )],
     indices = [
         Index(value = ["series_id"]),
         Index(value = ["provider_id"]),
@@ -179,6 +204,12 @@ data class EpisodeEntity(
 
 @Entity(
     tableName = "categories",
+    foreignKeys = [ForeignKey(
+        entity = ProviderEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["provider_id"],
+        onDelete = ForeignKey.CASCADE
+    )],
     indices = [
         Index(value = ["provider_id"]),
         Index(value = ["provider_id", "category_id", "type"], unique = true)
@@ -221,6 +252,12 @@ data class ProgramEntity(
 
 @Entity(
     tableName = "favorites",
+    foreignKeys = [ForeignKey(
+        entity = VirtualGroupEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["group_id"],
+        onDelete = ForeignKey.SET_NULL
+    )],
     indices = [
         Index(value = ["content_id", "content_type", "group_id"], unique = true),
         Index(value = ["content_type", "group_id"]),
@@ -258,6 +295,12 @@ data class CategoryCount(
 
 @Entity(
     tableName = "playback_history",
+    foreignKeys = [ForeignKey(
+        entity = ProviderEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["provider_id"],
+        onDelete = ForeignKey.CASCADE
+    )],
     indices = [
         Index(value = ["content_id", "content_type", "provider_id"], unique = true),
         Index(value = ["last_watched_at"]),

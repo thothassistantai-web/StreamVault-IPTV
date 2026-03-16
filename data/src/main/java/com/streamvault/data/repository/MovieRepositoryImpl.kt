@@ -195,6 +195,7 @@ class MovieRepositoryImpl @Inject constructor(
         return if (movie != null) Result.success(movie) else Result.error("Movie not found")
     }
 
+    @Deprecated("Use getStreamInfo() instead", ReplaceWith("getStreamInfo(movie)"))
     override suspend fun getStreamUrl(movie: Movie): Result<String> =
         if (movie.streamUrl.isNotBlank()) {
             Result.success(movie.streamUrl)

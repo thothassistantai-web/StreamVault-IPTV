@@ -16,6 +16,12 @@ data class Provider(
     val lastSyncedAt: Long = 0L,
     val createdAt: Long = System.currentTimeMillis()
 ) {
+    init {
+        require(name.isNotBlank()) { "Provider name must not be blank" }
+        require(maxConnections > 0) { "maxConnections must be positive" }
+        require(lastSyncedAt >= 0) { "lastSyncedAt must be non-negative" }
+    }
+
     override fun toString(): String =
         "Provider(id=$id, name=$name, type=$type, status=$status, isActive=$isActive)"
 }

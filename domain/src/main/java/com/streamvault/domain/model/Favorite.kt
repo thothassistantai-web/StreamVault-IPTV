@@ -7,7 +7,11 @@ data class Favorite(
     val position: Int = 0,
     val groupId: Long? = null,
     val addedAt: Long = System.currentTimeMillis()
-)
+) {
+    init {
+        require(position >= 0) { "position must be non-negative" }
+    }
+}
 
 data class VirtualGroup(
     val id: Long = 0,
@@ -16,4 +20,9 @@ data class VirtualGroup(
     val position: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val contentType: ContentType = ContentType.LIVE
-)
+) {
+    init {
+        require(name.isNotBlank()) { "VirtualGroup name must not be blank" }
+        require(position >= 0) { "position must be non-negative" }
+    }
+}

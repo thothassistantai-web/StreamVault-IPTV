@@ -9,4 +9,8 @@ data class Category(
     val count: Int = 0,
     val isAdult: Boolean = false,
     val isUserProtected: Boolean = false
-)
+) {
+    init {
+        require(count >= 0) { "count must be non-negative" }
+    }
+}

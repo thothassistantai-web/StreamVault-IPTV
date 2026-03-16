@@ -5,6 +5,7 @@ import com.streamvault.domain.model.LibraryBrowseQuery
 import com.streamvault.domain.model.Movie
 import com.streamvault.domain.model.PagedResult
 import com.streamvault.domain.model.Result
+import com.streamvault.domain.model.StreamInfo
 import kotlinx.coroutines.flow.Flow
 
 interface MovieRepository {
@@ -23,7 +24,11 @@ interface MovieRepository {
     fun searchMovies(providerId: Long, query: String): Flow<List<Movie>>
     suspend fun getMovie(movieId: Long): Movie?
     suspend fun getMovieDetails(providerId: Long, movieId: Long): Result<Movie>
+    @Deprecated("Use getStreamInfo() for richer metadata", replaceWith = ReplaceWith("getStreamInfo(movie)"))
     suspend fun getStreamUrl(movie: Movie): Result<String>
+    suspend fun getStreamInfo(movie: Movie): Result<StreamInfo> =
+        getStreamUrl(movie).map { StreamInfo(it) }
     suspend fun refreshMovies(providerId: Long): Result<Unit>
     suspend fun updateWatchProgress(movieId: Long, progress: Long)
+    suspend fun getWatchProgress(movieId: Long): Long? = null
 }

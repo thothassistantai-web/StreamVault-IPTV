@@ -7,7 +7,11 @@ data class StreamInfo(
     val streamType: StreamType = StreamType.UNKNOWN,
     val containerExtension: String? = null,
     val catchUpUrl: String? = null
-)
+) {
+    init {
+        require(url.isNotBlank()) { "StreamInfo url must not be blank" }
+    }
+}
 
 enum class StreamType {
     HLS,

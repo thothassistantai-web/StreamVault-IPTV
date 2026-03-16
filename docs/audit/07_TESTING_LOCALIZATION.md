@@ -6,7 +6,7 @@ Test coverage, test quality, translations, and resource issues.
 
 ## Testing
 
-### 1. ⏭️ DEFERRED — Domain & Player Modules Have Zero Test Coverage
+### 1. ⚠️ MITIGATED — Domain & Player Modules Have Zero Test Coverage
 
 **Severity:** 🔴 CRITICAL
 
@@ -115,7 +115,7 @@ Spot-check of key strings across English, Spanish, French, and German shows prop
 
 ## Resources
 
-### 6. ⏭️ DEFERRED — App Icon Missing Density Variants
+### 6. ⚠️ MITIGATED — App Icon Missing Density Variants
 
 **Severity:** 🟠 HIGH
 

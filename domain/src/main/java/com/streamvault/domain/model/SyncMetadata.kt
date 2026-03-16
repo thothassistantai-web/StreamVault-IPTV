@@ -11,4 +11,11 @@ data class SyncMetadata(
     val seriesCount: Int = 0,
     val epgCount: Int = 0,
     val lastSyncStatus: String = "NONE"
-)
+) {
+    init {
+        require(liveCount >= 0) { "liveCount must be non-negative" }
+        require(movieCount >= 0) { "movieCount must be non-negative" }
+        require(seriesCount >= 0) { "seriesCount must be non-negative" }
+        require(epgCount >= 0) { "epgCount must be non-negative" }
+    }
+}

@@ -38,6 +38,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import com.streamvault.app.ui.components.CategoryRow
 import com.streamvault.app.ui.components.ChannelCard
 import com.streamvault.app.ui.components.shell.ContentMetadataStrip
@@ -569,6 +571,11 @@ fun HomeScreen(
                             }
                         }
 
+                        Crossfade(
+                            targetState = uiState.selectedCategory?.id,
+                            animationSpec = tween(durationMillis = 200),
+                            label = "category_content_transition"
+                        ) { _ ->
                         if (uiState.isLoading) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Column(
@@ -770,6 +777,7 @@ fun HomeScreen(
                                 }
                             }
                         }
+                        } // Crossfade
                     }
 
                     if (isProMode) {

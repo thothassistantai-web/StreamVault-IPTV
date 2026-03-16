@@ -59,11 +59,11 @@ class EpgRepositoryImpl @Inject constructor(
         programDao.getNowPlaying(providerId, channelId, System.currentTimeMillis())
             .map { it?.toDomain() }
 
-    override fun getNowPlayingForChannels(providerId: Long, channelIds: List<String>): Flow<Map<String, List<Program>>> =
+    override fun getNowPlayingForChannels(providerId: Long, channelIds: List<String>): Flow<Map<String, Program?>> =
         programDao.getNowPlayingForChannels(providerId, channelIds, System.currentTimeMillis())
             .map { entities -> 
-                entities.map { it.toDomain() }
-                        .groupBy { it.channelId }
+                val grouped = entities.map { it.toDomain() }.groupBy { it.channelId }
+                channelIds.associateWith { id -> grouped[id]?.firstOrNull() }
             }
 
     override fun getNowAndNext(providerId: Long, channelId: String): Flow<Pair<Program?, Program?>> =

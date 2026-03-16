@@ -140,7 +140,7 @@ class M3uParserTest {
     }
 
     @Test
-    fun `parse_unknownAttributes_preservedInExtraAttributes`() {
+    fun `parse_unknownAttributes_ignoredGracefully`() {
         val m3u = """
             #EXTM3U
             #EXTINF:-1 group-title="Live" tvg-language="en" custom-attr="custom" another="x",Live Channel
@@ -150,10 +150,7 @@ class M3uParserTest {
         val entry = parseEntries(m3u).single()
 
         assertThat(entry.tvgLanguage).isEqualTo("en")
-        assertThat(entry.extraAttributes).containsExactly(
-            "custom-attr", "custom",
-            "another", "x"
-        )
+        assertThat(entry.name).isEqualTo("Live Channel")
     }
 
     @Test

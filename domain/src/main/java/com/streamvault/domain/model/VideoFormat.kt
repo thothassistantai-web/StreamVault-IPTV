@@ -8,6 +8,13 @@ data class VideoFormat(
     val codecV: String? = null,
     val codecA: String? = null
 ) {
+    init {
+        require(width >= 0) { "width must be non-negative" }
+        require(height >= 0) { "height must be non-negative" }
+        require(frameRate >= 0f) { "frameRate must be non-negative" }
+        require(bitrate >= 0) { "bitrate must be non-negative" }
+    }
+
     val resolutionLabel: String
         get() = when {
             height >= 2160 -> "4K"

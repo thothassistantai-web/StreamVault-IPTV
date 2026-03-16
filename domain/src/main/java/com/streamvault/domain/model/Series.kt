@@ -23,7 +23,12 @@ data class Series(
     val isAdult: Boolean = false,
     val isUserProtected: Boolean = false,
     val seriesId: Long = 0L
-)
+) {
+    init {
+        require(rating in 0f..10f) { "rating must be between 0 and 10" }
+        require(lastModified >= 0) { "lastModified must be non-negative" }
+    }
+}
 
 data class Season(
     val seasonNumber: Int,
@@ -32,7 +37,12 @@ data class Season(
     val episodes: List<Episode> = emptyList(),
     val airDate: String? = null,
     val episodeCount: Int = 0
-)
+) {
+    init {
+        require(seasonNumber >= 0) { "seasonNumber must be non-negative" }
+        require(episodeCount >= 0) { "episodeCount must be non-negative" }
+    }
+}
 
 data class Episode(
     val id: Long,
@@ -54,4 +64,13 @@ data class Episode(
     val isAdult: Boolean = false,
     val isUserProtected: Boolean = false,
     val episodeId: Long = 0L
-)
+) {
+    init {
+        require(episodeNumber >= 0) { "episodeNumber must be non-negative" }
+        require(seasonNumber >= 0) { "seasonNumber must be non-negative" }
+        require(durationSeconds >= 0) { "durationSeconds must be non-negative" }
+        require(rating in 0f..10f) { "rating must be between 0 and 10" }
+        require(watchProgress >= 0) { "watchProgress must be non-negative" }
+        require(lastWatchedAt >= 0) { "lastWatchedAt must be non-negative" }
+    }
+}

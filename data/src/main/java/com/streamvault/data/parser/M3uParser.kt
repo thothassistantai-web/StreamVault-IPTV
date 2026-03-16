@@ -44,8 +44,7 @@ class M3uParser {
         val rating: String? = null,
         val year: String? = null,
         val genre: String? = null,
-        val durationSeconds: Int? = null,
-        val extraAttributes: Map<String, String> = emptyMap()
+        val durationSeconds: Int? = null
     )
 
     data class ParseResult(
@@ -177,8 +176,7 @@ class M3uParser {
             rating = extinf.rating,
             year = extinf.year,
             genre = extinf.genre,
-            durationSeconds = extinf.durationSeconds,
-            extraAttributes = extinf.extraAttributes
+            durationSeconds = extinf.durationSeconds
         )
     }
 
@@ -199,8 +197,7 @@ class M3uParser {
         val userAgent: String?,
         val rating: String?,
         val year: String?,
-        val genre: String?,
-        val extraAttributes: Map<String, String>
+        val genre: String?
     )
 
     private fun parseHeader(line: String): M3uHeader {
@@ -242,8 +239,7 @@ class M3uParser {
             userAgent = attributes["user-agent"],
             rating = attributes["rating"],
             year = attributes["year"],
-            genre = attributes["genre"],
-            extraAttributes = attributes.filterKeys { it !in knownAttributes }
+            genre = attributes["genre"]
         )
     }
 

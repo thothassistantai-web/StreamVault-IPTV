@@ -23,4 +23,10 @@ data class Channel(
     val errorCount: Int = 0,
     val alternativeStreams: List<String> = emptyList(),
     val streamId: Long = 0L
-)
+) {
+    init {
+        require(number >= 0) { "number must be non-negative" }
+        require(catchUpDays >= 0) { "catchUpDays must be non-negative" }
+        require(errorCount >= 0) { "errorCount must be non-negative" }
+    }
+}

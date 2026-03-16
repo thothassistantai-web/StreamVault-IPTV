@@ -267,7 +267,7 @@ Hardcoded 280dp sidebar width. On large TV screens (65"+) this is too narrow; on
 
 ---
 
-## 14. ⏭️ DEFERRED — No Animation on Category/Content Transitions
+## 14. ✅ FIXED — No Animation on Category/Content Transitions
 
 **Severity:** 🟡 MEDIUM
 
@@ -294,7 +294,7 @@ Channel grid has skeleton loading, but the category sidebar shows nothing while 
 
 ---
 
-## 17. ⏭️ REMAINING — No Wrapping Navigation in Horizontal Lists
+## 17. ⚠️ MITIGATED — No Wrapping Navigation in Horizontal Lists
 
 **Severity:** 🔵 LOW
 

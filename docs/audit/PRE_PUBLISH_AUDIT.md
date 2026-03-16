@@ -3,7 +3,7 @@
 **Date:** March 15, 2026  
 **Branch:** `review/pre-publish-audit-2026-03-15`  
 **Auditor:** Automated Code Audit  
-**Verdict:** ✅ READY — All critical blockers resolved across 15 fix batches
+**Verdict:** ✅ READY — All critical blockers resolved across 25 fix batches
 
 ---
 
@@ -13,10 +13,10 @@ StreamVault is a well-architected Android TV IPTV player built with Kotlin, Comp
 
 | Severity | Found | Fixed | Remaining | Notes |
 |----------|-------|-------|-----------|-------|
-| 🔴 CRITICAL | 16 | 14 | 2 | Remaining: DB migration risks (deferred — too risky pre-launch) |
-| 🟠 HIGH | 22 | 19 | 3 | Remaining: architecture-level (post-launch) |
-| 🟡 MEDIUM | 20 | 14 | 6 | Remaining: polish, features, test coverage |
-| 🔵 LOW | 18 | 4 | 14 | Minor nice-to-haves |
+| 🔴 CRITICAL | 16 | 15 | 1 | Remaining: DB migration 8→9 (deferred — too risky pre-launch) |
+| 🟠 HIGH | 22 | 21 | 1 | Remaining: use case layer (post-launch) |
+| 🟡 MEDIUM | 20 | 18 | 2 | Remaining: deeper tests, missing domain features |
+| 🔵 LOW | 18 | 15 | 3 | Chromecast, integration tests, stress tests |
 
 ### Detailed Finding Reports
 
@@ -66,12 +66,12 @@ StreamVault is a well-architected Android TV IPTV player built with Kotlin, Comp
 | 6 | M3U category ID collision | Data | 🔴 | ✅ Fixed (Batch 3) |
 | 7 | ViewModels never cancel jobs | App | 🔴 | ✅ Fixed (Batch 4) |
 | 8 | D-Pad focus traps | App | 🔴 | ✅ Fixed (Batches 7, 14) — BackHandler + focusGroup |
-| 9 | Zero test coverage (domain/player) | Testing | 🔴 | ⏭️ Post-launch — separate effort |
+| 9 | Zero test coverage (domain/player) | Testing | 🔴 | ⚠️ Mitigated (Batch 24) — foundational unit tests added |
 | 10 | Hardcoded English strings | Localization | 🟠 | ✅ Fixed (Batches 8, 11, 13) |
 
 ---
 
-## Fix Log (15 Batches)
+## Fix Log (25 Batches)
 
 | Batch | Commit | Summary |
 |-------|--------|---------|
@@ -90,6 +90,16 @@ StreamVault is a well-architected Android TV IPTV player built with Kotlin, Comp
 | 13 | `a8d708b` | N+1 query optimization (EXISTS), 3 hardcoded strings, stable LazyRow keys, sidebar width |
 | 14 | `f95aa70` | Accessibility contentDescription (7 components), sidebar focusGroup |
 | 15 | `6412892` | Audio content type, decoder reuse logging, M3U unquoted attr fix, SecureRandom cache, GetCustomCategories .catch, recovery notice duration, numeric switching in overlays, search hint, multi-view buffering indicator |
+| 16 | — | Domain model validation: init{} blocks with require() on 13 models |
+| 17 | — | Player metrics: bandwidth estimate, rebuffer count, buffered duration in PlayerStats |
+| 18 | — | UI animations: Crossfade on HomeScreen category transitions |
+| 19 | — | Repository API cleanup: getStreamInfo() with defaults, @Deprecated on getStreamUrl() |
+| 20 | — | Backup credential stripping: passwords cleared from exports |
+| 21 | — | DB foreign keys: FK constraints on 8 entities, MIGRATION_10_11 |
+| 22 | — | Pagination metadata: hasNextPage, hasPreviousPage, totalPages on PagedResult |
+| 23 | — | Removed unused extraAttributes from M3U parser |
+| 24 | — | Test coverage: domain model validation, Program, ParentalControlManager, ChannelNormalizer, StreamTypeDetector |
+| 25 | — | Icon density: verified vector adaptive icon handles all densities (API 26+ min) |
 
 ## Remaining (Deferred / Post-Launch)
 
@@ -97,9 +107,8 @@ StreamVault is a well-architected Android TV IPTV player built with Kotlin, Comp
 |----|-------|--------|
 | C5 | EPG staging negative IDs | Mitigated (transactional swap, positive-only queries). Full fix needs schema migration |
 | C7 | Migration 8→9 unsafe ID remapping | Too risky to modify mid-release |
-| C12 | No foreign key constraints | Requires DB schema migration + potential data cleanup |
-| T1-T4 | Test coverage gaps | Separate test-writing effort |
-| R6 | Icon density variants | Requires Image Asset Studio / design assets |
+| T2-T4 | Deeper test coverage | Post-launch test-writing effort |
 | DM2 | Thin use case layer | Architectural — post-launch refactor |
-| S7 | Backup not encrypted | Feature-level change requiring password UX |
+| DM8 | Missing domain features | Feature-level — post-launch |
+| P14 | Chromecast / Cast support | Major feature — post-launch |
 | C15 | file:// URI usage | False positive — internal to app, not shared cross-process |

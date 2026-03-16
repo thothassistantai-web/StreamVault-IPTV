@@ -444,7 +444,6 @@ class HomeViewModel @Inject constructor(
             val freshProgramMap = if (epgIds.isNotEmpty()) {
                 epgRepository.getNowPlayingForChannels(providerId, epgIds)
                     .firstOrNull()
-                    ?.mapValues { (_, programs) -> programs.firstOrNull() }
                     ?.mapNotNull { (epgId, program) -> program?.let { epgId to it } }
                     ?.toMap()
                     ?: emptyMap()

@@ -40,7 +40,7 @@ Database, parsing, sync, data integrity, and repository implementation issues.
 
 ---
 
-## 7. ⏭️ DEFERRED — No Foreign Key Constraints
+## 7. ✅ FIXED — No Foreign Key Constraints
 
 > See [01_CRITICAL_BLOCKERS.md #12](01_CRITICAL_BLOCKERS.md#12-no-foreign-key-constraints-in-room-database)
 
@@ -185,7 +185,7 @@ private val dateFormats = listOf(
 
 ---
 
-## 18. ⏭️ DEFERRED — No Pagination Metadata in Repositories
+## 18. ✅ FIXED — No Pagination Metadata in Repositories
 
 **File:** `data/src/main/java/com/streamvault/data/repository/MovieRepositoryImpl.kt` (lines 150–162)  
 **Severity:** 🟡 MEDIUM
@@ -216,7 +216,7 @@ ALTER TABLE migrations add columns but don't validate whether existing data sati
 
 ---
 
-## 21. ⏭️ REMAINING — Unused Extra Attributes in M3U Entries
+## 21. ✅ FIXED — Unused Extra Attributes in M3U Entries
 
 **File:** `data/src/main/java/com/streamvault/data/parser/M3uParser.kt` (line 40)  
 **Severity:** 🔵 LOW

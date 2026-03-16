@@ -55,7 +55,10 @@ data class PlayerStats(
     val videoBitrate: Int = 0,
     val droppedFrames: Int = 0,
     val width: Int = 0,
-    val height: Int = 0
+    val height: Int = 0,
+    val bandwidthEstimate: Long = 0,
+    val bufferedDurationMs: Long = 0,
+    val rebufferCount: Int = 0
 )
 
 sealed class PlayerError(val message: String) {

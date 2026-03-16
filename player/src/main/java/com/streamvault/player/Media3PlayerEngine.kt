@@ -176,16 +176,34 @@ class Media3PlayerEngine @Inject constructor(
                             it.copy(droppedFrames = it.droppedFrames + droppedFrames) 
                         }
                     }
+
+                    override fun onBandwidthEstimate(
+                        eventTime: AnalyticsListener.EventTime,
+                        totalLoadTimeMs: Int,
+                        totalBytesLoaded: Long,
+                        bitrateEstimate: Long
+                    ) {
+                        _playerStats.update {
+                            it.copy(bandwidthEstimate = bitrateEstimate)
+                        }
+                    }
                 })
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
-                        _playbackState.value = when (state) {
+                        val newState = when (state) {
                             Player.STATE_IDLE -> PlaybackState.IDLE
-                            Player.STATE_BUFFERING -> PlaybackState.BUFFERING
+                            Player.STATE_BUFFERING -> {
+                                // Track rebuffering: BUFFERING after READY = rebuffer event
+                                if (_playbackState.value == PlaybackState.READY) {
+                                    _playerStats.update { it.copy(rebufferCount = it.rebufferCount + 1) }
+                                }
+                                PlaybackState.BUFFERING
+                            }
                             Player.STATE_READY -> PlaybackState.READY
                             Player.STATE_ENDED -> PlaybackState.ENDED
                             else -> PlaybackState.IDLE
                         }
+                        _playbackState.value = newState
                     }
 
                     override fun onIsPlayingChanged(playing: Boolean) {
@@ -479,8 +497,11 @@ class Media3PlayerEngine @Inject constructor(
                 exoPlayer?.let { player ->
                     _currentPosition.value = player.currentPosition
                     _duration.value = player.duration.coerceAtLeast(0L)
+                    // Update buffered duration for diagnostics
+                    val buffered = player.bufferedPosition - player.currentPosition
+                    _playerStats.update { it.copy(bufferedDurationMs = buffered.coerceAtLeast(0L)) }
                 }
-                delay(1000) // Poll every 1s for smooth UI timeline updates
+                delay(1000) // Poll every 1s — supplements onPositionDiscontinuity for continuous updates
             }
         }
     }

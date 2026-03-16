@@ -27,4 +27,11 @@ data class Movie(
     val isAdult: Boolean = false,
     val isUserProtected: Boolean = false,
     val streamId: Long = 0L
-)
+) {
+    init {
+        require(durationSeconds >= 0) { "durationSeconds must be non-negative" }
+        require(rating in 0f..10f) { "rating must be between 0 and 10" }
+        require(watchProgress >= 0) { "watchProgress must be non-negative" }
+        require(lastWatchedAt >= 0) { "lastWatchedAt must be non-negative" }
+    }
+}

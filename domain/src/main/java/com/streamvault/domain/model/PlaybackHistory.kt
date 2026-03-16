@@ -15,4 +15,13 @@ data class PlaybackHistory(
     val seriesId: Long? = null,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null
-)
+) {
+    init {
+        require(resumePositionMs >= 0) { "resumePositionMs must be non-negative" }
+        require(totalDurationMs >= 0) { "totalDurationMs must be non-negative" }
+        require(watchCount >= 1) { "watchCount must be at least 1" }
+        require(lastWatchedAt >= 0) { "lastWatchedAt must be non-negative" }
+        seasonNumber?.let { require(it >= 0) { "seasonNumber must be non-negative" } }
+        episodeNumber?.let { require(it >= 0) { "episodeNumber must be non-negative" } }
+    }
+}

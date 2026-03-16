@@ -55,7 +55,10 @@ class BackupManagerImpl @Inject constructor(
             )
 
             val providers = providerDao.getAll().first().map { entity ->
-                entity.toDomain().copy(password = CredentialCrypto.decryptIfNeeded(entity.password))
+                entity.toDomain().copy(
+                    password = "",  // Strip credentials from backup export
+                    username = entity.toDomain().username // Keep username for provider identification
+                )
             }
 
             // Gather all favorites across all types

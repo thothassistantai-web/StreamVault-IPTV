@@ -308,6 +308,7 @@ class SeriesRepositoryImpl @Inject constructor(
         }
     }
 
+    @Deprecated("Use getEpisodeStreamInfo() instead", ReplaceWith("getEpisodeStreamInfo(episode)"))
     override suspend fun getEpisodeStreamUrl(episode: Episode): Result<String> =
         if (episode.streamUrl.isNotBlank()) {
             Result.success(episode.streamUrl)

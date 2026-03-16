@@ -47,4 +47,8 @@ dependencies {
 
     // Core
     implementation(libs.core.ktx)
+
+    // Test
+    testImplementation(libs.junit)
+    testImplementation(libs.truth)
 }

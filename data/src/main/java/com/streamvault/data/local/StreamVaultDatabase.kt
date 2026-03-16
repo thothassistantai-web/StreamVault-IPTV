@@ -24,7 +24,7 @@ import com.streamvault.data.local.entity.*
         PlaybackHistoryEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true   // ← was false; schema JSON now tracked in version control
 )
 abstract class StreamVaultDatabase : RoomDatabase() {
@@ -570,6 +570,278 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                     END
                     """.trimIndent()
                 )
+            }
+        }
+
+        /**
+         * Migration 10 → 11: Add foreign key constraints to child tables.
+         * Tables referencing providers get ON DELETE CASCADE.
+         * Favorites referencing virtual_groups get ON DELETE SET NULL.
+         * Programs table excluded (uses negative staging provider IDs).
+         */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Clean up orphaned records before adding FK constraints
+                database.execSQL("DELETE FROM channels WHERE provider_id NOT IN (SELECT id FROM providers)")
+                database.execSQL("DELETE FROM movies WHERE provider_id NOT IN (SELECT id FROM providers)")
+                database.execSQL("DELETE FROM series WHERE provider_id NOT IN (SELECT id FROM providers)")
+                database.execSQL("DELETE FROM episodes WHERE provider_id NOT IN (SELECT id FROM providers)")
+                database.execSQL("DELETE FROM categories WHERE provider_id NOT IN (SELECT id FROM providers)")
+                database.execSQL("DELETE FROM playback_history WHERE provider_id NOT IN (SELECT id FROM providers)")
+                database.execSQL("DELETE FROM sync_metadata WHERE provider_id NOT IN (SELECT id FROM providers)")
+                database.execSQL("UPDATE favorites SET group_id = NULL WHERE group_id IS NOT NULL AND group_id NOT IN (SELECT id FROM virtual_groups)")
+
+                // ── Drop FTS triggers and tables (channels, movies, series) ──
+                database.execSQL("DROP TRIGGER IF EXISTS channels_ai")
+                database.execSQL("DROP TRIGGER IF EXISTS channels_ad")
+                database.execSQL("DROP TRIGGER IF EXISTS channels_au")
+                database.execSQL("DROP TRIGGER IF EXISTS movies_ai")
+                database.execSQL("DROP TRIGGER IF EXISTS movies_ad")
+                database.execSQL("DROP TRIGGER IF EXISTS movies_au")
+                database.execSQL("DROP TRIGGER IF EXISTS series_ai")
+                database.execSQL("DROP TRIGGER IF EXISTS series_ad")
+                database.execSQL("DROP TRIGGER IF EXISTS series_au")
+                database.execSQL("DROP TABLE IF EXISTS channels_fts")
+                database.execSQL("DROP TABLE IF EXISTS movies_fts")
+                database.execSQL("DROP TABLE IF EXISTS series_fts")
+
+                // ── Channels ──
+                database.execSQL("""
+                    CREATE TABLE channels_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        stream_id INTEGER NOT NULL DEFAULT 0,
+                        name TEXT NOT NULL,
+                        logo_url TEXT,
+                        group_title TEXT,
+                        category_id INTEGER,
+                        category_name TEXT,
+                        stream_url TEXT NOT NULL DEFAULT '',
+                        epg_channel_id TEXT,
+                        number INTEGER NOT NULL DEFAULT 0,
+                        catch_up_supported INTEGER NOT NULL DEFAULT 0,
+                        catch_up_days INTEGER NOT NULL DEFAULT 0,
+                        catchUpSource TEXT,
+                        provider_id INTEGER NOT NULL DEFAULT 0,
+                        is_adult INTEGER NOT NULL DEFAULT 0,
+                        is_user_protected INTEGER NOT NULL DEFAULT 0,
+                        logical_group_id TEXT NOT NULL DEFAULT '',
+                        error_count INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("INSERT INTO channels_new SELECT * FROM channels")
+                database.execSQL("DROP TABLE channels")
+                database.execSQL("ALTER TABLE channels_new RENAME TO channels")
+                database.execSQL("CREATE INDEX index_channels_provider_id ON channels(provider_id)")
+                database.execSQL("CREATE INDEX index_channels_provider_id_category_id ON channels(provider_id, category_id)")
+                database.execSQL("CREATE UNIQUE INDEX index_channels_provider_id_stream_id ON channels(provider_id, stream_id)")
+                database.execSQL("CREATE INDEX index_channels_logical_group_id ON channels(logical_group_id)")
+
+                // ── Movies ──
+                database.execSQL("""
+                    CREATE TABLE movies_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        stream_id INTEGER NOT NULL DEFAULT 0,
+                        name TEXT NOT NULL,
+                        poster_url TEXT,
+                        backdrop_url TEXT,
+                        category_id INTEGER,
+                        category_name TEXT,
+                        stream_url TEXT NOT NULL DEFAULT '',
+                        container_extension TEXT,
+                        plot TEXT,
+                        cast TEXT,
+                        director TEXT,
+                        genre TEXT,
+                        release_date TEXT,
+                        duration TEXT,
+                        duration_seconds INTEGER NOT NULL DEFAULT 0,
+                        rating REAL NOT NULL DEFAULT 0,
+                        year TEXT,
+                        tmdb_id INTEGER,
+                        youtube_trailer TEXT,
+                        provider_id INTEGER NOT NULL DEFAULT 0,
+                        watch_progress INTEGER NOT NULL DEFAULT 0,
+                        last_watched_at INTEGER NOT NULL DEFAULT 0,
+                        is_adult INTEGER NOT NULL DEFAULT 0,
+                        is_user_protected INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("INSERT INTO movies_new SELECT * FROM movies")
+                database.execSQL("DROP TABLE movies")
+                database.execSQL("ALTER TABLE movies_new RENAME TO movies")
+                database.execSQL("CREATE INDEX index_movies_provider_id ON movies(provider_id)")
+                database.execSQL("CREATE INDEX index_movies_provider_id_category_id ON movies(provider_id, category_id)")
+                database.execSQL("CREATE UNIQUE INDEX index_movies_provider_id_stream_id ON movies(provider_id, stream_id)")
+
+                // ── Series ──
+                database.execSQL("""
+                    CREATE TABLE series_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        series_id INTEGER NOT NULL DEFAULT 0,
+                        name TEXT NOT NULL,
+                        poster_url TEXT,
+                        backdrop_url TEXT,
+                        category_id INTEGER,
+                        category_name TEXT,
+                        plot TEXT,
+                        cast TEXT,
+                        director TEXT,
+                        genre TEXT,
+                        release_date TEXT,
+                        rating REAL NOT NULL DEFAULT 0,
+                        tmdb_id INTEGER,
+                        youtube_trailer TEXT,
+                        episode_run_time TEXT,
+                        last_modified INTEGER NOT NULL DEFAULT 0,
+                        provider_id INTEGER NOT NULL DEFAULT 0,
+                        is_adult INTEGER NOT NULL DEFAULT 0,
+                        is_user_protected INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("INSERT INTO series_new SELECT * FROM series")
+                database.execSQL("DROP TABLE series")
+                database.execSQL("ALTER TABLE series_new RENAME TO series")
+                database.execSQL("CREATE INDEX index_series_provider_id ON series(provider_id)")
+                database.execSQL("CREATE INDEX index_series_provider_id_category_id ON series(provider_id, category_id)")
+                database.execSQL("CREATE UNIQUE INDEX index_series_provider_id_series_id ON series(provider_id, series_id)")
+
+                // ── Recreate FTS tables and triggers ──
+                database.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS channels_fts USING fts4(name, content='channels')")
+                database.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS movies_fts USING fts4(name, content='movies')")
+                database.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS series_fts USING fts4(name, content='series')")
+                database.execSQL("INSERT INTO channels_fts(rowid, name) SELECT id, name FROM channels")
+                database.execSQL("INSERT INTO movies_fts(rowid, name) SELECT id, name FROM movies")
+                database.execSQL("INSERT INTO series_fts(rowid, name) SELECT id, name FROM series")
+                database.execSQL("CREATE TRIGGER IF NOT EXISTS channels_ai AFTER INSERT ON channels BEGIN INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END")
+                database.execSQL("CREATE TRIGGER IF NOT EXISTS channels_ad AFTER DELETE ON channels BEGIN DELETE FROM channels_fts WHERE rowid = old.id; END")
+                database.execSQL("CREATE TRIGGER IF NOT EXISTS channels_au AFTER UPDATE OF name ON channels BEGIN UPDATE channels_fts SET name = new.name WHERE rowid = old.id; END")
+                database.execSQL("CREATE TRIGGER IF NOT EXISTS movies_ai AFTER INSERT ON movies BEGIN INSERT INTO movies_fts(rowid, name) VALUES (new.id, new.name); END")
+                database.execSQL("CREATE TRIGGER IF NOT EXISTS movies_ad AFTER DELETE ON movies BEGIN DELETE FROM movies_fts WHERE rowid = old.id; END")
+                database.execSQL("CREATE TRIGGER IF NOT EXISTS movies_au AFTER UPDATE OF name ON movies BEGIN UPDATE movies_fts SET name = new.name WHERE rowid = old.id; END")
+                database.execSQL("CREATE TRIGGER IF NOT EXISTS series_ai AFTER INSERT ON series BEGIN INSERT INTO series_fts(rowid, name) VALUES (new.id, new.name); END")
+                database.execSQL("CREATE TRIGGER IF NOT EXISTS series_ad AFTER DELETE ON series BEGIN DELETE FROM series_fts WHERE rowid = old.id; END")
+                database.execSQL("CREATE TRIGGER IF NOT EXISTS series_au AFTER UPDATE OF name ON series BEGIN UPDATE series_fts SET name = new.name WHERE rowid = old.id; END")
+
+                // ── Episodes ──
+                database.execSQL("""
+                    CREATE TABLE episodes_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        episode_id INTEGER NOT NULL DEFAULT 0,
+                        title TEXT NOT NULL,
+                        episode_number INTEGER NOT NULL,
+                        season_number INTEGER NOT NULL,
+                        stream_url TEXT NOT NULL DEFAULT '',
+                        container_extension TEXT,
+                        cover_url TEXT,
+                        plot TEXT,
+                        duration TEXT,
+                        duration_seconds INTEGER NOT NULL DEFAULT 0,
+                        rating REAL NOT NULL DEFAULT 0,
+                        release_date TEXT,
+                        series_id INTEGER NOT NULL DEFAULT 0,
+                        provider_id INTEGER NOT NULL DEFAULT 0,
+                        watch_progress INTEGER NOT NULL DEFAULT 0,
+                        last_watched_at INTEGER NOT NULL DEFAULT 0,
+                        is_adult INTEGER NOT NULL DEFAULT 0,
+                        is_user_protected INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("INSERT INTO episodes_new SELECT * FROM episodes")
+                database.execSQL("DROP TABLE episodes")
+                database.execSQL("ALTER TABLE episodes_new RENAME TO episodes")
+                database.execSQL("CREATE INDEX index_episodes_series_id ON episodes(series_id)")
+                database.execSQL("CREATE INDEX index_episodes_provider_id ON episodes(provider_id)")
+                database.execSQL("CREATE UNIQUE INDEX index_episodes_provider_id_episode_id ON episodes(provider_id, episode_id)")
+
+                // ── Categories ──
+                database.execSQL("""
+                    CREATE TABLE categories_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        category_id INTEGER NOT NULL DEFAULT 0,
+                        name TEXT NOT NULL,
+                        parent_id INTEGER,
+                        type TEXT NOT NULL DEFAULT 'LIVE',
+                        provider_id INTEGER NOT NULL DEFAULT 0,
+                        is_adult INTEGER NOT NULL DEFAULT 0,
+                        is_user_protected INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("INSERT INTO categories_new SELECT * FROM categories")
+                database.execSQL("DROP TABLE categories")
+                database.execSQL("ALTER TABLE categories_new RENAME TO categories")
+                database.execSQL("CREATE INDEX index_categories_provider_id ON categories(provider_id)")
+                database.execSQL("CREATE UNIQUE INDEX index_categories_provider_id_category_id_type ON categories(provider_id, category_id, type)")
+
+                // ── Playback History ──
+                database.execSQL("""
+                    CREATE TABLE playback_history_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        content_id INTEGER NOT NULL,
+                        content_type TEXT NOT NULL,
+                        provider_id INTEGER NOT NULL,
+                        title TEXT NOT NULL DEFAULT '',
+                        poster_url TEXT,
+                        stream_url TEXT NOT NULL DEFAULT '',
+                        resume_position_ms INTEGER NOT NULL DEFAULT 0,
+                        total_duration_ms INTEGER NOT NULL DEFAULT 0,
+                        last_watched_at INTEGER NOT NULL DEFAULT 0,
+                        watch_count INTEGER NOT NULL DEFAULT 1,
+                        series_id INTEGER,
+                        season_number INTEGER,
+                        episode_number INTEGER,
+                        FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("INSERT INTO playback_history_new SELECT * FROM playback_history")
+                database.execSQL("DROP TABLE playback_history")
+                database.execSQL("ALTER TABLE playback_history_new RENAME TO playback_history")
+                database.execSQL("CREATE UNIQUE INDEX index_playback_history_content_id_content_type_provider_id ON playback_history(content_id, content_type, provider_id)")
+                database.execSQL("CREATE INDEX index_playback_history_last_watched_at ON playback_history(last_watched_at)")
+                database.execSQL("CREATE INDEX index_playback_history_provider_id ON playback_history(provider_id)")
+
+                // ── Sync Metadata ──
+                database.execSQL("""
+                    CREATE TABLE sync_metadata_new (
+                        provider_id INTEGER NOT NULL PRIMARY KEY,
+                        last_live_sync INTEGER NOT NULL DEFAULT 0,
+                        last_movie_sync INTEGER NOT NULL DEFAULT 0,
+                        last_series_sync INTEGER NOT NULL DEFAULT 0,
+                        last_epg_sync INTEGER NOT NULL DEFAULT 0,
+                        live_count INTEGER NOT NULL DEFAULT 0,
+                        movie_count INTEGER NOT NULL DEFAULT 0,
+                        series_count INTEGER NOT NULL DEFAULT 0,
+                        epg_count INTEGER NOT NULL DEFAULT 0,
+                        last_sync_status TEXT NOT NULL DEFAULT 'NONE',
+                        FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("INSERT INTO sync_metadata_new SELECT * FROM sync_metadata")
+                database.execSQL("DROP TABLE sync_metadata")
+                database.execSQL("ALTER TABLE sync_metadata_new RENAME TO sync_metadata")
+
+                // ── Favorites ──
+                database.execSQL("""
+                    CREATE TABLE favorites_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        content_id INTEGER NOT NULL,
+                        content_type TEXT NOT NULL,
+                        position INTEGER NOT NULL DEFAULT 0,
+                        group_id INTEGER,
+                        added_at INTEGER NOT NULL,
+                        FOREIGN KEY(group_id) REFERENCES virtual_groups(id) ON DELETE SET NULL
+                    )
+                """.trimIndent())
+                database.execSQL("INSERT INTO favorites_new SELECT * FROM favorites")
+                database.execSQL("DROP TABLE favorites")
+                database.execSQL("ALTER TABLE favorites_new RENAME TO favorites")
+                database.execSQL("CREATE UNIQUE INDEX index_favorites_content_id_content_type_group_id ON favorites(content_id, content_type, group_id)")
+                database.execSQL("CREATE INDEX index_favorites_content_type_group_id ON favorites(content_type, group_id)")
+                database.execSQL("CREATE INDEX index_favorites_group_id_position ON favorites(group_id, position)")
             }
         }
     }
