@@ -5,8 +5,6 @@ import com.streamvault.app.ui.design.AppColors
 
 val Primary = AppColors.Brand
 val PrimaryLight = AppColors.BrandStrong
-val PrimaryVariant = PrimaryLight
-val PrimaryDark = Color(0xFF356CB7)
 val PrimaryGlow = AppColors.BrandMuted
 
 val BackgroundDeep = AppColors.Canvas
@@ -14,7 +12,6 @@ val Background = AppColors.CanvasElevated
 val Surface = AppColors.Surface
 val SurfaceElevated = AppColors.SurfaceElevated
 val SurfaceHighlight = AppColors.SurfaceEmphasis
-val SurfaceVariant = SurfaceElevated
 
 val TextPrimary = AppColors.TextPrimary
 val TextSecondary = AppColors.TextSecondary
@@ -22,8 +19,7 @@ val TextTertiary = AppColors.TextTertiary
 val TextDisabled = AppColors.TextDisabled
 
 val OnBackground = TextPrimary
-val OnSurface = TextSecondary
-val OnSurfaceVariant = TextSecondary
+val OnSurface = TextPrimary
 val OnSurfaceDim = TextTertiary
 
 val AccentRed = AppColors.Live
@@ -34,14 +30,9 @@ val AccentCyan = AppColors.Info
 val OnPrimary = Color(0xFFFFFFFF)
 val Secondary = AppColors.Success
 val ErrorColor = AccentRed
-val SuccessColor = AccentGreen
-val LiveIndicator = AccentRed
-val WarningColor = AccentAmber
 
 val GradientOverlayTop = AppColors.HeroTop
 val GradientOverlayBottom = AppColors.HeroBottom
 
 val FocusBorder = AppColors.Focus
-val CardBackground = Surface
-val ProgressBar = Primary
 val ProgressBarBackground = AppColors.SurfaceAccent

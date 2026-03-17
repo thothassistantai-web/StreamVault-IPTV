@@ -27,7 +27,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,8 +40,8 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 import com.streamvault.app.R
+import com.streamvault.app.ui.components.rememberCrossfadeImageModel
 import com.streamvault.app.ui.components.shell.ContentMetadataStrip
 import com.streamvault.app.ui.components.shell.EpisodeRowCard
 import com.streamvault.app.ui.components.shell.StatusPill
@@ -107,9 +106,7 @@ private fun SeriesDetailContent(
             .background(AppColors.Canvas)
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(series.backdropUrl ?: series.posterUrl)
-                .build(),
+            model = rememberCrossfadeImageModel(series.backdropUrl ?: series.posterUrl),
             contentDescription = series.name,
             modifier = Modifier
                 .fillMaxWidth()
@@ -166,7 +163,7 @@ private fun SeriesDetailContent(
                             .background(AppColors.SurfaceElevated)
                     ) {
                         AsyncImage(
-                            model = series.posterUrl ?: series.backdropUrl,
+                            model = rememberCrossfadeImageModel(series.posterUrl ?: series.backdropUrl),
                             contentDescription = series.name,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop

@@ -1,6 +1,7 @@
 package com.streamvault.data.repository
 
 import com.streamvault.data.local.dao.*
+import com.streamvault.data.local.DatabaseTransactionRunner
 import com.streamvault.data.mapper.toDomain
 import com.streamvault.domain.model.Category
 import com.streamvault.domain.model.ContentType
@@ -16,7 +17,8 @@ class CategoryRepositoryImpl @Inject constructor(
     private val categoryDao: CategoryDao,
     private val channelDao: ChannelDao,
     private val movieDao: MovieDao,
-    private val seriesDao: SeriesDao
+    private val seriesDao: SeriesDao,
+    private val transactionRunner: DatabaseTransactionRunner
 ) : CategoryRepository {
 
     override fun getCategories(providerId: Long): Flow<List<Category>> =
@@ -35,7 +37,7 @@ class CategoryRepositoryImpl @Inject constructor(
         categoryId: Long,
         type: ContentType,
         isProtected: Boolean
-    ) {
+    ) = transactionRunner.inTransaction {
         categoryDao.updateProtectionStatus(providerId, categoryId, type.name, isProtected)
         when (type) {
             ContentType.LIVE -> channelDao.updateProtectionStatus(providerId, categoryId, isProtected)

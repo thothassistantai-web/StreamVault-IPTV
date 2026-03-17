@@ -14,4 +14,5 @@ interface RecordingManager {
     suspend fun scheduleRecording(request: RecordingRequest): Result<RecordingItem>
     suspend fun stopRecording(recordingId: String): Result<Unit>
     suspend fun cancelRecording(recordingId: String): Result<Unit>
+    suspend fun deleteRecording(recordingId: String): Result<Unit>
 }

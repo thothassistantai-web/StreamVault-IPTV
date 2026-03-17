@@ -17,7 +17,7 @@ class RoutesTest {
 
     @Test
     fun `livePlayer preserves playback context`() {
-        val route = Routes.livePlayer(
+        val request = Routes.livePlayer(
             channel = Channel(
                 id = 42L,
                 name = "News HD",
@@ -31,17 +31,17 @@ class RoutesTest {
             isVirtual = false
         )
 
-        assertThat(route).contains("internalId=42")
-        assertThat(route).contains("categoryId=9")
-        assertThat(route).contains("providerId=7")
-        assertThat(route).contains("channelId=news.hd")
-        assertThat(route).contains("contentType=LIVE")
-        assertThat(route).contains("isVirtual=false")
+        assertThat(request.internalId).isEqualTo(42L)
+        assertThat(request.categoryId).isEqualTo(9L)
+        assertThat(request.providerId).isEqualTo(7L)
+        assertThat(request.channelId).isEqualTo("news.hd")
+        assertThat(request.contentType).isEqualTo("LIVE")
+        assertThat(request.isVirtual).isFalse()
     }
 
     @Test
     fun `livePlayer falls back to all channels when category is missing`() {
-        val route = Routes.livePlayer(
+        val request = Routes.livePlayer(
             channel = Channel(
                 id = 8L,
                 name = "Sports",
@@ -52,13 +52,13 @@ class RoutesTest {
             providerId = 3L
         )
 
-        assertThat(route).contains("categoryId=${ChannelRepository.ALL_CHANNELS_ID}")
-        assertThat(route).contains("providerId=3")
+        assertThat(request.categoryId).isEqualTo(ChannelRepository.ALL_CHANNELS_ID)
+        assertThat(request.providerId).isEqualTo(3L)
     }
 
     @Test
     fun `moviePlayer preserves provider and category context`() {
-        val route = Routes.moviePlayer(
+        val request = Routes.moviePlayer(
             Movie(
                 id = 15L,
                 name = "Film",
@@ -68,15 +68,15 @@ class RoutesTest {
             )
         )
 
-        assertThat(route).contains("internalId=15")
-        assertThat(route).contains("categoryId=21")
-        assertThat(route).contains("providerId=5")
-        assertThat(route).contains("contentType=MOVIE")
+        assertThat(request.internalId).isEqualTo(15L)
+        assertThat(request.categoryId).isEqualTo(21L)
+        assertThat(request.providerId).isEqualTo(5L)
+        assertThat(request.contentType).isEqualTo("MOVIE")
     }
 
     @Test
     fun `episodePlayer preserves episode playback context`() {
-        val route = Routes.episodePlayer(
+        val request = Routes.episodePlayer(
             Episode(
                 id = 33L,
                 title = "Pilot",
@@ -87,14 +87,14 @@ class RoutesTest {
             )
         )
 
-        assertThat(route).contains("internalId=33")
-        assertThat(route).contains("providerId=11")
-        assertThat(route).contains("contentType=SERIES_EPISODE")
+        assertThat(request.internalId).isEqualTo(33L)
+        assertThat(request.providerId).isEqualTo(11L)
+        assertThat(request.contentType).isEqualTo("SERIES_EPISODE")
     }
 
     @Test
     fun `player route supports archive playback context`() {
-        val route = Routes.player(
+        val request = Routes.player(
             streamUrl = "https://example.com/live.m3u8",
             title = "News HD",
             internalId = 42L,
@@ -105,9 +105,9 @@ class RoutesTest {
             archiveTitle = "News HD: Morning Show"
         )
 
-        assertThat(route).contains("archiveStartMs=1700000000000")
-        assertThat(route).contains("archiveEndMs=1700000360000")
-        assertThat(route).contains("archiveTitle=News+HD%3A+Morning+Show")
+        assertThat(request.archiveStartMs).isEqualTo(1_700_000_000_000L)
+        assertThat(request.archiveEndMs).isEqualTo(1_700_000_360_000L)
+        assertThat(request.archiveTitle).isEqualTo("News HD: Morning Show")
     }
 
     @Test
@@ -130,7 +130,7 @@ class RoutesTest {
             anchorTime = 1_700_000_360_000L,
             favoritesOnly = false
         )
-        val route = Routes.livePlayer(
+        val request = Routes.livePlayer(
             channel = Channel(
                 id = 42L,
                 name = "News HD",
@@ -144,8 +144,6 @@ class RoutesTest {
             returnRoute = returnRoute
         )
 
-        assertThat(route).contains(
-            "returnRoute=epg%3FcategoryId%3D9%26anchorTime%3D1700000360000%26favoritesOnly%3Dfalse"
-        )
+        assertThat(request.returnRoute).isEqualTo(returnRoute)
     }
 }

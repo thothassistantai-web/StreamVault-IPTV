@@ -20,8 +20,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,20 +38,23 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
+import com.streamvault.app.ui.design.LocalAppShapes
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.streamvault.app.R
+import com.streamvault.app.ui.components.rememberCrossfadeImageModel
 import com.streamvault.app.ui.components.shell.MoviePosterCard
 import com.streamvault.app.ui.components.shell.SeriesPosterCard
+import com.streamvault.app.ui.components.shell.StatusPill
 import com.streamvault.app.ui.theme.AccentAmber
 import com.streamvault.app.ui.theme.AccentCyan
 import com.streamvault.app.ui.theme.AccentRed
-import com.streamvault.app.ui.theme.CardBackground
 import com.streamvault.app.ui.theme.FocusBorder
 import com.streamvault.app.ui.theme.GradientOverlayBottom
 import com.streamvault.app.ui.theme.Primary
+import com.streamvault.app.ui.theme.Surface
 import com.streamvault.app.ui.theme.SurfaceElevated
 import com.streamvault.app.ui.theme.SurfaceHighlight
 import com.streamvault.app.ui.theme.TextPrimary
@@ -100,7 +105,7 @@ fun FocusableCard(
             pressedScale = FocusSpec.PressedScale
         ),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = CardBackground,
+            containerColor = Surface,
             focusedContainerColor = SurfaceHighlight
         ),
         border = ClickableSurfaceDefaults.border(
@@ -133,6 +138,14 @@ fun ChannelCard(
     isReorderMode: Boolean = false,
     isDragging: Boolean = false
 ) {
+    // Ticks every 30s so EPG progress bars stay accurate without busy-looping
+    val nowMs by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            delay(30_000L)
+            value = System.currentTimeMillis()
+        }
+    }
+    val channelCardShape = LocalAppShapes.current.small
     FocusableCard(
         onClick = onClick,
         onLongClick = onLongClick,
@@ -142,15 +155,25 @@ fun ChannelCard(
         isReorderMode = isReorderMode,
         isDragging = isDragging
     ) { isFocused ->
-        if (!channel.logoUrl.isNullOrBlank() && !isLocked) {
-            AsyncImage(
-                model = channel.logoUrl,
-                contentDescription = channel.name,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(10.dp)),
-                contentScale = ContentScale.Fit
-            )
+        if (!isLocked) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                // Initials fallback — visible when image is absent or fails to load
+                Text(
+                    text = channel.name.take(2).uppercase(java.util.Locale.ROOT),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextSecondary
+                )
+                if (!channel.logoUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = rememberCrossfadeImageModel(channel.logoUrl),
+                        contentDescription = channel.name,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(channelCardShape),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+            }
         }
 
         Box(
@@ -190,9 +213,8 @@ fun ChannelCard(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    val now = System.currentTimeMillis()
                     val totalDuration = program.endTime - program.startTime
-                    val elapsed = now - program.startTime
+                    val elapsed = nowMs - program.startTime
                     val progress = if (totalDuration > 0) elapsed.toFloat() / totalDuration else 0f
 
                     LinearProgressIndicator(
@@ -217,24 +239,27 @@ fun ChannelCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (channel.isFavorite) {
-                    StatusBadge(label = stringResource(R.string.badge_fav), containerColor = AccentAmber, contentColor = Color.Black)
+                    StatusPill(label = stringResource(R.string.badge_fav), containerColor = AccentAmber, contentColor = Color.Black, cornerRadius = 4.dp, horizontalPadding = 6.dp, verticalPadding = 2.dp)
                 }
                 if (channel.errorCount > 0) {
-                    StatusBadge(label = stringResource(R.string.badge_error), containerColor = AccentRed)
+                    StatusPill(label = stringResource(R.string.badge_error), containerColor = AccentRed, cornerRadius = 4.dp, horizontalPadding = 6.dp, verticalPadding = 2.dp)
                 }
                 if (channel.catchUpSupported) {
-                    StatusBadge(label = stringResource(R.string.badge_catch_up), containerColor = Primary)
+                    StatusPill(label = stringResource(R.string.badge_catch_up), containerColor = Primary, cornerRadius = 4.dp, horizontalPadding = 6.dp, verticalPadding = 2.dp)
                 }
-                StatusBadge(
+                StatusPill(
                     label = stringResource(R.string.card_live_badge),
-                    containerColor = AccentRed
+                    containerColor = AccentRed,
+                    cornerRadius = 4.dp,
+                    horizontalPadding = 6.dp,
+                    verticalPadding = 2.dp
                 )
             }
         }
 
         if (isLocked) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                StatusBadge(label = stringResource(R.string.home_locked_short), containerColor = SurfaceHighlight)
+                StatusPill(label = stringResource(R.string.home_locked_short), containerColor = SurfaceHighlight, cornerRadius = 4.dp, horizontalPadding = 6.dp, verticalPadding = 2.dp)
             }
         }
     }
@@ -272,9 +297,12 @@ fun MovieCard(
                     .background(SurfaceElevated),
                 contentAlignment = Alignment.Center
             ) {
-                StatusBadge(
+                StatusPill(
                     label = if (isLocked) stringResource(R.string.home_locked_short) else stringResource(R.string.badge_movie),
-                    containerColor = SurfaceHighlight
+                    containerColor = SurfaceHighlight,
+                    cornerRadius = 4.dp,
+                    horizontalPadding = 6.dp,
+                    verticalPadding = 2.dp
                 )
             }
         }
@@ -310,7 +338,7 @@ fun MovieCard(
 
             if (movie.isFavorite) {
                 Box(modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-                    StatusBadge(label = stringResource(R.string.badge_fav), containerColor = AccentRed)
+                    StatusPill(label = stringResource(R.string.badge_fav), containerColor = AccentRed, cornerRadius = 4.dp, horizontalPadding = 6.dp, verticalPadding = 2.dp)
                 }
             }
         }
@@ -350,9 +378,12 @@ fun SeriesCard(
                     .background(SurfaceElevated),
                 contentAlignment = Alignment.Center
             ) {
-                StatusBadge(
+                StatusPill(
                     label = if (isLocked) stringResource(R.string.home_locked_short) else stringResource(R.string.badge_series),
-                    containerColor = SurfaceHighlight
+                    containerColor = SurfaceHighlight,
+                    cornerRadius = 4.dp,
+                    horizontalPadding = 6.dp,
+                    verticalPadding = 2.dp
                 )
             }
         }
@@ -388,28 +419,9 @@ fun SeriesCard(
 
             if (series.isFavorite) {
                 Box(modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-                    StatusBadge(label = stringResource(R.string.badge_fav), containerColor = AccentRed)
+                    StatusPill(label = stringResource(R.string.badge_fav), containerColor = AccentRed, cornerRadius = 4.dp, horizontalPadding = 6.dp, verticalPadding = 2.dp)
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun StatusBadge(
-    label: String,
-    containerColor: Color,
-    contentColor: Color = Color.White
-) {
-    Box(
-        modifier = Modifier
-            .background(containerColor, RoundedCornerShape(4.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = contentColor
-        )
     }
 }

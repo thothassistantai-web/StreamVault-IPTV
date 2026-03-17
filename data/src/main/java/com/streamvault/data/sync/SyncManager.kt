@@ -14,10 +14,12 @@ import com.streamvault.data.mapper.toEntity
 import com.streamvault.data.parser.M3uParser
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.XtreamProvider
+import com.streamvault.data.remote.xtream.XtreamUrlFactory
 import com.streamvault.data.security.CredentialCrypto
 import com.streamvault.data.util.AdultContentClassifier
 import com.streamvault.data.util.UrlSecurityPolicy
 import com.streamvault.domain.model.Channel
+import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.Movie
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderType
@@ -25,14 +27,11 @@ import com.streamvault.domain.model.SyncMetadata
 import com.streamvault.domain.model.SyncState
 import com.streamvault.domain.repository.EpgRepository
 import com.streamvault.domain.repository.SyncMetadataRepository
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -86,13 +85,13 @@ class SyncManager @Inject constructor(
 
     private class CategoryAccumulator(
         private val providerId: Long,
-        private val type: String,
-        private val startId: Long
+        private val type: ContentType,
+        private val startId: Long  // retained for API compatibility but no longer used in ID generation
     ) {
         private val categoryIds = LinkedHashMap<String, Long>()
 
         fun idFor(name: String): Long {
-            return categoryIds.getOrPut(name) { providerId * 100_000L + startId + categoryIds.size }
+            return categoryIds.getOrPut(name) { stableId(providerId, type, name) }
         }
 
         fun entities(): List<CategoryEntity> {
@@ -107,9 +106,17 @@ class SyncManager @Inject constructor(
                 )
             }
         }
-    }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        /** Generates a stable, collision-resistant ID from the provider+type+name triple. */
+        private fun stableId(providerId: Long, type: ContentType, name: String): Long {
+            val key = "$providerId/${type.name}/$name"
+            val bytes = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(key.toByteArray(Charsets.UTF_8))
+            var result = 0L
+            for (i in 0 until 8) result = (result shl 8) or (bytes[i].toLong() and 0xFF)
+            return (result and Long.MAX_VALUE).coerceAtLeast(1L)
+        }
+    }
 
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
@@ -144,10 +151,6 @@ class SyncManager @Inject constructor(
             _syncState.value = SyncState.Error(e.message ?: "Unknown error", e)
             com.streamvault.domain.model.Result.error(e.message ?: "Sync failed", e)
         }
-    }
-
-    fun syncAsync(providerId: Long, force: Boolean = false, onProgress: ((String) -> Unit)? = null) {
-        scope.launch { sync(providerId, force, onProgress) }
     }
 
     fun resetState() {
@@ -202,7 +205,7 @@ class SyncManager @Inject constructor(
         var metadata = syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)
         val now = System.currentTimeMillis()
 
-        if (force || !isCacheValid(metadata.lastLiveSync, TTL_24_HOURS, now)) {
+        if (force || ContentCachePolicy.shouldRefresh(metadata.lastLiveSync, ContentCachePolicy.CATALOG_TTL_MILLIS, now)) {
             progress(onProgress, "Downloading Live TV...")
             val cats = retryTransient { api.getLiveCategories().getOrThrow("Live categories") }
             categoryDao.replaceAll(provider.id, "LIVE", cats.map { it.toEntity(provider.id) })
@@ -214,7 +217,7 @@ class SyncManager @Inject constructor(
             syncMetadataRepository.updateMetadata(metadata)
         }
 
-        if (force || !isCacheValid(metadata.lastMovieSync, TTL_24_HOURS, now)) {
+        if (force || ContentCachePolicy.shouldRefresh(metadata.lastMovieSync, ContentCachePolicy.CATALOG_TTL_MILLIS, now)) {
             progress(onProgress, "Downloading Movies...")
             val catsResult = runCatching { retryTransient { api.getVodCategories().getOrThrow("VOD categories") } }
             catsResult.getOrNull()?.let {
@@ -229,7 +232,7 @@ class SyncManager @Inject constructor(
             } ?: warnings.add("Movies streams sync failed")
         }
 
-        if (force || !isCacheValid(metadata.lastSeriesSync, TTL_24_HOURS, now)) {
+        if (force || ContentCachePolicy.shouldRefresh(metadata.lastSeriesSync, ContentCachePolicy.CATALOG_TTL_MILLIS, now)) {
             progress(onProgress, "Downloading Series...")
             val catsResult = runCatching { retryTransient { api.getSeriesCategories().getOrThrow("Series categories") } }
             catsResult.getOrNull()?.let {
@@ -244,11 +247,13 @@ class SyncManager @Inject constructor(
             } ?: warnings.add("Series list sync failed")
         }
 
-        if (force || !isCacheValid(metadata.lastEpgSync, TTL_6_HOURS, now)) {
+        if (force || ContentCachePolicy.shouldRefresh(metadata.lastEpgSync, ContentCachePolicy.EPG_TTL_MILLIS, now)) {
             try {
                 progress(onProgress, "Downloading EPG...")
                 val base = provider.serverUrl.trimEnd('/')
-                val xmltvUrl = provider.epgUrl.ifBlank { "$base/xmltv.php?username=${provider.username}&password=${provider.password}" }
+                val xmltvUrl = provider.epgUrl.ifBlank {
+                    XtreamUrlFactory.buildXmltvUrl(base, provider.username, provider.password)
+                }
                 UrlSecurityPolicy.validateOptionalEpgUrl(xmltvUrl)?.let { message ->
                     throw IllegalStateException(message)
                 }
@@ -273,7 +278,7 @@ class SyncManager @Inject constructor(
         var metadata = syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)
         val now = System.currentTimeMillis()
 
-        if (force || !isCacheValid(metadata.lastLiveSync, TTL_24_HOURS, now)) {
+        if (force || ContentCachePolicy.shouldRefresh(metadata.lastLiveSync, ContentCachePolicy.CATALOG_TTL_MILLIS, now)) {
             val stats = withContext(Dispatchers.IO) { importM3uPlaylist(provider, onProgress) }
             if (stats.liveCount == 0 && stats.movieCount == 0) {
                 throw IllegalStateException("Playlist is empty or contains no supported entries")
@@ -293,7 +298,7 @@ class SyncManager @Inject constructor(
         }
 
         val currentEpgUrl = providerDao.getById(provider.id)?.epgUrl ?: provider.epgUrl
-        if (!currentEpgUrl.isNullOrBlank() && (force || !isCacheValid(metadata.lastEpgSync, TTL_6_HOURS, now))) {
+        if (!currentEpgUrl.isNullOrBlank() && (force || ContentCachePolicy.shouldRefresh(metadata.lastEpgSync, ContentCachePolicy.EPG_TTL_MILLIS, now))) {
             val epgValidationError = UrlSecurityPolicy.validateOptionalEpgUrl(currentEpgUrl)
             if (epgValidationError != null) {
                 warnings.add(epgValidationError)
@@ -321,7 +326,9 @@ class SyncManager @Inject constructor(
         val epgUrl = when (provider.type) {
             ProviderType.XTREAM_CODES -> {
                 val base = provider.serverUrl.trimEnd('/')
-                provider.epgUrl.ifBlank { "$base/xmltv.php?username=${provider.username}&password=${provider.password}" }
+                provider.epgUrl.ifBlank {
+                    XtreamUrlFactory.buildXmltvUrl(base, provider.username, provider.password)
+                }
             }
             ProviderType.M3U -> providerDao.getById(provider.id)?.epgUrl ?: provider.epgUrl
         }
@@ -419,8 +426,8 @@ class SyncManager @Inject constructor(
         progress(onProgress, "Downloading Playlist...")
         val existingChannelIds = if (includeLive) channelDao.getIdMappings(provider.id).associate { it.remoteId to it.id } else emptyMap()
         val existingMovieIds = if (includeMovies) movieDao.getIdMappings(provider.id).associate { it.remoteId to it.id } else emptyMap()
-        val liveCategories = CategoryAccumulator(provider.id, "LIVE", 1L)
-        val movieCategories = CategoryAccumulator(provider.id, "MOVIE", 10_000L)
+        val liveCategories = CategoryAccumulator(provider.id, ContentType.LIVE, 1L)
+        val movieCategories = CategoryAccumulator(provider.id, ContentType.MOVIE, 10_000L)
         val channelBatch = ArrayList<ChannelEntity>(batchSize)
         val movieBatch = ArrayList<MovieEntity>(batchSize)
         val seenLiveStreamIds = if (includeLive) mutableSetOf<Long>() else null
@@ -451,7 +458,7 @@ class SyncManager @Inject constructor(
                         progress(onProgress, "Imported $parsedCount playlist entries...")
                         nextMilestone += PROGRESS_INTERVAL
                     }
-                    if (!UrlSecurityPolicy.isAllowedImportedUrl(entry.url)) {
+                    if (!UrlSecurityPolicy.isAllowedStreamEntryUrl(entry.url)) {
                         insecureStreamCount++
                         return@parseStreaming
                     }
@@ -669,21 +676,8 @@ class SyncManager @Inject constructor(
         return result and Long.MAX_VALUE
     }
 
-    internal fun isVodEntry(entry: M3uParser.M3uEntry): Boolean {
-        val url = entry.url.lowercase()
-        val group = entry.groupTitle.lowercase()
-        return url.endsWith(".mp4") ||
-            url.endsWith(".mkv") ||
-            url.endsWith(".avi") ||
-            url.contains("/movie/") ||
-            group.contains("movie") ||
-            group.contains("vod") ||
-            group.contains("film")
-    }
-
-    private fun isCacheValid(lastSync: Long, ttlMillis: Long, now: Long = System.currentTimeMillis()): Boolean {
-        return lastSync > 0 && (now - lastSync) < ttlMillis
-    }
+    /** Delegates to M3uParser to avoid duplicate logic. */
+    internal fun isVodEntry(entry: M3uParser.M3uEntry): Boolean = M3uParser.isVodEntry(entry)
 
     private fun progress(callback: ((String) -> Unit)?, message: String) {
         _syncState.value = SyncState.Syncing(message)
@@ -740,8 +734,6 @@ class SyncManager @Inject constructor(
     }
 
     companion object {
-        const val TTL_24_HOURS = 24L * 60 * 60 * 1000L
-        const val TTL_6_HOURS = 6L * 60 * 60 * 1000L
         private const val PROGRESS_INTERVAL = 5_000
     }
 

@@ -10,6 +10,10 @@ object StreamTypeDetector {
 
     fun detect(url: String): StreamType {
         val cleanUrl = url.lowercase().substringBefore("?").substringBefore("#")
+        val scheme = cleanUrl.substringBefore("://")
+
+        // RTSP / RTSPs — must be handled first; RtspMediaSource doesn't use OkHttp
+        if (scheme == "rtsp" || scheme == "rtsps") return StreamType.RTSP
 
         return when {
             // HLS

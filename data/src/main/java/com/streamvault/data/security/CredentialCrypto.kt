@@ -2,6 +2,7 @@ package com.streamvault.data.security
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Log
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -14,6 +15,7 @@ import javax.crypto.spec.GCMParameterSpec
  * Values are persisted as: enc:v1:<base64(iv + ciphertext)>
  */
 object CredentialCrypto {
+    private const val TAG = "CredentialCrypto"
     private const val KEYSTORE_TYPE = "AndroidKeyStore"
     private const val KEY_ALIAS = "streamvault_credentials"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
@@ -31,9 +33,10 @@ object CredentialCrypto {
             val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
             val packed = iv + encrypted
             PREFIX + java.util.Base64.getEncoder().encodeToString(packed)
-        } catch (_: Exception) {
-            // Fail closed would break existing users; keep original value if crypto fails.
-            value
+        } catch (e: Exception) {
+            // Do NOT fall back to plaintext — rethrow so the caller can surface the failure.
+            Log.e(TAG, "Keystore encryption failed. Credential will NOT be stored.", e)
+            throw SecurityException("Failed to encrypt credential: ${e.message}", e)
         }
     }
 
@@ -55,8 +58,12 @@ object CredentialCrypto {
                 GCMParameterSpec(AUTH_TAG_BITS, iv)
             )
             String(cipher.doFinal(ciphertext), Charsets.UTF_8)
-        } catch (_: Exception) {
-            value
+        } catch (e: Exception) {
+            // Decryption failed (e.g. key invalidated after device reset).
+            // Return empty string — the caller will surface an auth failure rather than
+            // silently sending a garbled ciphertext blob as the password.
+            Log.e(TAG, "Keystore decryption failed. Stored credential is unreadable.", e)
+            ""
         }
     }
 

@@ -59,12 +59,12 @@ import com.streamvault.app.ui.components.shell.AppHeroHeader
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
 import com.streamvault.app.ui.components.shell.AppSectionHeader
 import com.streamvault.app.ui.components.shell.StatusPill
-import com.streamvault.app.ui.theme.CardBackground
 import com.streamvault.app.ui.theme.OnBackground
 import com.streamvault.app.ui.theme.OnPrimary
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
 import com.streamvault.app.ui.theme.Primary
+import com.streamvault.app.ui.theme.Surface
 import com.streamvault.app.ui.theme.SurfaceElevated
 import com.streamvault.app.ui.theme.SurfaceHighlight
 import com.streamvault.domain.model.ContentType
@@ -789,7 +789,7 @@ private fun SavedHistoryRow(
                     onClick = { onItemClick(item) },
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
                     colors = ClickableSurfaceDefaults.colors(
-                        containerColor = CardBackground,
+                        containerColor = Surface,
                         focusedContainerColor = SurfaceHighlight,
                         contentColor = OnSurface,
                         focusedContentColor = OnSurface
@@ -852,7 +852,7 @@ private fun SavedGroupManagementRow(
                     onLongClick = { onGroupLongClick(group) },
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
                     colors = ClickableSurfaceDefaults.colors(
-                        containerColor = CardBackground,
+                        containerColor = Surface,
                         focusedContainerColor = SurfaceHighlight
                     ),
                     modifier = Modifier.width(240.dp)
@@ -1132,7 +1132,7 @@ private fun ReorderPanel(
             .width(250.dp)
             .heightIn(max = 300.dp)
             .background(
-                color = CardBackground.copy(alpha = 0.97f),
+                color = Surface.copy(alpha = 0.97f),
                 shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp)
             )
             .padding(16.dp),

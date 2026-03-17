@@ -1,5 +1,9 @@
 package com.streamvault.app.ui.components
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +23,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
@@ -39,6 +44,8 @@ fun PlaylistSwitcher(
 ) {
     var showProviderList by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showProviderList) { showProviderList = false }
 
     Box(modifier = modifier) {
         Surface(
@@ -65,10 +72,10 @@ fun PlaylistSwitcher(
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (isFocused) Primary else OnBackground
                 )
-                Text(
-                    text = if (showProviderList) "^" else "v",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceDim
+                Icon(
+                    imageVector = if (showProviderList) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = OnSurfaceDim
                 )
             }
         }

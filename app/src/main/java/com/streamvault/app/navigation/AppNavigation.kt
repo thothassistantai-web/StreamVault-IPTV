@@ -1,6 +1,7 @@
 package com.streamvault.app.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -21,7 +22,25 @@ import com.streamvault.app.ui.screens.provider.ProviderSetupScreen
 import com.streamvault.app.ui.screens.series.SeriesScreen
 import com.streamvault.app.ui.screens.settings.SettingsScreen
 import com.streamvault.app.ui.screens.welcome.WelcomeScreen
+import java.io.Serializable
 
+
+private const val PLAYER_REQUEST_KEY = "player_request"
+
+data class PlayerNavigationRequest(
+    val streamUrl: String,
+    val title: String,
+    val channelId: String? = null,
+    val internalId: Long = -1L,
+    val categoryId: Long? = null,
+    val providerId: Long? = null,
+    val isVirtual: Boolean = false,
+    val contentType: String = "LIVE",
+    val archiveStartMs: Long? = null,
+    val archiveEndMs: Long? = null,
+    val archiveTitle: String? = null,
+    val returnRoute: String? = null
+) : Serializable
 
 object Routes {
     const val PROVIDER_SETUP = "provider_setup?providerId={providerId}"
@@ -34,7 +53,7 @@ object Routes {
     const val EPG = "epg"
     const val EPG_DESTINATION = "epg?categoryId={categoryId}&anchorTime={anchorTime}&favoritesOnly={favoritesOnly}"
     const val SETTINGS = "settings"
-    const val PLAYER = "player/{streamUrl}?title={title}&channelId={channelId}&internalId={internalId}&categoryId={categoryId}&providerId={providerId}&isVirtual={isVirtual}&contentType={contentType}&archiveStartMs={archiveStartMs}&archiveEndMs={archiveEndMs}&archiveTitle={archiveTitle}&returnRoute={returnRoute}"
+    const val PLAYER = "player"
     const val SEARCH = "search"
     const val SERIES_DETAIL = "series_detail/{seriesId}"
     const val WELCOME = "welcome"
@@ -57,7 +76,7 @@ object Routes {
         providerId: Long? = channel.providerId,
         isVirtual: Boolean = false,
         returnRoute: String? = null
-    ): String {
+    ): PlayerNavigationRequest {
         val effectiveCategoryId = categoryId ?: ChannelRepository.ALL_CHANNELS_ID
         return player(
             streamUrl = channel.streamUrl,
@@ -72,7 +91,7 @@ object Routes {
         )
     }
 
-    fun moviePlayer(movie: Movie): String {
+    fun moviePlayer(movie: Movie): PlayerNavigationRequest {
         return player(
             streamUrl = movie.streamUrl,
             title = movie.name,
@@ -83,7 +102,7 @@ object Routes {
         )
     }
 
-    fun episodePlayer(episode: Episode): String {
+    fun episodePlayer(episode: Episode): PlayerNavigationRequest {
         return player(
             streamUrl = episode.streamUrl,
             title = "${episode.title} - S${episode.seasonNumber}E${episode.episodeNumber}",
@@ -94,8 +113,8 @@ object Routes {
     }
 
     fun player(
-        streamUrl: String, 
-        title: String, 
+        streamUrl: String,
+        title: String,
         channelId: String? = null,
         internalId: Long = -1L,
         categoryId: Long? = null,
@@ -106,21 +125,54 @@ object Routes {
         archiveEndMs: Long? = null,
         archiveTitle: String? = null,
         returnRoute: String? = null
-    ): String {
-        val encodedUrl = java.net.URLEncoder.encode(streamUrl, "UTF-8")
-        val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
-        val encodedArchiveTitle = java.net.URLEncoder.encode(archiveTitle ?: "", "UTF-8")
-        val encodedReturnRoute = java.net.URLEncoder.encode(returnRoute ?: "", "UTF-8")
-        return "player/$encodedUrl?title=$encodedTitle&channelId=${channelId ?: ""}&internalId=$internalId&categoryId=${categoryId ?: -1L}&providerId=${providerId ?: -1L}&isVirtual=$isVirtual&contentType=$contentType&archiveStartMs=${archiveStartMs ?: -1L}&archiveEndMs=${archiveEndMs ?: -1L}&archiveTitle=$encodedArchiveTitle&returnRoute=$encodedReturnRoute"
+    ): PlayerNavigationRequest {
+        return PlayerNavigationRequest(
+            streamUrl = streamUrl,
+            title = title,
+            channelId = channelId,
+            internalId = internalId,
+            categoryId = categoryId,
+            providerId = providerId,
+            isVirtual = isVirtual,
+            contentType = contentType,
+            archiveStartMs = archiveStartMs,
+            archiveEndMs = archiveEndMs,
+            archiveTitle = archiveTitle,
+            returnRoute = returnRoute
+        )
     }
 
     fun seriesDetail(seriesId: Long) = "series_detail/$seriesId"
     fun parentalControlGroups(providerId: Long) = "parental_control_groups/$providerId"
 }
 
+/** Accepts only media streaming schemes; rejects javascript:, file://, data:, etc. */
+private fun isStreamUrlSafe(url: String?): Boolean {
+    if (url.isNullOrBlank()) return false
+    val scheme = url.substringBefore("://").lowercase()
+    return scheme in setOf("http", "https", "rtsp", "rtmp", "rtsps", "mms", "xtream")
+}
+
+private fun NavHostController.navigateToPlayer(request: PlayerNavigationRequest) {
+    currentBackStackEntry?.savedStateHandle?.set(PLAYER_REQUEST_KEY, request)
+    navigate(Routes.PLAYER) { launchSingleTop = true }
+}
+
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+
+    // NAV-M02/NAV-H02: Single helper replacing repeated tab lambdas without serializing
+    // each tab's full UI tree into saved state on every switch.
+    fun tabNavigate(route: String) {
+        val currentRoute = navController.currentBackStackEntry?.destination?.route
+        if (currentRoute == route || currentRoute?.startsWith("$route?") == true) return
+
+        navController.navigate(route) {
+            popUpTo(Routes.HOME)
+            launchSingleTop = true
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -162,18 +214,12 @@ fun AppNavigation() {
 
         composable(Routes.HOME) {
             DashboardScreen(
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Routes.HOME) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onNavigate = { route -> tabNavigate(route) },
                 onAddProvider = {
                     navController.navigate(Routes.providerSetup(null))
                 },
                 onChannelClick = { channel ->
-                    navController.navigate(
+                    navController.navigateToPlayer(
                         Routes.livePlayer(
                             channel = channel,
                             categoryId = channel.categoryId ?: ChannelRepository.ALL_CHANNELS_ID,
@@ -183,7 +229,7 @@ fun AppNavigation() {
                     )
                 },
                 onMovieClick = { movie ->
-                    navController.navigate(Routes.moviePlayer(movie))
+                    navController.navigateToPlayer(Routes.moviePlayer(movie))
                 },
                 onSeriesClick = { series ->
                     navController.navigate(Routes.seriesDetail(series.id))
@@ -221,7 +267,11 @@ fun AppNavigation() {
                             )
                         }
                     }
-                    navController.navigate(route)
+                    if (route is PlayerNavigationRequest) {
+                        navController.navigateToPlayer(route)
+                    } else {
+                        navController.navigate(route) { launchSingleTop = true }
+                    }
                 },
                 currentRoute = Routes.HOME
             )
@@ -236,7 +286,7 @@ fun AppNavigation() {
             val initialCategoryId = backStackEntry.arguments?.getLong("categoryId")?.takeIf { it != -1L }
             HomeScreen(
                 onChannelClick = { channel, category, provider ->
-                    navController.navigate(
+                    navController.navigateToPlayer(
                         Routes.livePlayer(
                             channel = channel,
                             categoryId = category?.id,
@@ -245,13 +295,7 @@ fun AppNavigation() {
                         )
                     )
                 },
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Routes.HOME) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onNavigate = { route -> tabNavigate(route) },
                 currentRoute = Routes.LIVE_TV,
                 initialCategoryId = initialCategoryId
             )
@@ -261,15 +305,9 @@ fun AppNavigation() {
         composable(Routes.MOVIES) {
             MoviesScreen(
                 onMovieClick = { movie ->
-                    navController.navigate(Routes.moviePlayer(movie))
+                    navController.navigateToPlayer(Routes.moviePlayer(movie))
                 },
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Routes.HOME) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onNavigate = { route -> tabNavigate(route) },
                 currentRoute = Routes.MOVIES
             )
         }
@@ -279,13 +317,7 @@ fun AppNavigation() {
                 onSeriesClick = { seriesId ->
                     navController.navigate(Routes.seriesDetail(seriesId))
                 },
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Routes.HOME) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onNavigate = { route -> tabNavigate(route) },
                 currentRoute = Routes.SERIES
             )
         }
@@ -318,7 +350,11 @@ fun AppNavigation() {
                         }
                         else -> Routes.seriesDetail(item.favorite.contentId)
                     }
-                    navController.navigate(route)
+                    if (route is PlayerNavigationRequest) {
+                        navController.navigateToPlayer(route)
+                    } else {
+                        navController.navigate(route) { launchSingleTop = true }
+                    }
                 },
                 onHistoryClick = { item ->
                     val route = when (item.history.contentType) {
@@ -356,15 +392,13 @@ fun AppNavigation() {
                             )
                         }
                     }
-                    navController.navigate(route)
-                },
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Routes.HOME) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
+                    if (route is PlayerNavigationRequest) {
+                        navController.navigateToPlayer(route)
+                    } else {
+                        navController.navigate(route) { launchSingleTop = true }
                     }
                 },
+                onNavigate = { route -> tabNavigate(route) },
                 currentRoute = Routes.FAVORITES
             )
         }
@@ -386,7 +420,7 @@ fun AppNavigation() {
                 initialAnchorTime = epgAnchorTime,
                 initialFavoritesOnly = epgFavoritesOnly,
                 onPlayChannel = { channel, returnRoute ->
-                    navController.navigate(
+                    navController.navigateToPlayer(
                         Routes.livePlayer(
                             channel = channel,
                             categoryId = channel.categoryId ?: ChannelRepository.ALL_CHANNELS_ID,
@@ -397,7 +431,7 @@ fun AppNavigation() {
                     )
                 },
                 onPlayArchive = { channel, program, returnRoute ->
-                    navController.navigate(
+                    navController.navigateToPlayer(
                         Routes.player(
                             streamUrl = channel.streamUrl,
                             title = channel.name,
@@ -414,27 +448,13 @@ fun AppNavigation() {
                         )
                     )
                 },
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Routes.HOME) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                }
+                onNavigate = { route -> tabNavigate(route) }
             )
         }
 
         composable(Routes.SETTINGS) {
             SettingsScreen(
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Routes.HOME) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onNavigate = { route -> tabNavigate(route) },
                 onAddProvider = {
                     navController.navigate(Routes.providerSetup(null))
                 },
@@ -456,13 +476,7 @@ fun AppNavigation() {
         ) {
             com.streamvault.app.ui.screens.settings.parental.ParentalControlGroupScreen(
                 currentRoute = Routes.SETTINGS,
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Routes.HOME) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onNavigate = { route -> tabNavigate(route) },
                 onBack = { navController.popBackStack() }
             )
         }
@@ -470,7 +484,7 @@ fun AppNavigation() {
         composable(Routes.SEARCH) {
             com.streamvault.app.ui.screens.search.SearchScreen(
                 onChannelClick = { channel ->
-                    navController.navigate(
+                    navController.navigateToPlayer(
                         Routes.livePlayer(
                             channel = channel,
                             categoryId = channel.categoryId ?: ChannelRepository.ALL_CHANNELS_ID,
@@ -480,65 +494,35 @@ fun AppNavigation() {
                     )
                 },
                 onMovieClick = { movie ->
-                     navController.navigate(Routes.moviePlayer(movie))
+                     navController.navigateToPlayer(Routes.moviePlayer(movie))
                 },
                 onSeriesClick = { series ->
                      navController.navigate(Routes.seriesDetail(series.id))
                 },
-                onNavigate = { route ->
-                    navController.navigate(route) {
-                        popUpTo(Routes.HOME) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onNavigate = { route -> tabNavigate(route) },
                 currentRoute = Routes.SEARCH
             )
         }
 
-        composable(
-            route = Routes.PLAYER,
-            arguments = listOf(
-                navArgument("streamUrl") { type = NavType.StringType },
-                navArgument("title") { type = NavType.StringType; defaultValue = "" },
-                navArgument("channelId") { type = NavType.StringType; defaultValue = "" },
-                navArgument("internalId") { type = NavType.LongType; defaultValue = -1L },
-                navArgument("categoryId") { type = NavType.LongType; defaultValue = -1L },
-                navArgument("providerId") { type = NavType.LongType; defaultValue = -1L },
-                navArgument("isVirtual") { type = NavType.BoolType; defaultValue = false },
-                navArgument("contentType") { type = NavType.StringType; defaultValue = "LIVE" },
-                navArgument("archiveStartMs") { type = NavType.LongType; defaultValue = -1L },
-                navArgument("archiveEndMs") { type = NavType.LongType; defaultValue = -1L },
-                navArgument("archiveTitle") { type = NavType.StringType; defaultValue = "" },
-                navArgument("returnRoute") { type = NavType.StringType; defaultValue = "" }
-            )
-        ) { backStackEntry ->
-            val streamUrl = backStackEntry.arguments?.getString("streamUrl") ?: ""
-            val title = backStackEntry.arguments?.getString("title") ?: ""
-            val channelId = backStackEntry.arguments?.getString("channelId")?.takeIf { it.isNotBlank() }
-            val internalId = backStackEntry.arguments?.getLong("internalId") ?: -1L
-            val categoryId = backStackEntry.arguments?.getLong("categoryId")?.takeIf { it != -1L }
-            val providerId = backStackEntry.arguments?.getLong("providerId")?.takeIf { it != -1L }
-            val isVirtual = backStackEntry.arguments?.getBoolean("isVirtual") ?: false
-            val contentType = backStackEntry.arguments?.getString("contentType") ?: "LIVE"
-            val archiveStartMs = backStackEntry.arguments?.getLong("archiveStartMs")?.takeIf { it != -1L }
-            val archiveEndMs = backStackEntry.arguments?.getLong("archiveEndMs")?.takeIf { it != -1L }
-            val archiveTitle = backStackEntry.arguments?.getString("archiveTitle")?.takeIf { it.isNotBlank() }
-            val returnRoute = backStackEntry.arguments?.getString("returnRoute")?.takeIf { it.isNotBlank() }
-            
+        composable(route = Routes.PLAYER) { backStackEntry ->
+            val playerRequest = backStackEntry.savedStateHandle.get<PlayerNavigationRequest>(PLAYER_REQUEST_KEY)
+                ?: navController.previousBackStackEntry?.savedStateHandle?.get<PlayerNavigationRequest>(PLAYER_REQUEST_KEY)?.also {
+                    backStackEntry.savedStateHandle[PLAYER_REQUEST_KEY] = it
+                }
+            val streamUrl = if (isStreamUrlSafe(playerRequest?.streamUrl)) playerRequest?.streamUrl.orEmpty() else ""
             PlayerScreen(
                 streamUrl = streamUrl,
-                title = title,
-                epgChannelId = channelId,
-                internalChannelId = internalId,
-                categoryId = categoryId,
-                providerId = providerId,
-                isVirtual = isVirtual,
-                contentType = contentType,
-                archiveStartMs = archiveStartMs,
-                archiveEndMs = archiveEndMs,
-                archiveTitle = archiveTitle,
-                returnRoute = returnRoute,
+                title = playerRequest?.title.orEmpty(),
+                epgChannelId = playerRequest?.channelId,
+                internalChannelId = playerRequest?.internalId ?: -1L,
+                categoryId = playerRequest?.categoryId,
+                providerId = playerRequest?.providerId,
+                isVirtual = playerRequest?.isVirtual ?: false,
+                contentType = playerRequest?.contentType ?: "LIVE",
+                archiveStartMs = playerRequest?.archiveStartMs,
+                archiveEndMs = playerRequest?.archiveEndMs,
+                archiveTitle = playerRequest?.archiveTitle,
+                returnRoute = playerRequest?.returnRoute,
                 onBack = { navController.popBackStack() },
                 onNavigate = { route -> navController.navigate(route) }
             )
@@ -552,7 +536,7 @@ fun AppNavigation() {
         ) {
             com.streamvault.app.ui.screens.series.SeriesDetailScreen(
                 onEpisodeClick = { episode ->
-                     navController.navigate(Routes.episodePlayer(episode))
+                     navController.navigateToPlayer(Routes.episodePlayer(episode))
                 },
                 onBack = { navController.popBackStack() }
             )

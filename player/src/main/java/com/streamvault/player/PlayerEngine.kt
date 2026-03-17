@@ -1,5 +1,7 @@
 package com.streamvault.player
 
+import android.content.Context
+import android.view.View
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.VideoFormat
@@ -37,8 +39,14 @@ interface PlayerEngine {
     fun selectSubtitleTrack(trackId: String?) // null to disable subtitles
     fun release()
 
-    /** Returns the underlying player view for Compose embedding */
-    fun getPlayerView(): Any?
+    fun createRenderView(context: Context, resizeMode: PlayerSurfaceResizeMode): View
+    fun bindRenderView(renderView: View, resizeMode: PlayerSurfaceResizeMode)
+}
+
+enum class PlayerSurfaceResizeMode {
+    FIT,
+    FILL,
+    ZOOM
 }
 
 enum class PlaybackState {

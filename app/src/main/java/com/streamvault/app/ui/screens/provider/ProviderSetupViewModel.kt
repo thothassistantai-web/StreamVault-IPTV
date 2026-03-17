@@ -2,6 +2,7 @@ package com.streamvault.app.ui.screens.provider
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streamvault.data.util.ProviderInputSanitizer
 import com.streamvault.data.util.UrlSecurityPolicy
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.Result
@@ -69,15 +70,23 @@ class ProviderSetupViewModel @Inject constructor(
     fun loginXtream(serverUrl: String, username: String, password: String, name: String) {
         _uiState.update { it.copy(validationError = null, error = null) }
 
-        if (serverUrl.isBlank()) {
+        val normalizedServerUrl = ProviderInputSanitizer.normalizeUrl(serverUrl)
+        val normalizedUsername = ProviderInputSanitizer.normalizeUsername(username)
+        val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
+
+        if (normalizedServerUrl.isBlank()) {
             _uiState.update { it.copy(validationError = "Please enter server URL") }
             return
         }
-        UrlSecurityPolicy.validateXtreamServerUrl(serverUrl)?.let { message ->
+        ProviderInputSanitizer.validateUrl(normalizedServerUrl)?.let { message ->
             _uiState.update { it.copy(validationError = message) }
             return
         }
-        if (username.isBlank()) {
+        UrlSecurityPolicy.validateXtreamServerUrl(normalizedServerUrl)?.let { message ->
+            _uiState.update { it.copy(validationError = message) }
+            return
+        }
+        if (normalizedUsername.isBlank()) {
             _uiState.update { it.copy(validationError = "Please enter username") }
             return
         }
@@ -86,7 +95,7 @@ class ProviderSetupViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, validationError = null, syncProgress = "Connecting...") }
             val existingId = if (_uiState.value.isEditing) _uiState.value.existingProviderId else null
 
-            when (val result = providerRepository.loginXtream(serverUrl, username, password, name, onProgress = { msg ->
+            when (val result = providerRepository.loginXtream(normalizedServerUrl, normalizedUsername, password, normalizedName, onProgress = { msg ->
                 _uiState.update { it.copy(syncProgress = msg) }
             }, id = existingId)) {
                 is Result.Success -> {
@@ -96,6 +105,9 @@ class ProviderSetupViewModel @Inject constructor(
                 }
                 is Result.Error -> {
                     val userMessage = when {
+                        result.message.contains("certificate", ignoreCase = true) ||
+                        result.message.contains("trust", ignoreCase = true) ->
+                            "Secure connection failed — the server's TLS certificate is not trusted on this device"
                         result.message.contains("authentication failed", ignoreCase = true) ||
                         result.message.contains("auth", ignoreCase = true) ->
                             "Login failed — please check your credentials and server URL"
@@ -117,11 +129,18 @@ class ProviderSetupViewModel @Inject constructor(
     fun addM3u(url: String, name: String) {
         _uiState.update { it.copy(validationError = null, error = null) }
 
-        if (url.isBlank()) {
+        val normalizedUrl = ProviderInputSanitizer.normalizeUrl(url)
+        val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
+
+        if (normalizedUrl.isBlank()) {
             _uiState.update { it.copy(validationError = if (_uiState.value.m3uTab == 0) "Please enter M3U URL" else "Please select a file") }
             return
         }
-        UrlSecurityPolicy.validatePlaylistSourceUrl(url)?.let { message ->
+        ProviderInputSanitizer.validateUrl(normalizedUrl)?.let { message ->
+            _uiState.update { it.copy(validationError = message) }
+            return
+        }
+        UrlSecurityPolicy.validatePlaylistSourceUrl(normalizedUrl)?.let { message ->
             _uiState.update { it.copy(validationError = message) }
             return
         }
@@ -130,7 +149,7 @@ class ProviderSetupViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, validationError = null, syncProgress = "Validating...") }
             val existingId = if (_uiState.value.isEditing) _uiState.value.existingProviderId else null
 
-            when (val result = providerRepository.validateM3u(url, name, onProgress = { msg ->
+            when (val result = providerRepository.validateM3u(normalizedUrl, normalizedName, onProgress = { msg ->
                 _uiState.update { it.copy(syncProgress = msg) }
             }, id = existingId)) {
                 is Result.Success -> {

@@ -2,6 +2,7 @@ package com.streamvault.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.streamvault.data.local.dao.*
@@ -11,6 +12,7 @@ import com.streamvault.data.local.entity.*
     entities = [
         ProviderEntity::class,
         ChannelEntity::class,
+        ChannelPreferenceEntity::class,
         ChannelFtsEntity::class,
         MovieEntity::class,
         MovieFtsEntity::class,
@@ -24,12 +26,14 @@ import com.streamvault.data.local.entity.*
         PlaybackHistoryEntity::class,
         SyncMetadataEntity::class
     ],
-    version = 11,
+    version = 13,
     exportSchema = true   // ← was false; schema JSON now tracked in version control
 )
+@TypeConverters(RoomEnumConverters::class)
 abstract class StreamVaultDatabase : RoomDatabase() {
     abstract fun providerDao(): ProviderDao
     abstract fun channelDao(): ChannelDao
+    abstract fun channelPreferenceDao(): ChannelPreferenceDao
     abstract fun movieDao(): MovieDao
     abstract fun seriesDao(): SeriesDao
     abstract fun episodeDao(): EpisodeDao
@@ -41,6 +45,17 @@ abstract class StreamVaultDatabase : RoomDatabase() {
     abstract fun syncMetadataDao(): SyncMetadataDao
 
     companion object {
+        /**
+         * Migration 1 → 2: no-op stub.
+         * v1 databases had the same table structure as v2; this migration prevents Room
+         * from crashing with an "unsatisfied migration" exception on very early installs.
+         */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Schema was identical between v1 and v2; nothing to alter.
+            }
+        }
+
         /**
          * Migration 2 → 3: added parental-control protection columns.
          */
@@ -842,6 +857,76 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                 database.execSQL("CREATE UNIQUE INDEX index_favorites_content_id_content_type_group_id ON favorites(content_id, content_type, group_id)")
                 database.execSQL("CREATE INDEX index_favorites_content_type_group_id ON favorites(content_type, group_id)")
                 database.execSQL("CREATE INDEX index_favorites_group_id_position ON favorites(group_id, position)")
+            }
+        }
+        /**
+         * Migration 11 → 12: adds series_id FK to episodes.
+         * Episodes whose series_id has no matching row in the series table are silently
+         * removed — they are unreachable orphans and would violate the new constraint.
+         */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Create new episodes table with both FK constraints
+                database.execSQL("""
+                    CREATE TABLE episodes_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        episode_id INTEGER NOT NULL DEFAULT 0,
+                        title TEXT NOT NULL,
+                        episode_number INTEGER NOT NULL,
+                        season_number INTEGER NOT NULL,
+                        stream_url TEXT NOT NULL DEFAULT '',
+                        container_extension TEXT,
+                        cover_url TEXT,
+                        plot TEXT,
+                        duration TEXT,
+                        duration_seconds INTEGER NOT NULL DEFAULT 0,
+                        rating REAL NOT NULL DEFAULT 0,
+                        release_date TEXT,
+                        series_id INTEGER NOT NULL DEFAULT 0,
+                        provider_id INTEGER NOT NULL DEFAULT 0,
+                        watch_progress INTEGER NOT NULL DEFAULT 0,
+                        last_watched_at INTEGER NOT NULL DEFAULT 0,
+                        is_adult INTEGER NOT NULL DEFAULT 0,
+                        is_user_protected INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(provider_id) REFERENCES providers(id) ON DELETE CASCADE,
+                        FOREIGN KEY(series_id) REFERENCES series(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                // Migrate only episodes with a valid series parent; orphans are discarded
+                database.execSQL("""
+                    INSERT INTO episodes_new
+                    SELECT * FROM episodes
+                    WHERE series_id IN (SELECT id FROM series)
+                """.trimIndent())
+                database.execSQL("DROP TABLE episodes")
+                database.execSQL("ALTER TABLE episodes_new RENAME TO episodes")
+                database.execSQL("CREATE INDEX index_episodes_series_id ON episodes(series_id)")
+                database.execSQL("CREATE INDEX index_episodes_provider_id ON episodes(provider_id)")
+                database.execSQL("CREATE UNIQUE INDEX index_episodes_provider_id_episode_id ON episodes(provider_id, episode_id)")
+            }
+        }
+
+        /**
+         * Migration 12 → 13: move high-cardinality per-channel UI state into Room.
+         * Existing DataStore aspect-ratio entries are read lazily as a legacy fallback and
+         * get replaced in Room on the next write for each channel.
+         */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS channel_preferences (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        channel_id INTEGER NOT NULL,
+                        aspect_ratio TEXT,
+                        updated_at INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(channel_id) REFERENCES channels(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_channel_preferences_channel_id ON channel_preferences(channel_id)"
+                )
             }
         }
     }

@@ -10,39 +10,46 @@ data class RemoteIdMapping(
 )
 
 @Dao
-interface ProviderDao {
+abstract class ProviderDao {
     @Query("SELECT * FROM providers ORDER BY created_at DESC")
-    fun getAll(): Flow<List<ProviderEntity>>
+    abstract fun getAll(): Flow<List<ProviderEntity>>
 
     @Query("SELECT * FROM providers WHERE is_active = 1 LIMIT 1")
-    fun getActive(): Flow<ProviderEntity?>
+    abstract fun getActive(): Flow<ProviderEntity?>
 
     @Query("SELECT * FROM providers WHERE server_url = :serverUrl AND username = :username")
-    suspend fun getByUrlAndUser(serverUrl: String, username: String): ProviderEntity?
+    abstract suspend fun getByUrlAndUser(serverUrl: String, username: String): ProviderEntity?
 
     @Query("SELECT * FROM providers WHERE id = :id")
-    suspend fun getById(id: Long): ProviderEntity?
+    abstract suspend fun getById(id: Long): ProviderEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(provider: ProviderEntity): Long
+    abstract suspend fun insert(provider: ProviderEntity): Long
 
     @Update
-    suspend fun update(provider: ProviderEntity)
+    abstract suspend fun update(provider: ProviderEntity)
 
     @Query("DELETE FROM providers WHERE id = :id")
-    suspend fun delete(id: Long)
+    abstract suspend fun delete(id: Long)
 
     @Query("UPDATE providers SET is_active = 0")
-    suspend fun deactivateAll()
+    abstract suspend fun deactivateAll()
 
     @Query("UPDATE providers SET is_active = 1 WHERE id = :id")
-    suspend fun activate(id: Long)
+    abstract suspend fun activate(id: Long)
 
     @Query("UPDATE providers SET last_synced_at = :timestamp WHERE id = :id")
-    suspend fun updateSyncTime(id: Long, timestamp: Long)
+    abstract suspend fun updateSyncTime(id: Long, timestamp: Long)
 
     @Query("UPDATE providers SET epg_url = :epgUrl WHERE id = :id")
-    suspend fun updateEpgUrl(id: Long, epgUrl: String)
+    abstract suspend fun updateEpgUrl(id: Long, epgUrl: String)
+
+    /** Atomically deactivates all providers then activates the given one. */
+    @Transaction
+    open suspend fun setActive(id: Long) {
+        deactivateAll()
+        activate(id)
+    }
 }
 
 @Dao
@@ -50,8 +57,14 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE provider_id = :providerId ORDER BY number ASC")
     fun getByProvider(providerId: Long): Flow<List<ChannelEntity>>
 
+    @Query("SELECT * FROM channels WHERE provider_id = :providerId ORDER BY number ASC LIMIT :limit OFFSET :offset")
+    fun getByProviderPage(providerId: Long, limit: Int, offset: Int): Flow<List<ChannelEntity>>
+
     @Query("SELECT * FROM channels WHERE provider_id = :providerId AND category_id = :categoryId ORDER BY number ASC")
     fun getByCategory(providerId: Long, categoryId: Long): Flow<List<ChannelEntity>>
+
+    @Query("SELECT * FROM channels WHERE provider_id = :providerId AND category_id = :categoryId ORDER BY number ASC LIMIT :limit OFFSET :offset")
+    fun getByCategoryPage(providerId: Long, categoryId: Long, limit: Int, offset: Int): Flow<List<ChannelEntity>>
 
     @Query(
         """
@@ -60,7 +73,6 @@ interface ChannelDao {
         WHERE c.provider_id = :providerId
           AND channels_fts MATCH :query
         ORDER BY c.name ASC
-        LIMIT 1000
         """
     )
     fun search(providerId: Long, query: String): Flow<List<ChannelEntity>>
@@ -73,7 +85,6 @@ interface ChannelDao {
           AND c.category_id = :categoryId
           AND channels_fts MATCH :query
         ORDER BY c.name ASC
-        LIMIT 1000
         """
     )
     fun searchByCategory(providerId: Long, categoryId: Long, query: String): Flow<List<ChannelEntity>>
@@ -123,15 +134,35 @@ interface ChannelDao {
 }
 
 @Dao
+interface ChannelPreferenceDao {
+    @Query("SELECT aspect_ratio FROM channel_preferences WHERE channel_id = :channelId LIMIT 1")
+    fun observeAspectRatio(channelId: Long): Flow<String?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(preference: ChannelPreferenceEntity)
+
+    @Query("DELETE FROM channel_preferences")
+    suspend fun deleteAll()
+}
+
+@Dao
 interface MovieDao {
     @Query("SELECT * FROM movies WHERE provider_id = :providerId ORDER BY name ASC")
     fun getByProvider(providerId: Long): Flow<List<MovieEntity>>
+
+    /** SQL-level parental filter — avoids loading protected items into memory. */
+    @Query("SELECT * FROM movies WHERE provider_id = :providerId AND is_user_protected = 0 ORDER BY name ASC")
+    fun getByProviderUnprotected(providerId: Long): Flow<List<MovieEntity>>
 
     @Query("SELECT * FROM movies WHERE provider_id = :providerId ORDER BY name ASC LIMIT :limit OFFSET :offset")
     fun getByProviderPage(providerId: Long, limit: Int, offset: Int): Flow<List<MovieEntity>>
 
     @Query("SELECT * FROM movies WHERE provider_id = :providerId AND category_id = :categoryId ORDER BY name ASC")
     fun getByCategory(providerId: Long, categoryId: Long): Flow<List<MovieEntity>>
+
+    /** SQL-level parental filter per category. */
+    @Query("SELECT * FROM movies WHERE provider_id = :providerId AND category_id = :categoryId AND is_user_protected = 0 ORDER BY name ASC")
+    fun getByCategoryUnprotected(providerId: Long, categoryId: Long): Flow<List<MovieEntity>>
 
     @Query("SELECT * FROM movies WHERE provider_id = :providerId AND category_id = :categoryId ORDER BY name ASC LIMIT :limit OFFSET :offset")
     fun getByCategoryPage(providerId: Long, categoryId: Long, limit: Int, offset: Int): Flow<List<MovieEntity>>
@@ -152,7 +183,6 @@ interface MovieDao {
         WHERE m.provider_id = :providerId
           AND movies_fts MATCH :query
         ORDER BY m.name ASC
-        LIMIT 1000
         """
     )
     fun search(providerId: Long, query: String): Flow<List<MovieEntity>>
@@ -255,7 +285,6 @@ interface SeriesDao {
         WHERE s.provider_id = :providerId
           AND series_fts MATCH :query
         ORDER BY s.name ASC
-        LIMIT 1000
         """
     )
     fun search(providerId: Long, query: String): Flow<List<SeriesEntity>>
@@ -327,6 +356,9 @@ interface EpisodeDao {
 
     @Query("DELETE FROM episodes WHERE series_id = :seriesId")
     suspend fun deleteBySeries(seriesId: Long)
+
+    @Query("DELETE FROM episodes WHERE series_id NOT IN (SELECT id FROM series)")
+    suspend fun deleteOrphans(): Int
 
     @Query("""
         UPDATE episodes 
@@ -405,7 +437,7 @@ interface ProgramDao {
     suspend fun insertAll(programs: List<ProgramEntity>)
 
     @Query("DELETE FROM programs WHERE end_time < :beforeTime")
-    suspend fun deleteOld(beforeTime: Long)
+    suspend fun deleteOld(beforeTime: Long): Int
 
     @Query("DELETE FROM programs WHERE provider_id = :providerId")
     suspend fun deleteByProvider(providerId: Long)
@@ -454,6 +486,15 @@ interface FavoriteDao {
 
     @Query("DELETE FROM favorites WHERE content_id = :contentId AND content_type = :contentType AND (:groupId IS NULL AND group_id IS NULL OR group_id = :groupId)")
     suspend fun delete(contentId: Long, contentType: String, groupId: Long?)
+
+    @Query("DELETE FROM favorites WHERE content_type = 'LIVE' AND content_id NOT IN (SELECT id FROM channels)")
+    suspend fun deleteMissingLiveFavorites(): Int
+
+    @Query("DELETE FROM favorites WHERE content_type = 'MOVIE' AND content_id NOT IN (SELECT id FROM movies)")
+    suspend fun deleteMissingMovieFavorites(): Int
+
+    @Query("DELETE FROM favorites WHERE content_type = 'SERIES' AND content_id NOT IN (SELECT id FROM series)")
+    suspend fun deleteMissingSeriesFavorites(): Int
 
     @Query("UPDATE favorites SET group_id = :groupId WHERE id = :favoriteId")
     suspend fun updateGroup(favoriteId: Long, groupId: Long?)

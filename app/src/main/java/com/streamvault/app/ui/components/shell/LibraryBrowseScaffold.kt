@@ -36,6 +36,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.streamvault.app.ui.components.SearchInput
+import com.streamvault.app.ui.components.rememberCrossfadeImageModel
 import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.design.FocusSpec
 import com.streamvault.app.ui.design.LocalAppSpacing
@@ -208,26 +209,26 @@ fun BrowseHeroPanel(
         )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // Gradient fallback always visible; covered by AsyncImage on successful load
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                AppColors.Canvas,
+                                AppColors.CanvasElevated,
+                                AppColors.SurfaceEmphasis
+                            )
+                        )
+                    )
+            )
             if (!imageUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = imageUrl,
+                    model = rememberCrossfadeImageModel(imageUrl),
                     contentDescription = title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(
-                                    AppColors.Canvas,
-                                    AppColors.CanvasElevated,
-                                    AppColors.SurfaceEmphasis
-                                )
-                            )
-                        )
                 )
             }
 

@@ -47,12 +47,15 @@ fun CreateGroupDialog(
     onConfirm: (String) -> Unit
 ) {
     var value by rememberSaveable { mutableStateOf("") }
+    var canInteract by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(Unit) {
         runCatching { focusRequester.requestFocus() }
         keyboardController?.show()
+        kotlinx.coroutines.delay(500)
+        canInteract = true
     }
 
     Dialog(
@@ -126,8 +129,10 @@ fun CreateGroupDialog(
                 ) {
                     Button(
                         onClick = {
-                            keyboardController?.hide()
-                            onDismissRequest()
+                            if (canInteract) {
+                                keyboardController?.hide()
+                                onDismissRequest()
+                            }
                         },
                         colors = ButtonDefaults.colors(
                             containerColor = Color.White.copy(alpha = 0.08f),
@@ -139,12 +144,12 @@ fun CreateGroupDialog(
                     Button(
                         onClick = {
                             val normalized = value.trim()
-                            if (normalized.isNotEmpty()) {
+                            if (canInteract && normalized.isNotEmpty()) {
                                 keyboardController?.hide()
                                 onConfirm(normalized)
                             }
                         },
-                        enabled = value.trim().isNotEmpty(),
+                        enabled = canInteract && value.trim().isNotEmpty(),
                         colors = ButtonDefaults.colors(
                             containerColor = Primary,
                             contentColor = Color.White

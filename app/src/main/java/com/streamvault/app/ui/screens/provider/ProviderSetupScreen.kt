@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import com.streamvault.data.util.ProviderInputSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,7 +40,6 @@ import androidx.tv.material3.*
 import com.streamvault.app.ui.components.shell.AppSectionHeader
 import com.streamvault.app.ui.components.shell.StatusPill
 import com.streamvault.app.ui.components.dialogs.PremiumDialog
-import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.theme.*
 import androidx.compose.ui.res.stringResource
 import com.streamvault.app.R
@@ -95,7 +95,9 @@ fun ProviderSetupScreen(
 
                         withContext(Dispatchers.Main) {
                             m3uUrl = "file://${outFile.absolutePath}"
-                            if (name.isEmpty()) name = fileName
+                            if (name.isEmpty()) {
+                                name = ProviderInputSanitizer.sanitizeProviderNameForEditing(fileName)
+                            }
                             fileImportError = null
                         }
                     } else {
@@ -228,11 +230,11 @@ fun ProviderSetupScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatusPill(
                             label = stringResource(R.string.setup_xtream),
-                            containerColor = AppColors.BrandMuted
+                            containerColor = PrimaryGlow
                         )
                         StatusPill(
                             label = stringResource(R.string.setup_m3u),
-                            containerColor = AppColors.SurfaceEmphasis
+                            containerColor = SurfaceHighlight
                         )
                     }
 
@@ -284,7 +286,7 @@ fun ProviderSetupScreen(
                     Text(
                         text = stringResource(R.string.setup_source_type_label),
                         style = MaterialTheme.typography.labelMedium,
-                        color = AppColors.TextTertiary
+                        color = TextTertiary
                     )
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -306,7 +308,7 @@ fun ProviderSetupScreen(
 
                     TvTextField(
                         value = name,
-                        onValueChange = { name = it },
+                        onValueChange = { name = ProviderInputSanitizer.sanitizeProviderNameForEditing(it) },
                         label = stringResource(R.string.setup_name_hint),
                         focusRequester = providerNameFocusRequester,
                         onMoveUp = { false },
@@ -328,17 +330,17 @@ fun ProviderSetupScreen(
                         0 -> {
                             TvTextField(
                                 value = serverUrl,
-                                onValueChange = { serverUrl = it },
+                                onValueChange = { serverUrl = ProviderInputSanitizer.sanitizeUrlForEditing(it) },
                                 label = stringResource(R.string.setup_server_hint)
                             )
                             TvTextField(
                                 value = username,
-                                onValueChange = { username = it },
+                                onValueChange = { username = ProviderInputSanitizer.sanitizeUsernameForEditing(it) },
                                 label = stringResource(R.string.setup_user_hint)
                             )
                             TvTextField(
                                 value = password,
-                                onValueChange = { password = it },
+                                onValueChange = { password = ProviderInputSanitizer.sanitizePasswordForEditing(it) },
                                 label = stringResource(R.string.setup_pass_hint),
                                 isPassword = true
                             )
@@ -397,7 +399,7 @@ fun ProviderSetupScreen(
                             if (uiState.m3uTab == 0) {
                                 TvTextField(
                                     value = m3uUrl,
-                                    onValueChange = { m3uUrl = it },
+                                    onValueChange = { m3uUrl = ProviderInputSanitizer.sanitizeUrlForEditing(it) },
                                     label = stringResource(R.string.setup_m3u_hint),
                                     focusRequester = m3uValueFocusRequester,
                                     onMoveUp = { 
@@ -516,10 +518,11 @@ fun SyncProgressDialog(message: String) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                CircularProgressIndicator(color = AppColors.Brand)
+                CircularProgressIndicator(color = Primary)
+
                 StatusPill(
                     label = stringResource(R.string.settings_syncing_btn),
-                    containerColor = AppColors.BrandMuted
+                    containerColor = PrimaryGlow
                 )
                 Text(
                     text = message,
@@ -648,10 +651,10 @@ private fun ActionButton(
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (enabled) Primary else SurfaceHighlight,
-            focusedContainerColor = if (enabled) PrimaryVariant else SurfaceHighlight
+            focusedContainerColor = if (enabled) PrimaryLight else SurfaceHighlight
         ),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, if (enabled) PrimaryDark else SurfaceHighlight)),
+            border = Border(BorderStroke(1.dp, if (enabled) PrimaryLight else SurfaceHighlight)),
             focusedBorder = Border(BorderStroke(2.dp, FocusBorder))
         )
     ) {

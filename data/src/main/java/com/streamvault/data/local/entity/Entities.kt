@@ -6,6 +6,9 @@ import androidx.room.ForeignKey
 import androidx.room.Fts4
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.streamvault.domain.model.ContentType
+import com.streamvault.domain.model.ProviderStatus
+import com.streamvault.domain.model.ProviderType
 
 @Entity(
     tableName = "providers",
@@ -15,7 +18,7 @@ data class ProviderEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val name: String,
-    val type: String, // XTREAM_CODES, M3U
+    val type: ProviderType,
     @ColumnInfo(name = "server_url") val serverUrl: String,
     val username: String = "",
     val password: String = "",
@@ -24,7 +27,7 @@ data class ProviderEntity(
     @ColumnInfo(name = "is_active") val isActive: Boolean = true,
     @ColumnInfo(name = "max_connections") val maxConnections: Int = 1,
     @ColumnInfo(name = "expiration_date") val expirationDate: Long? = null,
-    val status: String = "UNKNOWN",
+    val status: ProviderStatus = ProviderStatus.UNKNOWN,
     @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long = 0,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis()
 )
@@ -64,6 +67,24 @@ data class ChannelEntity(
     @ColumnInfo(name = "is_user_protected") val isUserProtected: Boolean = false,
     @ColumnInfo(name = "logical_group_id") val logicalGroupId: String = "",
     @ColumnInfo(name = "error_count") val errorCount: Int = 0
+)
+
+@Entity(
+    tableName = "channel_preferences",
+    foreignKeys = [ForeignKey(
+        entity = ChannelEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["channel_id"],
+        onDelete = ForeignKey.CASCADE
+    )],
+    indices = [Index(value = ["channel_id"], unique = true)]
+)
+data class ChannelPreferenceEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    @ColumnInfo(name = "channel_id") val channelId: Long,
+    @ColumnInfo(name = "aspect_ratio") val aspectRatio: String? = null,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long = System.currentTimeMillis()
 )
 
 @Entity(
@@ -167,12 +188,20 @@ data class SeriesFtsEntity(
 
 @Entity(
     tableName = "episodes",
-    foreignKeys = [ForeignKey(
-        entity = ProviderEntity::class,
-        parentColumns = ["id"],
-        childColumns = ["provider_id"],
-        onDelete = ForeignKey.CASCADE
-    )],
+    foreignKeys = [
+        ForeignKey(
+            entity = ProviderEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["provider_id"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = SeriesEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["series_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
     indices = [
         Index(value = ["series_id"]),
         Index(value = ["provider_id"]),
@@ -221,7 +250,7 @@ data class CategoryEntity(
     @ColumnInfo(name = "category_id") val categoryId: Long = 0,
     val name: String,
     @ColumnInfo(name = "parent_id") val parentId: Long? = null,
-    val type: String = "LIVE", // LIVE, MOVIE, SERIES
+    val type: ContentType = ContentType.LIVE,
     @ColumnInfo(name = "provider_id") val providerId: Long = 0,
     @ColumnInfo(name = "is_adult") val isAdult: Boolean = false,
     @ColumnInfo(name = "is_user_protected") val isUserProtected: Boolean = false
@@ -268,7 +297,7 @@ data class FavoriteEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     @ColumnInfo(name = "content_id") val contentId: Long,
-    @ColumnInfo(name = "content_type") val contentType: String, // LIVE, MOVIE, SERIES
+    @ColumnInfo(name = "content_type") val contentType: ContentType,
     val position: Int = 0,
     @ColumnInfo(name = "group_id") val groupId: Long? = null,
     @ColumnInfo(name = "added_at") val addedAt: Long = System.currentTimeMillis()
@@ -285,7 +314,7 @@ data class VirtualGroupEntity(
     @ColumnInfo(name = "icon_emoji") val iconEmoji: String? = null,
     val position: Int = 0,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(name = "content_type") val contentType: String = "LIVE"
+    @ColumnInfo(name = "content_type") val contentType: ContentType = ContentType.LIVE
 )
 
 data class CategoryCount(
@@ -311,7 +340,7 @@ data class PlaybackHistoryEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     @ColumnInfo(name = "content_id") val contentId: Long,
-    @ColumnInfo(name = "content_type") val contentType: String, // LIVE, MOVIE, SERIES_EPISODE
+    @ColumnInfo(name = "content_type") val contentType: ContentType,
     @ColumnInfo(name = "provider_id") val providerId: Long,
     val title: String = "",
     @ColumnInfo(name = "poster_url") val posterUrl: String? = null,
@@ -325,7 +354,15 @@ data class PlaybackHistoryEntity(
     @ColumnInfo(name = "episode_number") val episodeNumber: Int? = null
 )
 
-@Entity(tableName = "sync_metadata")
+@Entity(
+    tableName = "sync_metadata",
+    foreignKeys = [ForeignKey(
+        entity = ProviderEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["provider_id"],
+        onDelete = ForeignKey.CASCADE
+    )]
+)
 data class SyncMetadataEntity(
     @PrimaryKey
     @ColumnInfo(name = "provider_id") val providerId: Long,

@@ -5,13 +5,17 @@ import com.streamvault.data.local.entity.*
 import com.streamvault.data.mapper.*
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.XtreamProvider
+import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.data.security.CredentialCrypto
 import com.streamvault.domain.model.*
 import com.streamvault.domain.repository.SeriesRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import com.streamvault.data.util.toFtsPrefixQuery
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import com.streamvault.data.preferences.PreferencesRepository
 import javax.inject.Singleton
@@ -23,8 +27,16 @@ class SeriesRepositoryImpl @Inject constructor(
     private val categoryDao: CategoryDao,
     private val providerDao: ProviderDao,
     private val xtreamApiService: XtreamApiService,
-    private val preferencesRepository: PreferencesRepository
+    private val preferencesRepository: PreferencesRepository,
+    private val xtreamStreamUrlResolver: XtreamStreamUrlResolver
 ) : SeriesRepository {
+
+    private data class CachedXtreamProvider(
+        val signature: String,
+        val provider: XtreamProvider
+    )
+
+    private val xtreamProviderCache = ConcurrentHashMap<Long, CachedXtreamProvider>()
 
     override fun getSeries(providerId: Long): Flow<List<Series>> =
         combine(
@@ -81,18 +93,27 @@ class SeriesRepositoryImpl @Inject constructor(
 
     override fun getCategoryPreviewRows(providerId: Long, limitPerCategory: Int): Flow<Map<Long?, List<Series>>> =
         combine(
-            seriesDao.getByProvider(providerId),
+            categoryDao.getByProviderAndType(providerId, ContentType.SERIES.name),
             preferencesRepository.parentalControlLevel
-        ) { entities: List<SeriesEntity>, level: Int ->
-            if (level == 2) {
-                entities.filter { !it.isUserProtected }
+        ) { categories, level ->
+            val filtered = if (level == 2) categories.filter { !it.isAdult && !it.isUserProtected } else categories
+            filtered to level
+        }.flatMapLatest { (filteredCategories, level) ->
+            if (filteredCategories.isEmpty()) {
+                flowOf(emptyMap())
             } else {
-                entities
+                // SQL LIMIT applied per-category — avoids loading the full catalog into memory
+                val categoryGroupFlows: List<Flow<Pair<Long?, List<Series>>>> = filteredCategories.map { cat ->
+                    seriesDao.getByCategoryPreview(providerId, cat.categoryId, limitPerCategory)
+                        .map { entities ->
+                            val items = if (level == 2) entities.filter { !it.isUserProtected } else entities
+                            (cat.categoryId as Long?) to items.map { it.toDomain() }
+                        }
+                }
+                combine(categoryGroupFlows) { pairs ->
+                    pairs.associate { it.first to it.second }
+                }
             }
-        }.map { entities ->
-            entities.map { it.toDomain() }
-                .groupBy { it.categoryId }
-                .mapValues { (_, items) -> items.take(limitPerCategory) }
         }
 
     override fun getTopRatedPreview(providerId: Long, limit: Int): Flow<List<Series>> =
@@ -197,17 +218,11 @@ class SeriesRepositoryImpl @Inject constructor(
             ?: return Result.error("Provider not found")
 
         // M3U and other non-Xtream providers have no standardized series-detail endpoint.
-        if (provider.type != ProviderType.XTREAM_CODES.name) {
+        if (provider.type != ProviderType.XTREAM_CODES) {
             return Result.success(buildSeriesWithPersistedEpisodes(seriesEntity))
         }
 
-        val xtreamProvider = XtreamProvider(
-            providerId = providerId,
-            api = xtreamApiService,
-            serverUrl = provider.serverUrl,
-            username = provider.username,
-            password = CredentialCrypto.decryptIfNeeded(provider.password)
-        )
+        val xtreamProvider = getOrCreateXtreamProvider(providerId, provider)
 
         return when (val remoteResult = xtreamProvider.getSeriesInfo(seriesEntity.seriesId)) {
             is Result.Success -> {
@@ -310,11 +325,15 @@ class SeriesRepositoryImpl @Inject constructor(
 
     @Deprecated("Use getEpisodeStreamInfo() instead", ReplaceWith("getEpisodeStreamInfo(episode)"))
     override suspend fun getEpisodeStreamUrl(episode: Episode): Result<String> =
-        if (episode.streamUrl.isNotBlank()) {
-            Result.success(episode.streamUrl)
-        } else {
-            Result.error("No stream URL available for episode: ${episode.title}")
-        }
+        xtreamStreamUrlResolver.resolve(
+            url = episode.streamUrl,
+            fallbackProviderId = episode.providerId,
+            fallbackStreamId = episode.episodeId.takeIf { it > 0 } ?: episode.id,
+            fallbackContentType = ContentType.SERIES_EPISODE,
+            fallbackContainerExtension = episode.containerExtension
+        )?.let { resolvedUrl ->
+            Result.success(resolvedUrl)
+        } ?: Result.error("No stream URL available for episode: ${episode.title}")
 
     override suspend fun refreshSeries(providerId: Long): Result<Unit> =
         Result.success(Unit) // Handled by ProviderRepository
@@ -339,12 +358,22 @@ class SeriesRepositoryImpl @Inject constructor(
         return seriesEntity.toDomain().copy(seasons = seasons)
     }
 
-    private fun String.toFtsPrefixQuery(): String {
-        val tokens = trim()
-            .split(Regex("\\s+"))
-            .map { token -> token.replace(Regex("[^\\p{L}\\p{N}_]"), "") }
-            .filter { it.length >= 2 }
+    private fun getOrCreateXtreamProvider(providerId: Long, provider: ProviderEntity): XtreamProvider {
+        val decryptedPassword = CredentialCrypto.decryptIfNeeded(provider.password)
+        val signature = listOf(provider.serverUrl, provider.username, decryptedPassword).joinToString("\u0000")
+        val cached = xtreamProviderCache[providerId]
+        if (cached != null && cached.signature == signature) {
+            return cached.provider
+        }
 
-        return tokens.joinToString(" AND ") { "$it*" }
+        return XtreamProvider(
+            providerId = providerId,
+            api = xtreamApiService,
+            serverUrl = provider.serverUrl,
+            username = provider.username,
+            password = decryptedPassword
+        ).also { xtreamProvider ->
+            xtreamProviderCache[providerId] = CachedXtreamProvider(signature, xtreamProvider)
+        }
     }
 }

@@ -24,10 +24,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.security.MessageDigest
 import java.util.zip.CRC32
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@Singleton
 class BackupManagerImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val preferencesRepository: PreferencesRepository,
@@ -92,9 +94,7 @@ class BackupManagerImpl @Inject constructor(
 
             // Compute checksum over the data without checksum field
             val jsonWithoutChecksum = gson.toJson(backupData)
-            val crc = CRC32()
-            crc.update(jsonWithoutChecksum.toByteArray(Charsets.UTF_8))
-            val backupWithChecksum = backupData.copy(checksum = crc.value.toString(16))
+            val backupWithChecksum = backupData.copy(checksum = buildSha256Checksum(jsonWithoutChecksum))
 
             // 2. Serialize and write to URI
             context.contentResolver.openOutputStream(uri)?.use { outputStream ->
@@ -137,19 +137,19 @@ class BackupManagerImpl @Inject constructor(
                 existingProviders.any { it.serverUrl == incoming.serverUrl && it.username == incoming.username }
             }
             val groupConflicts = backupData.virtualGroups.orEmpty().count { incoming ->
-                existingGroups.any { it.name.equals(incoming.name, ignoreCase = true) && it.contentType == incoming.contentType.name }
+                existingGroups.any { it.name.equals(incoming.name, ignoreCase = true) && it.contentType == incoming.contentType }
             }
             val favoriteConflicts = backupData.favorites.orEmpty().count { incoming ->
                 existingFavorites.any {
                     it.contentId == incoming.contentId &&
-                        it.contentType == incoming.contentType.name &&
+                        it.contentType == incoming.contentType &&
                         it.groupId == incoming.groupId
                 }
             }
             val historyConflicts = backupData.playbackHistory.orEmpty().count { incoming ->
                 existingHistory.any {
                     it.contentId == incoming.contentId &&
-                        it.contentType == incoming.contentType.name &&
+                        it.contentType == incoming.contentType &&
                         it.providerId == incoming.providerId
                 }
             }
@@ -222,7 +222,7 @@ class BackupManagerImpl @Inject constructor(
                         return@forEach
                     }
                     val entity = provider.copy(
-                        id = existing?.id ?: provider.id
+                        id = existing?.id ?: 0L  // 0 = let Room auto-assign PK; avoids ID collision on import
                     ).toSecureEntityForBackup()
                     providerDao.insert(entity)
                 }
@@ -231,8 +231,7 @@ class BackupManagerImpl @Inject constructor(
                     ?.toLongOrNull()
                     ?.takeIf { it > 0L }
                     ?.let { activeId ->
-                        providerDao.deactivateAll()
-                        providerDao.activate(activeId)
+                        providerDao.setActive(activeId)
                     }
                     importedSections += "Providers"
                 } ?: run { skippedSections += "Providers" }
@@ -251,7 +250,7 @@ class BackupManagerImpl @Inject constructor(
                 groups.forEach { group ->
                     val conflict = existingGroups.firstOrNull {
                         it.name.equals(group.name, ignoreCase = true) &&
-                            it.contentType == group.contentType.name
+                            it.contentType == group.contentType
                     }
                     if (conflict != null && plan.conflictStrategy == BackupConflictStrategy.KEEP_EXISTING) {
                         return@forEach
@@ -327,9 +326,23 @@ class BackupManagerImpl @Inject constructor(
         val storedChecksum = backupData.checksum ?: return true // no checksum = legacy backup, skip verification
         val dataWithoutChecksum = backupData.copy(checksum = null)
         val json = gson.toJson(dataWithoutChecksum)
+
+        return if (storedChecksum.startsWith(SHA256_PREFIX)) {
+            buildSha256Checksum(json) == storedChecksum
+        } else {
+            verifyLegacyCrc32Checksum(json, storedChecksum)
+        }
+    }
+
+    private fun buildSha256Checksum(json: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(json.toByteArray(Charsets.UTF_8))
+        return SHA256_PREFIX + digest.joinToString(separator = "") { "%02x".format(it) }
+    }
+
+    private fun verifyLegacyCrc32Checksum(json: String, checksum: String): Boolean {
         val crc = CRC32()
         crc.update(json.toByteArray(Charsets.UTF_8))
-        return crc.value.toString(16) == storedChecksum
+        return crc.value.toString(16) == checksum
     }
 
     private fun readBackupData(uriString: String): BackupData? {
@@ -344,3 +357,5 @@ class BackupManagerImpl @Inject constructor(
 
 private fun com.streamvault.domain.model.Provider.toSecureEntityForBackup() =
     copy(password = CredentialCrypto.encryptIfNeeded(password)).toEntity()
+
+private const val SHA256_PREFIX = "sha256:"

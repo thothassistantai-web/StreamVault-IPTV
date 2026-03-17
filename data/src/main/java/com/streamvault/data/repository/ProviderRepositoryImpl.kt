@@ -7,6 +7,7 @@ import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.XtreamProvider
 import com.streamvault.data.security.CredentialCrypto
 import com.streamvault.data.sync.SyncManager
+import com.streamvault.data.util.ProviderInputSanitizer
 import com.streamvault.data.util.UrlSecurityPolicy
 import com.streamvault.domain.model.*
 import com.streamvault.domain.provider.IptvProvider
@@ -21,12 +22,7 @@ import javax.inject.Singleton
 class ProviderRepositoryImpl @Inject constructor(
     private val providerDao: ProviderDao,
     private val channelDao: ChannelDao,
-    private val movieDao: MovieDao,
-    private val seriesDao: SeriesDao,
-    private val categoryDao: CategoryDao,
     private val programDao: ProgramDao,
-    private val playbackHistoryDao: PlaybackHistoryDao,
-    private val syncMetadataDao: SyncMetadataDao,
     private val xtreamApiService: XtreamApiService,
     private val syncManager: SyncManager
 ) : ProviderRepository {
@@ -55,15 +51,8 @@ class ProviderRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteProvider(id: Long): Result<Unit> = try {
+        // ProgramEntity still has no provider FK, so it requires explicit cleanup.
         programDao.deleteByProvider(id)
-        playbackHistoryDao.deleteByProvider(id)
-        syncMetadataDao.delete(id)
-        channelDao.deleteByProvider(id)
-        movieDao.deleteByProvider(id)
-        seriesDao.deleteByProvider(id)
-        categoryDao.deleteByProviderAndType(id, "LIVE")
-        categoryDao.deleteByProviderAndType(id, "MOVIE")
-        categoryDao.deleteByProviderAndType(id, "SERIES")
         providerDao.delete(id)
         Result.success(Unit)
     } catch (e: Exception) {
@@ -71,8 +60,7 @@ class ProviderRepositoryImpl @Inject constructor(
     }
 
     override suspend fun setActiveProvider(id: Long): Result<Unit> = try {
-        providerDao.deactivateAll()
-        providerDao.activate(id)
+        providerDao.setActive(id)
         Result.success(Unit)
     } catch (e: Exception) {
         Result.error("Failed to set active provider: ${e.message}", e)
@@ -86,28 +74,35 @@ class ProviderRepositoryImpl @Inject constructor(
         onProgress: ((String) -> Unit)?,
         id: Long?
     ): Result<Provider> {
-        UrlSecurityPolicy.validateXtreamServerUrl(serverUrl)?.let { message ->
+        val normalizedServerUrl = ProviderInputSanitizer.normalizeUrl(serverUrl)
+        val normalizedUsername = ProviderInputSanitizer.normalizeUsername(username)
+        val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
+
+        ProviderInputSanitizer.validateUrl(normalizedServerUrl)?.let { message ->
+            return Result.error(message)
+        }
+        UrlSecurityPolicy.validateXtreamServerUrl(normalizedServerUrl)?.let { message ->
             return Result.error(message)
         }
         onProgress?.invoke("Authenticating...")
         val existingProvider = if (id != null) {
             providerDao.getById(id)
         } else {
-            providerDao.getByUrlAndUser(serverUrl, username)
+            providerDao.getByUrlAndUser(normalizedServerUrl, normalizedUsername)
         }
         val effectivePassword = password.takeIf { it.isNotBlank() }
             ?: existingProvider?.password?.let(CredentialCrypto::decryptIfNeeded)
             ?: ""
-        val provider = createXtreamProvider(0, serverUrl, username, effectivePassword)
+        val provider = createXtreamProvider(0, normalizedServerUrl, normalizedUsername, effectivePassword)
         return when (val authResult = provider.authenticate()) {
             is Result.Success -> {
 
                 val providerData = if (existingProvider != null) {
                     onProgress?.invoke("Updating existing provider...")
                     val updated = existingProvider.copy(
-                        name = name.ifBlank { existingProvider.name },
-                        serverUrl = serverUrl,
-                        username = username,
+                        name = normalizedName.ifBlank { existingProvider.name },
+                        serverUrl = normalizedServerUrl,
+                        username = normalizedUsername,
                         password = effectivePassword,
                         isActive = true,
                         lastSyncedAt = 0
@@ -117,13 +112,12 @@ class ProviderRepositoryImpl @Inject constructor(
                     )
                     updated.toPublicDomain()
                 } else {
-                    val newData = authResult.data.copy(name = name.ifBlank { authResult.data.name })
+                    val newData = authResult.data.copy(name = normalizedName.ifBlank { authResult.data.name })
                     val newId = providerDao.insert(newData.toSecureEntity())
                     newData.copy(id = newId).copy(password = "")
                 }
 
-                providerDao.deactivateAll()
-                providerDao.activate(providerData.id)
+                providerDao.setActive(providerData.id)
 
                 when (val syncResult = syncManager.sync(providerData.id, force = false, onProgress = onProgress)) {
                     is Result.Success -> {
@@ -160,25 +154,31 @@ class ProviderRepositoryImpl @Inject constructor(
         onProgress: ((String) -> Unit)?,
         id: Long?
     ): Result<Provider> = try {
-        UrlSecurityPolicy.validatePlaylistSourceUrl(url)?.let { message ->
+        val normalizedUrl = ProviderInputSanitizer.normalizeUrl(url)
+        val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
+
+        ProviderInputSanitizer.validateUrl(normalizedUrl)?.let { message ->
+            return Result.error(message)
+        }
+        UrlSecurityPolicy.validatePlaylistSourceUrl(normalizedUrl)?.let { message ->
             return Result.error(message)
         }
         onProgress?.invoke("Validating playlist URL...")
-        val providerName = name.ifBlank {
-            url.substringAfterLast("/").substringBefore("?").ifBlank { "M3U Playlist" }
+        val providerName = normalizedName.ifBlank {
+            normalizedUrl.substringAfterLast("/").substringBefore("?").ifBlank { "M3U Playlist" }
         }
 
         val existingProvider = if (id != null) {
             providerDao.getById(id)
         } else {
-            providerDao.getByUrlAndUser(url, "")
+            providerDao.getByUrlAndUser(normalizedUrl, "")
         }
 
         val providerData = if (existingProvider != null) {
             val updated = existingProvider.copy(
-                name = if (name.isNotBlank()) name else existingProvider.name,
-                serverUrl = url,
-                m3uUrl = url,
+                name = if (normalizedName.isNotBlank()) normalizedName else existingProvider.name,
+                serverUrl = normalizedUrl,
+                m3uUrl = normalizedUrl,
                 isActive = true,
                 lastSyncedAt = 0
             )
@@ -188,8 +188,8 @@ class ProviderRepositoryImpl @Inject constructor(
             val provider = Provider(
                 name = providerName,
                 type = ProviderType.M3U,
-                serverUrl = url,
-                m3uUrl = url,
+                serverUrl = normalizedUrl,
+                m3uUrl = normalizedUrl,
                 status = ProviderStatus.ACTIVE
             )
             val newId = providerDao.insert(provider.toSecureEntity())
@@ -305,7 +305,7 @@ class ProviderRepositoryImpl @Inject constructor(
     ) {
         val current = providerDao.getById(providerId) ?: return
         val updated = current.copy(
-            status = status.name,
+            status = status,
             lastSyncedAt = lastSyncedAt ?: current.lastSyncedAt
         )
         providerDao.update(updated)

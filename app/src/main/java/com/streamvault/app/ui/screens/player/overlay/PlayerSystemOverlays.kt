@@ -35,10 +35,9 @@ import com.streamvault.app.ui.theme.OnBackground
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
 import com.streamvault.app.ui.theme.Primary
-import com.streamvault.app.ui.theme.PrimaryVariant
 import com.streamvault.app.ui.theme.SurfaceElevated
 import com.streamvault.app.ui.theme.SurfaceHighlight
-import com.streamvault.app.ui.theme.SurfaceVariant
+import com.streamvault.app.ui.theme.PrimaryLight
 import com.streamvault.app.ui.theme.TextSecondary
 import com.streamvault.player.PlayerError
 import com.streamvault.player.PlayerTrack
@@ -142,7 +141,7 @@ fun PlayerErrorOverlay(
                         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                         colors = ClickableSurfaceDefaults.colors(
                             containerColor = if (action == PlayerNoticeAction.RETRY) Primary else Color.White.copy(alpha = 0.08f),
-                            focusedContainerColor = if (action == PlayerNoticeAction.RETRY) PrimaryVariant else Color.White.copy(alpha = 0.18f)
+                            focusedContainerColor = if (action == PlayerNoticeAction.RETRY) PrimaryLight else Color.White.copy(alpha = 0.18f)
                         )
                     ) {
                         Text(
@@ -317,7 +316,7 @@ fun PlayerResumePrompt(
                     onClick = onStartOver,
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                     colors = ClickableSurfaceDefaults.colors(
-                        containerColor = SurfaceVariant,
+                        containerColor = SurfaceElevated,
                         focusedContainerColor = SurfaceHighlight
                     ),
                     modifier = Modifier.weight(1f)
@@ -337,7 +336,7 @@ fun PlayerResumePrompt(
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = Primary,
-                        focusedContainerColor = PrimaryVariant
+                        focusedContainerColor = PrimaryLight
                     ),
                     modifier = Modifier.weight(1f)
                 ) {

@@ -19,8 +19,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +42,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.streamvault.app.R
+import com.streamvault.app.ui.components.rememberCrossfadeImageModel
 import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.design.AppMotion
 import com.streamvault.app.ui.design.FocusSpec
@@ -62,6 +65,13 @@ fun LiveChannelRowCard(
     val logoPadding = if (isDense) 5.dp else if (isUltraCompact) 6.dp else 8.dp
     val contentSpacing = if (isUltraCompact) 8.dp else 10.dp
     val badgeSpacing = if (isUltraCompact) 3.dp else 4.dp
+    // Ticks every 30s so EPG progress bars stay accurate without busy-looping
+    val nowMs by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            delay(30_000L)
+            value = System.currentTimeMillis()
+        }
+    }
 
     Box(
         modifier = modifier
@@ -85,20 +95,20 @@ fun LiveChannelRowCard(
                     .background(AppColors.SurfaceEmphasis),
                 contentAlignment = Alignment.Center
             ) {
+                // Fallback initials always visible; covered by AsyncImage on successful load
+                Text(
+                    text = channel.name.take(2).uppercase(),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = AppColors.TextSecondary
+                )
                 if (!channel.logoUrl.isNullOrBlank()) {
                     AsyncImage(
-                        model = channel.logoUrl,
+                        model = rememberCrossfadeImageModel(channel.logoUrl),
                         contentDescription = channel.name,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(logoPadding),
                         contentScale = ContentScale.Fit
-                    )
-                } else {
-                    Text(
-                        text = channel.name.take(2).uppercase(),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = AppColors.TextSecondary
                     )
                 }
             }
@@ -142,7 +152,7 @@ fun LiveChannelRowCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     val totalDuration = (program.endTime - program.startTime).coerceAtLeast(1L)
-                    val elapsed = (System.currentTimeMillis() - program.startTime).coerceAtLeast(0L)
+                    val elapsed = (nowMs - program.startTime).coerceAtLeast(0L)
                     if (!isDense) {
                         LinearProgressIndicator(
                             progress = { (elapsed.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f) },
@@ -284,18 +294,18 @@ fun EpisodeRowCard(episode: Episode, modifier: Modifier = Modifier) {
                     .background(AppColors.SurfaceEmphasis),
                 contentAlignment = Alignment.Center
             ) {
+                // Fallback label always visible; covered by AsyncImage on successful load
+                Text(
+                    text = stringResource(R.string.label_episode, episode.episodeNumber),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = AppColors.TextSecondary
+                )
                 if (!episode.coverUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = episode.coverUrl,
                         contentDescription = episode.title,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Text(
-                        text = stringResource(R.string.label_episode, episode.episodeNumber),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = AppColors.TextSecondary
                     )
                 }
             }
@@ -308,7 +318,7 @@ fun EpisodeRowCard(episode: Episode, modifier: Modifier = Modifier) {
                     overflow = TextOverflow.Ellipsis
                 )
                 ContentMetadataStrip(
-                    values = listOf("Episode ${episode.episodeNumber}", episode.duration ?: "")
+                    values = listOf(stringResource(R.string.label_episode_full, episode.episodeNumber), episode.duration ?: "")
                 )
                 episode.plot?.takeIf { it.isNotBlank() }?.let { plot ->
                     Text(
@@ -331,33 +341,35 @@ private fun PosterCard(
     subtitle: String?,
     modifier: Modifier = Modifier
 ) {
+    val posterShape = RoundedCornerShape(20.dp)
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(posterShape)
             .background(AppColors.SurfaceElevated)
     ) {
+        // Fallback always visible; covered by AsyncImage on successful load
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(AppColors.SurfaceEmphasis),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = title.take(1).uppercase(),
+                style = MaterialTheme.typography.displaySmall,
+                color = AppColors.TextSecondary
+            )
+        }
         if (!imageUrl.isNullOrBlank()) {
             AsyncImage(
-                model = imageUrl,
+                model = rememberCrossfadeImageModel(imageUrl),
                 contentDescription = title,
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(12.dp)),
+                    .clip(posterShape),
                 contentScale = ContentScale.Fit
             )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(AppColors.SurfaceEmphasis),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = title.take(1).uppercase(),
-                    style = MaterialTheme.typography.displaySmall,
-                    color = AppColors.TextSecondary
-                )
-            }
         }
 
         Box(

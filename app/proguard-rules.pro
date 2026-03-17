@@ -16,10 +16,14 @@
 # ── Retrofit / OkHttp ───────────────────────────────────────
 -keepattributes Signature
 -keepattributes *Annotation*
+# SEC-H02: Only keep what Retrofit actually requires — interface methods & response types.
 -keep,allowobfuscation interface retrofit2.Call
 -keep,allowobfuscation interface retrofit2.Callback
+-keep,allowobfuscation,allowshrinking class retrofit2.Response
+-keepclassmembers,allowshrinking,allowobfuscation interface * {
+    @retrofit2.http.* <methods>;
+}
 -dontwarn retrofit2.**
--keep class retrofit2.** { *; }
 -keepclassmembers,allowobfuscation class * {
     @retrofit2.http.* <methods>;
 }
@@ -49,7 +53,10 @@
 -keep class com.streamvault.data.remote.xtream.model.** { *; }
 
 # ── Media3 / ExoPlayer ─────────────────────────────────────
--keep class androidx.media3.** { *; }
+# SEC-H01: Media3 ships its own consumer-proguard-rules.pro inside the AAR — no need
+# for a broad keep here. Only explicitly keep classes loaded via reflection that the
+# AAR rules don't cover (e.g., extension renderers resolved at runtime).
+-keep class androidx.media3.exoplayer.DefaultRenderersFactory { *; }
 -dontwarn androidx.media3.**
 
 # ── Coroutines ──────────────────────────────────────────────

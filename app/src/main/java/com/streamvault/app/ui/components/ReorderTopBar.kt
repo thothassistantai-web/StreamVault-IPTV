@@ -1,5 +1,6 @@
 package com.streamvault.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -15,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.tv.material3.*
 import com.streamvault.app.R
+import com.streamvault.app.ui.design.FocusSpec
+import com.streamvault.app.ui.theme.FocusBorder
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.Primary
 import com.streamvault.app.ui.theme.SurfaceElevated
@@ -26,11 +29,12 @@ fun ReorderTopBar(
     categoryName: String,
     onSave: () -> Unit,
     onCancel: () -> Unit,
+    visible: Boolean = true,
     subtitle: String? = null,
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
-        visible = true,
+        visible = visible,
         enter = slideInVertically(initialOffsetY = { -it }),
         exit = slideOutVertically(targetOffsetY = { -it }),
         modifier = modifier
@@ -78,8 +82,16 @@ fun ReorderTopBar(
                         onClick = onCancel,
                         colors = ButtonDefaults.colors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = OnSurface
-                        )
+                            contentColor = OnSurface,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            focusedContentColor = OnSurface
+                        ),
+                        border = ButtonDefaults.border(
+                            focusedBorder = Border(
+                                border = BorderStroke(FocusSpec.BorderWidth, FocusBorder)
+                            )
+                        ),
+                        scale = ButtonDefaults.scale(focusedScale = FocusSpec.FocusedScale)
                     ) {
                         Text(stringResource(R.string.action_cancel), modifier = Modifier.padding(horizontal = 8.dp))
                     }
@@ -88,8 +100,16 @@ fun ReorderTopBar(
                         onClick = onSave,
                         colors = ButtonDefaults.colors(
                             containerColor = Primary,
-                            contentColor = Color.White
-                        )
+                            contentColor = Color.White,
+                            focusedContainerColor = Primary.copy(alpha = 0.88f),
+                            focusedContentColor = Color.White
+                        ),
+                        border = ButtonDefaults.border(
+                            focusedBorder = Border(
+                                border = BorderStroke(FocusSpec.BorderWidth, FocusBorder)
+                            )
+                        ),
+                        scale = ButtonDefaults.scale(focusedScale = FocusSpec.FocusedScale)
                     ) {
                         Text(stringResource(R.string.action_save_order), modifier = Modifier.padding(horizontal = 8.dp))
                     }

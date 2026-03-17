@@ -16,9 +16,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -29,6 +31,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.streamvault.app.R
+import com.streamvault.app.ui.components.rememberCrossfadeImageModel
 import com.streamvault.app.ui.theme.AccentCyan
 import com.streamvault.app.ui.theme.GradientOverlayBottom
 import com.streamvault.app.ui.theme.SurfaceElevated
@@ -38,6 +41,7 @@ import com.streamvault.app.ui.theme.TextTertiary
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.PlaybackHistory
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ContinueWatchingRow(
     items: List<PlaybackHistory>,
@@ -62,6 +66,7 @@ fun ContinueWatchingRow(
         }
 
         LazyRow(
+            modifier = Modifier.focusRestorer(),
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -88,30 +93,30 @@ private fun ContinueWatchingTile(
         width = 208.dp,
         height = 117.dp
     ) {
-        if (!history.posterUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = history.posterUrl,
-                contentDescription = history.title,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(10.dp)),
-                contentScale = ContentScale.Crop
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SurfaceElevated),
+            contentAlignment = Alignment.Center
+        ) {
+            // Fallback always visible; covered by AsyncImage on successful load
+            Text(
+                text = when (history.contentType) {
+                    ContentType.LIVE -> stringResource(R.string.card_live_badge)
+                    ContentType.MOVIE -> stringResource(R.string.nav_movies)
+                    ContentType.SERIES, ContentType.SERIES_EPISODE -> stringResource(R.string.nav_series)
+                },
+                style = MaterialTheme.typography.titleLarge,
+                color = TextSecondary
             )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(SurfaceElevated),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = when (history.contentType) {
-                        ContentType.LIVE -> "LIVE"
-                        ContentType.MOVIE -> "MOVIE"
-                        ContentType.SERIES, ContentType.SERIES_EPISODE -> "SERIES"
-                    },
-                    style = MaterialTheme.typography.titleLarge,
-                    color = TextSecondary
+            if (!history.posterUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = rememberCrossfadeImageModel(history.posterUrl),
+                    contentDescription = history.title,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(10.dp)),
+                    contentScale = ContentScale.Crop
                 )
             }
         }

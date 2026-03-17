@@ -38,6 +38,7 @@ private data class SettingsPreferenceSnapshot(
     val providers: List<Provider>,
     val activeProviderId: Long?,
     val parentalControlLevel: Int,
+    val hasParentalPin: Boolean,
     val appLanguage: String,
     val isIncognitoMode: Boolean,
     val liveTvChannelMode: LiveTvChannelMode
@@ -66,17 +67,21 @@ class SettingsViewModel @Inject constructor(
                 providerRepository.getProviders(),
                 preferencesRepository.lastActiveProviderId,
                 preferencesRepository.parentalControlLevel,
-                preferencesRepository.appLanguage,
-                preferencesRepository.isIncognitoMode
-            ) { providers, activeId, level, language, incognito ->
+                preferencesRepository.hasParentalPin
+            ) { providers, activeId, level, hasParentalPin ->
                 SettingsPreferenceSnapshot(
                     providers = providers,
                     activeProviderId = activeId,
                     parentalControlLevel = level,
-                    appLanguage = language,
-                    isIncognitoMode = incognito,
-                    liveTvChannelMode = LiveTvChannelMode.COMPACT
+                    hasParentalPin = hasParentalPin,
+                    appLanguage = "system",
+                    isIncognitoMode = false,
+                    liveTvChannelMode = LiveTvChannelMode.COMFORTABLE
                 )
+            }.combine(preferencesRepository.appLanguage) { snapshot, language ->
+                snapshot.copy(appLanguage = language)
+            }.combine(preferencesRepository.isIncognitoMode) { snapshot, incognito ->
+                snapshot.copy(isIncognitoMode = incognito)
             }.combine(preferencesRepository.liveTvChannelMode) { snapshot, liveTvChannelMode ->
                 snapshot.copy(liveTvChannelMode = LiveTvChannelMode.fromStorage(liveTvChannelMode))
             }.collect { snapshot ->
@@ -85,6 +90,7 @@ class SettingsViewModel @Inject constructor(
                         providers = snapshot.providers,
                         activeProviderId = snapshot.activeProviderId,
                         parentalControlLevel = snapshot.parentalControlLevel,
+                        hasParentalPin = snapshot.hasParentalPin,
                         appLanguage = snapshot.appLanguage,
                         isIncognitoMode = snapshot.isIncognitoMode,
                         liveTvChannelMode = snapshot.liveTvChannelMode
@@ -413,6 +419,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun deleteRecording(recordingId: String) {
+        viewModelScope.launch {
+            val result = recordingManager.deleteRecording(recordingId)
+            _uiState.update {
+                it.copy(userMessage = if (result is Result.Error) "Delete failed: ${result.message}" else "Recording deleted")
+            }
+        }
+    }
+
     private fun buildCapabilitySummary(provider: Provider): String {
         return when (provider.type) {
             ProviderType.XTREAM_CODES -> {
@@ -458,6 +473,7 @@ data class SettingsUiState(
     val syncWarningsByProvider: Map<Long, List<String>> = emptyMap(),
     val diagnosticsByProvider: Map<Long, ProviderDiagnosticsUiModel> = emptyMap(),
     val parentalControlLevel: Int = 0,
+    val hasParentalPin: Boolean = false,
     val appLanguage: String = "system",
     val backupPreview: BackupPreview? = null,
     val pendingBackupUri: String? = null,
@@ -465,5 +481,5 @@ data class SettingsUiState(
     val recordingItems: List<RecordingItem> = emptyList(),
     val recordingStorageState: RecordingStorageState = RecordingStorageState(),
     val isIncognitoMode: Boolean = false,
-    val liveTvChannelMode: LiveTvChannelMode = LiveTvChannelMode.COMPACT
+    val liveTvChannelMode: LiveTvChannelMode = LiveTvChannelMode.COMFORTABLE
 )

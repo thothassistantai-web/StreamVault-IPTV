@@ -6,11 +6,18 @@ import java.util.Locale
 object UrlSecurityPolicy {
     private val secureRemoteSchemes = setOf("https")
     private val localSchemes = setOf("file", "content")
+    // IPTV stream/asset URLs may legitimately use plain HTTP or RTSP
+    private val streamEntrySchemes = setOf("http", "https", "rtsp", "rtsps", "rtmp", "file", "content")
 
     fun isSecureRemoteUrl(url: String): Boolean = !containsNewlines(url) && hasAllowedScheme(url, secureRemoteSchemes)
 
     fun isAllowedImportedUrl(url: String): Boolean =
         !containsNewlines(url) && hasAllowedScheme(url, secureRemoteSchemes + localSchemes)
+
+    /** Validates individual stream/asset entries inside an imported playlist. HTTP is allowed here
+     *  because the majority of IPTV providers serve streams over plain HTTP. */
+    fun isAllowedStreamEntryUrl(url: String): Boolean =
+        !containsNewlines(url) && hasAllowedScheme(url, streamEntrySchemes)
 
     fun validateXtreamServerUrl(url: String): String? {
         return if (isSecureRemoteUrl(url)) {
@@ -38,7 +45,7 @@ object UrlSecurityPolicy {
 
     fun sanitizeImportedAssetUrl(url: String?): String? {
         val value = url?.trim().orEmpty()
-        return value.takeIf { it.isNotEmpty() && isAllowedImportedUrl(it) }
+        return value.takeIf { it.isNotEmpty() && isAllowedStreamEntryUrl(it) }
     }
 
     private fun hasAllowedScheme(url: String, allowedSchemes: Set<String>): Boolean {

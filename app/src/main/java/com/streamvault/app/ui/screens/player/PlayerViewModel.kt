@@ -2,6 +2,8 @@ package com.streamvault.app.ui.screens.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streamvault.app.di.MainPlayerEngine
+import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.model.Category
 import com.streamvault.domain.model.Program
@@ -16,6 +18,7 @@ import com.streamvault.domain.model.VideoFormat
 import com.streamvault.domain.usecase.GetCustomCategories
 import com.streamvault.domain.repository.ChannelRepository
 import com.streamvault.domain.repository.EpgRepository
+import com.streamvault.domain.repository.MovieRepository
 import com.streamvault.domain.repository.PlaybackHistoryRepository
 import com.streamvault.player.PlaybackState
 import com.streamvault.player.PlayerEngine
@@ -85,15 +88,18 @@ enum class AspectRatio(val modeName: String) {
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModel @Inject constructor(
+    @MainPlayerEngine
     val playerEngine: PlayerEngine,
     private val epgRepository: EpgRepository,
     private val channelRepository: ChannelRepository,
+    private val movieRepository: MovieRepository,
     private val favoriteRepository: com.streamvault.domain.repository.FavoriteRepository,
     private val playbackHistoryRepository: PlaybackHistoryRepository,
     private val providerRepository: com.streamvault.domain.repository.ProviderRepository,
     private val preferencesRepository: com.streamvault.data.preferences.PreferencesRepository,
     private val getCustomCategories: GetCustomCategories,
-    private val recordingManager: RecordingManager
+    private val recordingManager: RecordingManager,
+    private val xtreamStreamUrlResolver: XtreamStreamUrlResolver
 ) : ViewModel() {
 
     private val _showControls = MutableStateFlow(false)
@@ -180,6 +186,7 @@ class PlayerViewModel @Inject constructor(
     private var hasRetriedWithSoftwareDecoder = false
     private var lastRecordedLivePlaybackKey: Pair<Long, Long>? = null
     private var currentStreamClassLabel: String = "Primary"
+    private var prepareRequestVersion: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -441,6 +448,7 @@ class PlayerViewModel @Inject constructor(
         archiveEndMs: Long? = null,
         archiveTitle: String? = null
     ) {
+        val requestVersion = ++prepareRequestVersion
         currentStreamUrl = streamUrl
         currentProviderId = providerId
         currentContentId = internalChannelId
@@ -462,12 +470,21 @@ class PlayerViewModel @Inject constructor(
         // Reset tried streams for manual switch
         triedAlternativeStreams.clear()
         triedAlternativeStreams.add(streamUrl)
-        
-        val streamInfo = com.streamvault.domain.model.StreamInfo(
-            url = streamUrl,
-            streamType = com.streamvault.domain.model.StreamType.UNKNOWN
-        )
-        playerEngine.prepare(streamInfo)
+
+        viewModelScope.launch {
+            val resolvedUrl = resolvePlaybackUrl(streamUrl, internalChannelId, providerId, currentContentType)
+            if (requestVersion != prepareRequestVersion) return@launch
+            if (resolvedUrl.isNullOrBlank()) {
+                showPlayerNotice(message = "No playable stream URL was available.", recoveryType = PlayerRecoveryType.SOURCE)
+                return@launch
+            }
+            val streamInfo = com.streamvault.domain.model.StreamInfo(
+                url = resolvedUrl,
+                title = currentTitle,
+                streamType = com.streamvault.domain.model.StreamType.UNKNOWN
+            )
+            playerEngine.prepare(streamInfo)
+        }
         
         // Show context info on entry for both Live and VOD
         openChannelInfoOverlay()
@@ -543,6 +560,7 @@ class PlayerViewModel @Inject constructor(
                     appendRecoveryAction("Opened catch-up stream")
                     val catchupStream = com.streamvault.domain.model.StreamInfo(
                         url = catchUpUrl,
+                        title = currentTitle,
                         streamType = com.streamvault.domain.model.StreamType.UNKNOWN
                     )
                     playerEngine.prepare(catchupStream)
@@ -997,14 +1015,18 @@ class PlayerViewModel @Inject constructor(
         refreshCurrentChannelRecording()
         _displayChannelNumber.value = resolveChannelNumber(channel, index)
         _recentChannels.update { channels -> channels.filterNot { it.id == channel.id } }
-        
-        // Prepare player
-        val streamInfo = com.streamvault.domain.model.StreamInfo(
-            url = channel.streamUrl,
-            streamType = com.streamvault.domain.model.StreamType.UNKNOWN
-        )
-        playerEngine.prepare(streamInfo)
-        playerEngine.play()
+
+        viewModelScope.launch {
+            val resolvedUrl = resolvePlaybackUrl(channel.streamUrl, channel.id, channel.providerId, ContentType.LIVE)
+                ?: return@launch
+            val streamInfo = com.streamvault.domain.model.StreamInfo(
+                url = resolvedUrl,
+                title = currentTitle,
+                streamType = com.streamvault.domain.model.StreamType.UNKNOWN
+            )
+            playerEngine.prepare(streamInfo)
+            playerEngine.play()
+        }
         
         fetchEpg(currentProviderId, channel.epgChannelId)
         
@@ -1162,12 +1184,17 @@ class PlayerViewModel @Inject constructor(
         triedAlternativeStreams.add(nextStream)
         currentStreamUrl = nextStream
         updateStreamClass("Alternate")
-        val streamInfo = com.streamvault.domain.model.StreamInfo(
-            url = nextStream,
-            streamType = com.streamvault.domain.model.StreamType.UNKNOWN
-        )
-        playerEngine.prepare(streamInfo)
-        playerEngine.play()
+        viewModelScope.launch {
+            val resolvedUrl = resolvePlaybackUrl(nextStream, channel.id, channel.providerId, ContentType.LIVE)
+                ?: return@launch
+            val streamInfo = com.streamvault.domain.model.StreamInfo(
+                url = resolvedUrl,
+                title = currentTitle,
+                streamType = com.streamvault.domain.model.StreamType.UNKNOWN
+            )
+            playerEngine.prepare(streamInfo)
+            playerEngine.play()
+        }
         return true
     }
 
@@ -1289,6 +1316,7 @@ class PlayerViewModel @Inject constructor(
                 
                 val streamInfo = com.streamvault.domain.model.StreamInfo(
                     url = catchUpUrl,
+                    title = currentTitle,
                     streamType = com.streamvault.domain.model.StreamType.UNKNOWN
                 )
                 playerEngine.prepare(streamInfo)
@@ -1507,6 +1535,33 @@ class PlayerViewModel @Inject constructor(
     fun retryStream(streamUrl: String, epgChannelId: String?) {
         val currentId = if (currentChannelIndex != -1 && channelList.isNotEmpty()) channelList[currentChannelIndex].id else -1L
         prepare(streamUrl, epgChannelId, currentId, currentCategoryId, currentProviderId, isVirtualCategory, currentContentType.name, currentTitle)
+    }
+
+    private suspend fun resolvePlaybackUrl(
+        logicalUrl: String,
+        internalContentId: Long,
+        providerId: Long,
+        contentType: ContentType
+    ): String? {
+        xtreamStreamUrlResolver.resolve(
+            url = logicalUrl,
+            fallbackProviderId = providerId.takeIf { it > 0 },
+            fallbackContentType = contentType
+        )?.let { return it }
+
+        if (providerId <= 0L || internalContentId <= 0L) {
+            return logicalUrl.takeIf { it.isNotBlank() }
+        }
+
+        return when (contentType) {
+            ContentType.LIVE -> channelRepository.getChannel(internalContentId)?.let { channel ->
+                channelRepository.getStreamUrl(channel).getOrNull()
+            }
+            ContentType.MOVIE -> movieRepository.getMovie(internalContentId)?.let { movie ->
+                movieRepository.getStreamUrl(movie).getOrNull()
+            }
+            ContentType.SERIES, ContentType.SERIES_EPISODE -> logicalUrl.takeIf { it.isNotBlank() }
+        }
     }
 
     fun dismissResumePrompt(resume: Boolean) {

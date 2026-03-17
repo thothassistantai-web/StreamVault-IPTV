@@ -4,7 +4,9 @@ import android.content.Context
 import android.os.StatFs
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.domain.manager.RecordingManager
+import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.RecordingItem
 import com.streamvault.domain.model.RecordingRequest
 import com.streamvault.domain.model.RecordingStatus
@@ -23,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -44,7 +47,8 @@ import kotlin.coroutines.coroutineContext
 class RecordingManagerImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gson: Gson,
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val xtreamStreamUrlResolver: XtreamStreamUrlResolver
 ) : RecordingManager {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -55,11 +59,18 @@ class RecordingManagerImpl @Inject constructor(
     private val storageState = MutableStateFlow(readStorageState())
     private val stateMutex = Mutex()
     private val activeJobs = mutableMapOf<String, Job>()
+    private var lastRetentionSweepMs = 0L
+
+    /** Cancels the background polling coroutine. Call when the manager is no longer needed. */
+    fun cancel() {
+        scope.cancel()
+    }
 
     init {
         scope.launch {
             while (isActive) {
                 processSchedules()
+                runRetentionSweepIfDue()
                 storageState.value = readStorageState()
                 delay(15_000L)
             }
@@ -71,7 +82,9 @@ class RecordingManagerImpl @Inject constructor(
     override fun observeStorageState(): Flow<RecordingStorageState> = storageState.asStateFlow()
 
     override suspend fun startManualRecording(request: RecordingRequest): Result<RecordingItem> = withContext(Dispatchers.IO) {
-        if (isAdaptiveStream(request.streamUrl)) {
+        val effectiveStreamUrl = resolveRecordingStreamUrl(request.providerId, request.channelId, request.streamUrl)
+            ?: return@withContext Result.error("Recording stream URL could not be resolved.")
+        if (isAdaptiveStream(effectiveStreamUrl)) {
             return@withContext Result.error("Live recording currently supports direct stream URLs only. Adaptive streams are not recordable yet.")
         }
         if (!storageState.value.isWritable) {
@@ -117,11 +130,13 @@ class RecordingManagerImpl @Inject constructor(
         removeActiveJob(recordingId)?.cancel()
         val item = getItem(recordingId)
             ?: return@withContext Result.error("Recording not found")
+        val now = System.currentTimeMillis()
         val fileLength = item.outputPath?.let { path -> File(path).takeIf { it.exists() }?.length() } ?: 0L
         updateItem(recordingId) {
             it.copy(
                 status = if (fileLength > 0L) RecordingStatus.COMPLETED else RecordingStatus.CANCELLED,
-                scheduledEndMs = System.currentTimeMillis()
+                scheduledEndMs = now,
+                terminalAtMs = now
             )
         }
         Result.success(Unit)
@@ -129,7 +144,26 @@ class RecordingManagerImpl @Inject constructor(
 
     override suspend fun cancelRecording(recordingId: String): Result<Unit> = withContext(Dispatchers.IO) {
         removeActiveJob(recordingId)?.cancel()
-        updateItem(recordingId) { it.copy(status = RecordingStatus.CANCELLED) }
+        val now = System.currentTimeMillis()
+        updateItem(recordingId) {
+            it.copy(
+                status = RecordingStatus.CANCELLED,
+                terminalAtMs = now
+            )
+        }
+        Result.success(Unit)
+    }
+
+    override suspend fun deleteRecording(recordingId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        removeActiveJob(recordingId)?.cancel()
+        val item = getItem(recordingId)
+            ?: return@withContext Result.error("Recording not found")
+        if (item.status == RecordingStatus.RECORDING || item.status == RecordingStatus.SCHEDULED) {
+            return@withContext Result.error("Only finished recordings can be deleted.")
+        }
+        deleteOutputFile(item.outputPath)
+        removeItem(recordingId)
+        storageState.value = readStorageState()
         Result.success(Unit)
     }
 
@@ -140,11 +174,23 @@ class RecordingManagerImpl @Inject constructor(
         snapshot
             .filter { it.status == RecordingStatus.SCHEDULED && it.scheduledStartMs <= now }
             .forEach { scheduled ->
-                if (isAdaptiveStream(scheduled.streamUrl)) {
+                val effectiveStreamUrl = resolveRecordingStreamUrl(scheduled.providerId, scheduled.channelId, scheduled.streamUrl)
+                if (effectiveStreamUrl == null) {
+                    val failureTime = System.currentTimeMillis()
                     updateItemIf(scheduled.id, expectedStatus = RecordingStatus.SCHEDULED) {
                         it.copy(
                             status = RecordingStatus.FAILED,
-                            failureReason = "Scheduled recording supports direct stream URLs only."
+                            failureReason = "Recording stream URL could not be resolved.",
+                            terminalAtMs = failureTime
+                        )
+                    }
+                } else if (isAdaptiveStream(effectiveStreamUrl)) {
+                    val failureTime = System.currentTimeMillis()
+                    updateItemIf(scheduled.id, expectedStatus = RecordingStatus.SCHEDULED) {
+                        it.copy(
+                            status = RecordingStatus.FAILED,
+                            failureReason = "Scheduled recording supports direct stream URLs only.",
+                            terminalAtMs = failureTime
                         )
                     }
                 } else {
@@ -165,7 +211,8 @@ class RecordingManagerImpl @Inject constructor(
                 updateItemIf(stopCandidate.id, expectedStatus = RecordingStatus.RECORDING) {
                     it.copy(
                         status = if (fileLength > 0L) RecordingStatus.COMPLETED else RecordingStatus.CANCELLED,
-                        scheduledEndMs = now
+                        scheduledEndMs = now,
+                        terminalAtMs = now
                     )
                 }
             }
@@ -178,18 +225,28 @@ class RecordingManagerImpl @Inject constructor(
             runCatching {
                 captureStreamToFile(item, outputFile)
             }.onSuccess {
+                val completedAt = System.currentTimeMillis()
                 updateItemIf(item.id, expectedStatus = RecordingStatus.RECORDING) { current ->
-                    current.copy(status = RecordingStatus.COMPLETED)
+                    current.copy(status = RecordingStatus.COMPLETED, terminalAtMs = completedAt)
                 }
             }.onFailure { error ->
                 if (error is CancellationException) {
+                    val cancelledAt = System.currentTimeMillis()
                     val fileLength = outputFile.takeIf { it.exists() }?.length() ?: 0L
                     updateItemIf(item.id, expectedStatus = RecordingStatus.RECORDING) { current ->
-                        current.copy(status = if (fileLength > 0L) RecordingStatus.COMPLETED else RecordingStatus.CANCELLED)
+                        current.copy(
+                            status = if (fileLength > 0L) RecordingStatus.COMPLETED else RecordingStatus.CANCELLED,
+                            terminalAtMs = cancelledAt
+                        )
                     }
                 } else {
+                    val failureTime = System.currentTimeMillis()
                     updateItemIf(item.id, expectedStatus = RecordingStatus.RECORDING) { current ->
-                        current.copy(status = RecordingStatus.FAILED, failureReason = error.message)
+                        current.copy(
+                            status = RecordingStatus.FAILED,
+                            failureReason = error.message,
+                            terminalAtMs = failureTime
+                        )
                     }
                 }
             }
@@ -205,12 +262,14 @@ class RecordingManagerImpl @Inject constructor(
     }
 
     private suspend fun captureStreamToFile(item: RecordingItem, outputFile: File) {
+        val resolvedUrl = resolveRecordingStreamUrl(item.providerId, item.channelId, item.streamUrl)
+            ?: throw IOException("Recording stream URL could not be resolved")
         var attempt = 0
         var retryDelayMs = 1_000L
         while (true) {
             currentCoroutineContext().ensureActive()
             try {
-                streamResponseBody(item.streamUrl, outputFile)
+                streamResponseBody(resolvedUrl, outputFile)
                 return
             } catch (error: Throwable) {
                 if (error is CancellationException || !isRetryableRecordingError(error) || attempt >= MAX_RECORDING_RETRIES) {
@@ -240,7 +299,9 @@ class RecordingManagerImpl @Inject constructor(
 
     private fun persistStateLocked() {
         stateFile.parentFile?.mkdirs()
-        stateFile.writeText(gson.toJson(itemsState.value))
+        val tmpFile = File(stateFile.parentFile, "${stateFile.name}.tmp")
+        tmpFile.writeText(gson.toJson(itemsState.value))
+        tmpFile.renameTo(stateFile)
     }
 
     private fun loadState(): List<RecordingItem> {
@@ -256,11 +317,27 @@ class RecordingManagerImpl @Inject constructor(
         return lower.contains(".m3u8") || lower.contains(".mpd")
     }
 
+    private suspend fun resolveRecordingStreamUrl(providerId: Long, channelId: Long, logicalUrl: String): String? {
+        return xtreamStreamUrlResolver.resolve(
+            url = logicalUrl,
+            fallbackProviderId = providerId,
+            fallbackStreamId = channelId,
+            fallbackContentType = ContentType.LIVE
+        )
+    }
+
     private suspend fun appendItem(item: RecordingItem) {
         stateMutex.withLock {
             itemsState.value = itemsState.value + item
             persistStateLocked()
         }
+    }
+
+    private suspend fun removeItem(recordingId: String): RecordingItem? = stateMutex.withLock {
+        val existing = itemsState.value.firstOrNull { it.id == recordingId } ?: return@withLock null
+        itemsState.value = itemsState.value.filterNot { it.id == recordingId }
+        persistStateLocked()
+        existing
     }
 
     private suspend fun getItem(recordingId: String): RecordingItem? =
@@ -306,6 +383,40 @@ class RecordingManagerImpl @Inject constructor(
     private suspend fun removeActiveJob(recordingId: String): Job? =
         stateMutex.withLock { activeJobs.remove(recordingId) }
 
+    private suspend fun runRetentionSweepIfDue() {
+        val now = System.currentTimeMillis()
+        if (now - lastRetentionSweepMs < RETENTION_SWEEP_INTERVAL_MS) {
+            return
+        }
+        lastRetentionSweepMs = now
+
+        val expiredIds = stateMutex.withLock {
+            itemsState.value
+                .filter { item ->
+                    item.status.isTerminal() &&
+                        item.terminalAtMs?.let { terminalAt -> now - terminalAt >= FINISHED_RECORDING_RETENTION_MS } == true
+                }
+                .map(RecordingItem::id)
+        }
+        if (expiredIds.isEmpty()) {
+            return
+        }
+        expiredIds.forEach { recordingId ->
+            val removed = removeItem(recordingId)
+            deleteOutputFile(removed?.outputPath)
+        }
+    }
+
+    private fun deleteOutputFile(path: String?) {
+        if (path.isNullOrBlank()) return
+        runCatching {
+            val file = File(path)
+            if (file.exists()) {
+                file.delete()
+            }
+        }
+    }
+
     private suspend fun streamResponseBody(url: String, outputFile: File) {
         val request = Request.Builder().url(url).get().build()
         val call = okHttpClient.newCall(request)
@@ -319,7 +430,7 @@ class RecordingManagerImpl @Inject constructor(
                 ensureSuccessfulRecordingResponse(response)
                 val body = response.body ?: throw IOException("Recording stream returned an empty body")
                 body.byteStream().use { input ->
-                    FileOutputStream(outputFile, true).use { output ->
+                    FileOutputStream(outputFile, false).use { output ->
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                         while (true) {
                             currentCoroutineContext().ensureActive()
@@ -361,5 +472,15 @@ class RecordingManagerImpl @Inject constructor(
 
     private companion object {
         const val MAX_RECORDING_RETRIES = 3
+        const val FINISHED_RECORDING_RETENTION_MS = 30L * 24L * 60L * 60L * 1000L
+        const val RETENTION_SWEEP_INTERVAL_MS = 60L * 60L * 1000L
     }
+}
+
+private fun RecordingStatus.isTerminal(): Boolean = when (this) {
+    RecordingStatus.SCHEDULED,
+    RecordingStatus.RECORDING -> false
+    RecordingStatus.COMPLETED,
+    RecordingStatus.FAILED,
+    RecordingStatus.CANCELLED -> true
 }

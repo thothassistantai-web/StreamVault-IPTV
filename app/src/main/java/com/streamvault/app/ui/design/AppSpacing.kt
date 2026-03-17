@@ -17,7 +17,8 @@ data class AppSpacing(
     val cardGap: Dp = 16.dp,
     val chipGap: Dp = 10.dp,
     val safeTop: Dp = 32.dp,
-    val safeBottom: Dp = 32.dp
+    val safeBottom: Dp = 32.dp,
+    val safeHoriz: Dp = 56.dp
 )
 
 val LocalAppSpacing = staticCompositionLocalOf { AppSpacing() }

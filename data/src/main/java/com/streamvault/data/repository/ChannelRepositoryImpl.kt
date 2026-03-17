@@ -14,8 +14,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
+import com.streamvault.data.util.toFtsPrefixQuery
 import javax.inject.Inject
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import javax.inject.Singleton
 
 @Singleton
@@ -23,7 +25,8 @@ class ChannelRepositoryImpl @Inject constructor(
     private val channelDao: ChannelDao,
     private val categoryDao: CategoryDao,
     private val preferencesRepository: PreferencesRepository,
-    private val parentalControlManager: com.streamvault.domain.manager.ParentalControlManager
+    private val parentalControlManager: com.streamvault.domain.manager.ParentalControlManager,
+    private val xtreamStreamUrlResolver: XtreamStreamUrlResolver
 ) : ChannelRepository {
 
     override fun getChannels(providerId: Long): Flow<List<Channel>> =
@@ -169,11 +172,14 @@ class ChannelRepositoryImpl @Inject constructor(
 
     @Deprecated("Use getStreamInfo() instead", ReplaceWith("getStreamInfo(channel)"))
     override suspend fun getStreamUrl(channel: Channel): Result<String> =
-        if (channel.streamUrl.isNotBlank()) {
-            Result.success(channel.streamUrl)
-        } else {
-            Result.error("No stream URL available for channel: ${channel.name}")
-        }
+        xtreamStreamUrlResolver.resolve(
+            url = channel.streamUrl,
+            fallbackProviderId = channel.providerId,
+            fallbackStreamId = channel.streamId,
+            fallbackContentType = ContentType.LIVE
+        )?.let { resolvedUrl ->
+            Result.success(resolvedUrl)
+        } ?: Result.error("No stream URL available for channel: ${channel.name}")
 
     override suspend fun refreshChannels(providerId: Long): Result<Unit> {
         // Refresh is handled by ProviderRepository.refreshProviderData
@@ -236,13 +242,4 @@ class ChannelRepositoryImpl @Inject constructor(
 
     private fun channelGroupKey(entity: ChannelEntity): String =
         if (entity.logicalGroupId.isNotBlank()) entity.logicalGroupId else entity.id.toString()
-
-    private fun String.toFtsPrefixQuery(): String {
-        val tokens = trim()
-            .split(Regex("\\s+"))
-            .map { token -> token.replace(Regex("[^\\p{L}\\p{N}_]"), "") }
-            .filter { it.length >= 2 }
-
-        return tokens.joinToString(" AND ") { "$it*" }
-    }
 }

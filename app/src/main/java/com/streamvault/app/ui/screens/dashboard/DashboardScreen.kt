@@ -45,20 +45,21 @@ import com.streamvault.app.ui.components.CategoryRow
 import com.streamvault.app.ui.components.ChannelCard
 import com.streamvault.app.ui.components.ContinueWatchingRow
 import com.streamvault.app.ui.components.MovieCard
+import com.streamvault.app.ui.components.rememberCrossfadeImageModel
 import com.streamvault.app.ui.components.SeriesCard
 import com.streamvault.app.ui.components.shell.AppNavigationChrome
 import com.streamvault.app.ui.components.shell.AppHeroHeader
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
 import com.streamvault.app.ui.components.shell.StatusPill
 import com.streamvault.app.ui.design.AppColors
-import com.streamvault.app.ui.theme.FocusBorder
-import com.streamvault.app.ui.theme.OnBackground
-import com.streamvault.app.ui.theme.OnSurfaceDim
-import com.streamvault.app.ui.theme.Primary
-import com.streamvault.app.ui.theme.SurfaceElevated
-import com.streamvault.app.ui.theme.SurfaceHighlight
-import com.streamvault.app.ui.theme.TextPrimary
-import com.streamvault.app.ui.theme.TextTertiary
+import com.streamvault.app.ui.design.AppColors.Brand as Primary
+import com.streamvault.app.ui.design.AppColors.Focus as FocusBorder
+import com.streamvault.app.ui.design.AppColors.SurfaceElevated as SurfaceElevated
+import com.streamvault.app.ui.design.AppColors.SurfaceEmphasis as SurfaceHighlight
+import com.streamvault.app.ui.design.AppColors.TextPrimary as OnBackground
+import com.streamvault.app.ui.design.AppColors.TextPrimary as TextPrimary
+import com.streamvault.app.ui.design.AppColors.TextTertiary as OnSurfaceDim
+import com.streamvault.app.ui.design.AppColors.TextTertiary as TextTertiary
 import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Movie
 import com.streamvault.domain.model.PlaybackHistory
@@ -209,7 +210,7 @@ private fun DashboardHero(
     ) {
         if (!feature.artworkUrl.isNullOrBlank()) {
             AsyncImage(
-                model = feature.artworkUrl,
+                model = rememberCrossfadeImageModel(feature.artworkUrl),
                 contentDescription = feature.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -776,7 +777,7 @@ private fun FavoriteChannelLogoCard(
             ) {
                 if (!channel.logoUrl.isNullOrBlank()) {
                     AsyncImage(
-                        model = channel.logoUrl,
+                        model = rememberCrossfadeImageModel(channel.logoUrl),
                         contentDescription = channel.name,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier

@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -30,6 +32,99 @@ data class SelectionChip(
     val supportingText: String? = null
 )
 
+data class ChipRowItem(
+    val key: String,
+    val label: String,
+    val supportingText: String? = null,
+    val onClick: () -> Unit
+)
+
+@Composable
+fun ChipRowSection(
+    chips: List<ChipRowItem>,
+    selectedKey: String?,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    subtitle: String? = null,
+    headerHorizontalPadding: Int = 24,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 24.dp),
+    chipHorizontalPadding: Int = 16,
+    supportingTextStyle: TextStyle = MaterialTheme.typography.bodySmall,
+    supportingTextMaxLines: Int = Int.MAX_VALUE,
+    focusedContainerBoostWhenSelected: Boolean = false
+) {
+    if (chips.isEmpty()) return
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        if (!title.isNullOrBlank()) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = OnSurfaceDim,
+                modifier = Modifier.padding(horizontal = headerHorizontalPadding.dp)
+            )
+        }
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim,
+                modifier = Modifier.padding(horizontal = headerHorizontalPadding.dp, vertical = 2.dp)
+            )
+        }
+        LazyRow(
+            contentPadding = contentPadding,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(chips, key = { it.key }) { chip ->
+                val isSelected = chip.key == selectedKey
+                Surface(
+                    onClick = chip.onClick,
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = if (isSelected) Primary.copy(alpha = 0.18f) else SurfaceElevated,
+                        focusedContainerColor = if (isSelected && focusedContainerBoostWhenSelected) Primary.copy(alpha = 0.28f) else SurfaceHighlight,
+                        contentColor = if (isSelected) Primary else OnSurface,
+                        focusedContentColor = OnSurface
+                    ),
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(999.dp)),
+                    border = ClickableSurfaceDefaults.border(
+                        focusedBorder = Border(
+                            border = BorderStroke(2.dp, FocusBorder),
+                            shape = RoundedCornerShape(999.dp)
+                        )
+                    ),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = chipHorizontalPadding.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = chip.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        chip.supportingText?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                style = supportingTextStyle,
+                                color = OnSurfaceDim,
+                                maxLines = supportingTextMaxLines,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun SelectionChipRow(
     title: String,
@@ -40,68 +135,19 @@ fun SelectionChipRow(
     subtitle: String? = null,
     contentPadding: PaddingValues = PaddingValues(horizontal = 24.dp)
 ) {
-    if (chips.isEmpty()) return
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium,
-            color = OnSurfaceDim,
-            modifier = Modifier.padding(horizontal = 24.dp)
-        )
-        if (!subtitle.isNullOrBlank()) {
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceDim,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 2.dp)
+    ChipRowSection(
+        title = title,
+        subtitle = subtitle,
+        chips = chips.map { chip ->
+            ChipRowItem(
+                key = chip.key,
+                label = chip.label,
+                supportingText = chip.supportingText,
+                onClick = { onChipSelected(chip.key) }
             )
-        }
-        LazyRow(
-            contentPadding = contentPadding,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(chips, key = { it.key }) { chip ->
-                val isSelected = chip.key == selectedKey
-                Surface(
-                    onClick = { onChipSelected(chip.key) },
-                    modifier = Modifier,
-                    colors = ClickableSurfaceDefaults.colors(
-                        containerColor = if (isSelected) Primary.copy(alpha = 0.18f) else SurfaceElevated,
-                        focusedContainerColor = SurfaceHighlight,
-                        contentColor = if (isSelected) Primary else OnSurface,
-                        focusedContentColor = OnSurface
-                    ),
-                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(999.dp)),
-                    border = ClickableSurfaceDefaults.border(
-                        focusedBorder = Border(
-                            border = BorderStroke(2.dp, FocusBorder),
-                            shape = RoundedCornerShape(999.dp)
-                        )
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = chip.label,
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                        if (!chip.supportingText.isNullOrBlank()) {
-                            Text(
-                                text = chip.supportingText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceDim
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
+        },
+        selectedKey = selectedKey,
+        modifier = modifier,
+        contentPadding = contentPadding
+    )
 }

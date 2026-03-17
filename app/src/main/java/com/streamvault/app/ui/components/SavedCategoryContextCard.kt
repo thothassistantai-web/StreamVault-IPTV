@@ -1,5 +1,6 @@
 package com.streamvault.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,11 +19,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
+import androidx.tv.material3.Border
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.streamvault.app.R
+import com.streamvault.app.ui.design.FocusSpec
+import com.streamvault.app.ui.theme.FocusBorder
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
 import com.streamvault.app.ui.theme.Primary
@@ -95,8 +99,16 @@ fun SavedCategoryContextCard(
                 Button(
                     onClick = onManageClick,
                     colors = ButtonDefaults.colors(
-                        containerColor = Primary.copy(alpha = 0.92f)
-                    )
+                        containerColor = Primary.copy(alpha = 0.92f),
+                        focusedContainerColor = Primary,
+                        focusedContentColor = androidx.compose.ui.graphics.Color.White
+                    ),
+                    border = ButtonDefaults.border(
+                        focusedBorder = Border(
+                            border = BorderStroke(FocusSpec.BorderWidth, FocusBorder)
+                        )
+                    ),
+                    scale = ButtonDefaults.scale(focusedScale = FocusSpec.FocusedScale)
                 ) {
                     Text(stringResource(R.string.library_saved_manage_action))
                 }
@@ -104,8 +116,16 @@ fun SavedCategoryContextCard(
                     onClick = onBrowseAllClick,
                     colors = ButtonDefaults.colors(
                         containerColor = SurfaceElevated.copy(alpha = 0.78f),
-                        contentColor = OnSurface
-                    )
+                        contentColor = OnSurface,
+                        focusedContainerColor = SurfaceElevated,
+                        focusedContentColor = OnSurface
+                    ),
+                    border = ButtonDefaults.border(
+                        focusedBorder = Border(
+                            border = BorderStroke(FocusSpec.BorderWidth, FocusBorder)
+                        )
+                    ),
+                    scale = ButtonDefaults.scale(focusedScale = FocusSpec.FocusedScale)
                 ) {
                     Text(stringResource(R.string.library_browse_all))
                 }

@@ -44,9 +44,11 @@ object AdultContentClassifier {
 
     fun isAdultCategoryName(name: String?): Boolean {
         if (name.isNullOrBlank()) return false
-        val normalized = normalize(name)
+        // Pad with spaces so we can do word-boundary matching via contains().
+        // This prevents "sex" matching "Essex" or "Middlesex", "adult" matching "adulting", etc.
+        val normalized = " ${normalize(name)} "
         return keywords.any { keyword ->
-            normalized.contains(normalize(keyword))
+            normalized.contains(" ${normalize(keyword)} ")
         }
     }
 

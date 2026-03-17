@@ -50,7 +50,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -64,6 +67,7 @@ import com.streamvault.app.navigation.Routes
 import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.design.AppMotion
 import com.streamvault.app.ui.design.FocusSpec
+import com.streamvault.app.ui.design.LocalAppShapes
 import com.streamvault.app.ui.design.LocalAppSpacing
 
 enum class AppNavigationChrome {
@@ -231,7 +235,7 @@ private fun TopNavigationBar(
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val items = buildDestinationItems()
+    val items = remember { buildDestinationItems() }
     val scrollState = rememberScrollState()
 
     val focusRequesters = remember { mutableMapOf<String, FocusRequester>() }
@@ -273,10 +277,10 @@ private fun TopNavigationBar(
                     TopNavigationButton(
                         label = stringResource(item.labelRes),
                         icon = item.icon,
-                        selected = currentRoute == item.route,
+                        selected = currentRoute.startsWith(item.route),
                         modifier = Modifier.focusRequester(requester),
                         onClick = {
-                            if (currentRoute != item.route) {
+                            if (!currentRoute.startsWith(item.route)) {
                                 onNavigate(item.route)
                             }
                         }
@@ -364,9 +368,9 @@ fun AppHeroHeader(
                 .background(
                     Brush.horizontalGradient(
                         colors = listOf(
-                            Color(0xFF081624),
-                            Color(0xFF10223A),
-                            Color(0xFF18314E)
+                            AppColors.Canvas,
+                            AppColors.SurfaceAccent,
+                            AppColors.SurfaceEmphasis
                         )
                     )
                 )
@@ -397,23 +401,51 @@ fun AppHeroHeader(
 fun AppSectionHeader(
     title: String,
     subtitle: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onActionClick: (() -> Unit)? = null,
+    actionContentColor: Color = AppColors.TextTertiary
 ) {
-    Column(
+    val shapes = LocalAppShapes.current
+    Row(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = AppColors.TextPrimary
-        )
-        if (!subtitle.isNullOrBlank()) {
+        Column(
+            modifier = if (onActionClick != null && !actionLabel.isNullOrBlank()) Modifier.weight(1f) else Modifier,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = AppColors.TextTertiary
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = AppColors.TextPrimary
             )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppColors.TextTertiary
+                )
+            }
+        }
+
+        if (onActionClick != null && !actionLabel.isNullOrBlank()) {
+            Surface(
+                onClick = onActionClick,
+                shape = ClickableSurfaceDefaults.shape(shapes.pill),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = AppColors.Brand.copy(alpha = 0.12f),
+                    focusedContainerColor = AppColors.Brand.copy(alpha = 0.22f),
+                    contentColor = actionContentColor
+                )
+            ) {
+                Text(
+                    text = actionLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
         }
     }
 }
@@ -423,13 +455,16 @@ fun StatusPill(
     label: String,
     modifier: Modifier = Modifier,
     containerColor: Color = AppColors.SurfaceEmphasis,
-    contentColor: Color = AppColors.TextPrimary
+    contentColor: Color = AppColors.TextPrimary,
+    cornerRadius: Dp = 999.dp,
+    horizontalPadding: Dp = 10.dp,
+    verticalPadding: Dp = 4.dp
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(containerColor)
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding)
     ) {
         Text(
             text = label,
@@ -444,26 +479,49 @@ fun AppMessageState(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
-    action: (@Composable () -> Unit)? = null
+    action: (@Composable () -> Unit)? = null,
+    shape: RoundedCornerShape? = null,
+    containerBrush: Brush? = null,
+    borderColor: Color? = null,
+    titleStyle: TextStyle = MaterialTheme.typography.titleLarge,
+    subtitleStyle: TextStyle = MaterialTheme.typography.bodySmall,
+    titleColor: Color = AppColors.TextPrimary,
+    subtitleColor: Color = AppColors.TextSecondary,
+    titleTextAlign: TextAlign = TextAlign.Start,
+    subtitleTextAlign: TextAlign = TextAlign.Start
 ) {
+    val resolvedShape = shape ?: LocalAppShapes.current.large
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = resolvedShape,
+        border = Border(
+            border = BorderStroke(
+                width = if (borderColor != null) 1.dp else 0.dp,
+                color = borderColor ?: Color.Transparent
+            ),
+            shape = resolvedShape
+        ),
         colors = SurfaceDefaults.colors(containerColor = AppColors.SurfaceElevated)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+            modifier = Modifier
+                .then(if (containerBrush != null) Modifier.background(containerBrush) else Modifier)
+                .padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
-                color = AppColors.TextPrimary
+                style = titleStyle,
+                color = titleColor,
+                textAlign = titleTextAlign,
+                modifier = Modifier.fillMaxWidth()
             )
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = AppColors.TextSecondary
+                style = subtitleStyle,
+                color = subtitleColor,
+                textAlign = subtitleTextAlign,
+                modifier = Modifier.fillMaxWidth()
             )
             if (action != null) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -479,10 +537,11 @@ fun LoadMoreCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val shapes = LocalAppShapes.current
     Surface(
         onClick = onClick,
         modifier = modifier,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
+        shape = ClickableSurfaceDefaults.shape(shapes.medium),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = AppColors.SurfaceElevated,
             focusedContainerColor = AppColors.SurfaceEmphasis
@@ -490,7 +549,7 @@ fun LoadMoreCard(
         border = ClickableSurfaceDefaults.border(
             focusedBorder = Border(
                 border = BorderStroke(FocusSpec.BorderWidth, AppColors.Focus),
-                shape = RoundedCornerShape(18.dp)
+                shape = shapes.medium
             )
         )
     ) {
@@ -543,6 +602,7 @@ fun ContentMetadataStrip(
     }
 }
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun DestinationRail(
     currentRoute: String,
@@ -550,7 +610,8 @@ private fun DestinationRail(
     modifier: Modifier = Modifier
 ) {
     val spacing = LocalAppSpacing.current
-    val items = buildDestinationItems()
+    val items = remember { buildDestinationItems() }
+    val focusRequesters = remember { mutableMapOf<String, FocusRequester>() }
 
     Box(
         modifier = modifier
@@ -564,6 +625,12 @@ private fun DestinationRail(
                     )
                 )
             )
+            .focusProperties {
+                enter = {
+                    val activeItem = items.firstOrNull { it.route == currentRoute }
+                    focusRequesters[activeItem?.route] ?: FocusRequester.Default
+                }
+            }
     ) {
         Column(
             modifier = Modifier
@@ -583,12 +650,14 @@ private fun DestinationRail(
             )
             Spacer(modifier = Modifier.height(10.dp))
             items.forEach { item ->
+                val requester = focusRequesters.getOrPut(item.route) { FocusRequester() }
                 RailButton(
                     label = stringResource(item.labelRes),
                     icon = item.icon,
-                    selected = currentRoute == item.route,
+                    selected = currentRoute.startsWith(item.route),
+                    modifier = Modifier.focusRequester(requester),
                     onClick = {
-                        if (currentRoute != item.route) {
+                        if (!currentRoute.startsWith(item.route)) {
                             onNavigate(item.route)
                         }
                     }
@@ -603,7 +672,8 @@ private fun RailButton(
     label: String,
     icon: ImageVector,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
@@ -614,7 +684,7 @@ private fun RailButton(
 
     Surface(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = scale
@@ -663,7 +733,6 @@ private data class DestinationItem(
     val icon: ImageVector
 )
 
-@Composable
 private fun buildDestinationItems(): List<DestinationItem> = listOf(
     DestinationItem(Routes.HOME, R.string.nav_home, Icons.Default.Home),
     DestinationItem(Routes.LIVE_TV, R.string.nav_live_tv, Icons.Default.PlayArrow),

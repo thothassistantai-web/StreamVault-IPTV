@@ -74,7 +74,9 @@ class M3uParser {
                         pendingExtinf = parseExtinf(line)
                     }
                     line.startsWith("#") -> {
-                        pendingExtinf = null
+                        // Preserve pendingExtinf across known directives that appear
+                        // between #EXTINF and the stream URL (e.g. #EXTVLCOPT, #EXTGRP,
+                        // #KODIPROP, #EXTATTRPARAM). Only reset on another #EXTINF.
                     }
                     pendingExtinf != null -> {
                         val extinf = pendingExtinf
@@ -84,7 +86,7 @@ class M3uParser {
                         pendingExtinf = null
                     }
                     else -> {
-                        pendingExtinf = null
+                        // Non-comment, non-URL line with no pending EXTINF — skip
                     }
                 }
             }
@@ -119,7 +121,9 @@ class M3uParser {
                         pendingExtinf = parseExtinf(line)
                     }
                     line.startsWith("#") -> {
-                        pendingExtinf = null
+                        // Preserve pendingExtinf across known directives that appear
+                        // between #EXTINF and the stream URL (e.g. #EXTVLCOPT, #EXTGRP,
+                        // #KODIPROP, #EXTATTRPARAM). Only reset on another #EXTINF.
                     }
                     pendingExtinf != null -> {
                         val extinf = pendingExtinf
@@ -129,7 +133,7 @@ class M3uParser {
                         pendingExtinf = null
                     }
                     else -> {
-                        pendingExtinf = null
+                        // Non-comment, non-URL line with no pending EXTINF — skip
                     }
                 }
             }
@@ -365,7 +369,7 @@ class M3uParser {
         return attributes
     }
 
-    private fun isVodEntry(entry: M3uEntry): Boolean {
+    internal fun isVodEntry(entry: M3uEntry): Boolean {
         val url = entry.url.lowercase()
         val group = entry.groupTitle.lowercase()
 
@@ -387,7 +391,10 @@ class M3uParser {
         return allowedPrefixes.any { lower.startsWith(it) }
     }
 
-    private companion object {
+    companion object {
+        /** Exposed for callers outside M3uParser (e.g. SyncManager) to avoid duplicate logic. */
+        fun isVodEntry(entry: M3uEntry): Boolean = M3uParser().isVodEntry(entry)
+
         val knownAttributes = setOf(
             "tvg-id",
             "tvg-name",

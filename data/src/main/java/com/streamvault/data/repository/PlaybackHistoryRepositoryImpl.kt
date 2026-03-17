@@ -12,6 +12,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.data.remote.xtream.XtreamUrlFactory
 
 @Singleton
 class PlaybackHistoryRepositoryImpl @Inject constructor(
@@ -36,6 +37,7 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
 
         val existing = dao.get(history.contentId, history.contentType.name, history.providerId)
         val updatedHistory = history.copy(
+            streamUrl = XtreamUrlFactory.sanitizePersistedStreamUrl(history.streamUrl, history.providerId),
             resumePositionMs = history.resumePositionMs.takeIf { it > 0L } ?: existing?.resumePositionMs ?: 0L,
             totalDurationMs = history.totalDurationMs.takeIf { it > 0L } ?: existing?.totalDurationMs ?: 0L,
             watchCount = (existing?.watchCount ?: 0) + 1,
@@ -52,6 +54,7 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
         // Resume ticks should not increment watch count on every update.
         // Keep existing count for ongoing sessions; initialize to 1 on first save.
         val updatedHistory = history.copy(
+            streamUrl = XtreamUrlFactory.sanitizePersistedStreamUrl(history.streamUrl, history.providerId),
             watchCount = existing?.watchCount ?: 1,
             lastWatchedAt = System.currentTimeMillis()
         )

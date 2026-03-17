@@ -34,6 +34,10 @@ class XmltvParser {
         SimpleDateFormat("yyyyMMdd", Locale.US)
     ).onEach { it.timeZone = TimeZone.getTimeZone("UTC") }
 
+    @Deprecated(
+        message = "Loads all programs into memory. Use parseStreaming() for large EPG files.",
+        replaceWith = ReplaceWith("parseStreaming(inputStream, onProgram)")
+    )
     fun parse(inputStream: InputStream): List<Program> {
         val programs = mutableListOf<Program>()
 

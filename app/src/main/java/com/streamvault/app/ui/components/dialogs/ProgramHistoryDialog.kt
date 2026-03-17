@@ -16,17 +16,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.tv.material3.Icon
+import androidx.tv.material3.IconButton
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
+import androidx.tv.material3.SurfaceDefaults
+import androidx.tv.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -40,7 +43,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.streamvault.app.R
 import com.streamvault.domain.model.Program
-import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
@@ -50,17 +55,22 @@ fun ProgramHistoryDialog(
     onProgramSelect: (Program) -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
-    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    val dayFormat = remember { SimpleDateFormat("EEE, MMM d", Locale.getDefault()) }
+    var canInteract by remember { mutableStateOf(false) }
+    val locale = Locale.getDefault()
+    val zoneId = remember { ZoneId.systemDefault() }
+    val timeFormat = remember(locale) { DateTimeFormatter.ofPattern("HH:mm", locale) }
+    val dayFormat = remember(locale) { DateTimeFormatter.ofPattern("EEE, MMM d", locale) }
 
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        runCatching { focusRequester.requestFocus() }
+        delay(500)
+        canInteract = true
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = { if (canInteract) onDismiss() }) {
         Surface(
             shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
+            colors = SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier
                 .width(450.dp)
                 .heightIn(max = 600.dp)
@@ -100,6 +110,8 @@ fun ProgramHistoryDialog(
                         )
                     }
                 } else {
+                    val unfocusedBorderColor = Color.White.copy(alpha = 0.12f)
+                    val focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -108,24 +120,29 @@ fun ProgramHistoryDialog(
                             var isFocused by remember { mutableStateOf(false) }
 
                             Surface(
-                                onClick = { onProgramSelect(program) },
+                                onClick = { if (canInteract) onProgramSelect(program) },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .onFocusChanged { isFocused = it.isFocused }
-                                    .focusRequester(
-                                        if (program == programs.first()) focusRequester else FocusRequester()
+                                    .then(
+                                        if (program == programs.first())
+                                            Modifier.focusRequester(focusRequester)
+                                        else Modifier
                                     )
                                     .border(
                                         width = if (isFocused) 2.dp else 1.dp,
                                         color = if (isFocused) {
                                             MaterialTheme.colorScheme.primary
                                         } else {
-                                            MaterialTheme.colorScheme.outlineVariant
+                                            unfocusedBorderColor
                                         },
                                         shape = RoundedCornerShape(8.dp)
                                     ),
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isFocused) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent
+                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                                colors = ClickableSurfaceDefaults.colors(
+                                    containerColor = Color.Transparent,
+                                    focusedContainerColor = focusedContainerColor
+                                )
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
@@ -140,7 +157,12 @@ fun ProgramHistoryDialog(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = stringResource(R.string.program_date_time_range, dayFormat.format(program.startTime), timeFormat.format(program.startTime), timeFormat.format(program.endTime)),
+                                            text = stringResource(
+                                                R.string.program_date_time_range,
+                                                Instant.ofEpochMilli(program.startTime).atZone(zoneId).format(dayFormat),
+                                                Instant.ofEpochMilli(program.startTime).atZone(zoneId).format(timeFormat),
+                                                Instant.ofEpochMilli(program.endTime).atZone(zoneId).format(timeFormat)
+                                            ),
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

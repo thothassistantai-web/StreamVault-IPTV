@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.streamvault.app.ui.components.shell.AppMessageState
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
 
@@ -31,42 +32,23 @@ fun TvEmptyState(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.62f)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.05f),
-                            Color.White.copy(alpha = 0.02f)
-                        )
-                    ),
-                    RoundedCornerShape(24.dp)
+        AppMessageState(
+            title = title,
+            subtitle = subtitle,
+            modifier = Modifier.fillMaxWidth(0.62f),
+            containerBrush = Brush.horizontalGradient(
+                listOf(
+                    Color.White.copy(alpha = 0.05f),
+                    Color.White.copy(alpha = 0.02f)
                 )
-                .border(
-                    width = 1.dp,
-                    color = Color.White.copy(alpha = 0.08f),
-                    shape = RoundedCornerShape(24.dp)
-                )
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(horizontal = 32.dp, vertical = 28.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = OnSurface,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = OnSurfaceDim,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
+            ),
+            borderColor = Color.White.copy(alpha = 0.08f),
+            titleStyle = androidx.tv.material3.MaterialTheme.typography.headlineMedium,
+            subtitleStyle = androidx.tv.material3.MaterialTheme.typography.bodyMedium,
+            titleColor = OnSurface,
+            subtitleColor = OnSurfaceDim,
+            titleTextAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            subtitleTextAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }

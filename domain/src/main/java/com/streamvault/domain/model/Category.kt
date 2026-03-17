@@ -2,6 +2,7 @@ package com.streamvault.domain.model
 
 data class Category(
     val id: Long,
+    val roomId: Long = id,
     val name: String,
     val parentId: Long? = null,
     val type: ContentType = ContentType.LIVE,

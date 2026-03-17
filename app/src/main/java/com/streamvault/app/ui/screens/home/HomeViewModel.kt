@@ -2,6 +2,7 @@ package com.streamvault.app.ui.screens.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streamvault.app.di.AuxiliaryPlayerEngine
 import com.streamvault.app.ui.model.LiveTvChannelMode
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.domain.manager.ParentalControlManager
@@ -47,6 +48,7 @@ class HomeViewModel @Inject constructor(
     private val playbackHistoryRepository: PlaybackHistoryRepository,
     private val getCustomCategories: GetCustomCategories,
     private val parentalControlManager: ParentalControlManager,
+    @AuxiliaryPlayerEngine
     private val playerEngineProvider: InjectProvider<PlayerEngine>
 ) : ViewModel() {
     private val appContext = application
@@ -899,7 +901,7 @@ data class HomeUiState(
     val selectedCategoryForOptions: Category? = null,
     val isChannelReorderMode: Boolean = false,
     val reorderCategory: Category? = null,
-    val liveTvChannelMode: LiveTvChannelMode = LiveTvChannelMode.COMPACT,
+    val liveTvChannelMode: LiveTvChannelMode = LiveTvChannelMode.COMFORTABLE,
     val previewChannelId: Long? = null,
     val previewPlayerEngine: PlayerEngine? = null,
     val isPreviewLoading: Boolean = false,

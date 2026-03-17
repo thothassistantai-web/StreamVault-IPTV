@@ -9,11 +9,16 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.streamvault.data.local.dao.ChannelPreferenceDao
+import com.streamvault.data.local.entity.ChannelPreferenceEntity
 import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,7 +29,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 @Singleton
 class PreferencesRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val channelPreferenceDao: ChannelPreferenceDao
 ) {
     companion object {
         private const val PIN_SALT_BYTES = 16
@@ -71,6 +77,8 @@ class PreferencesRepository @Inject constructor(
         .map { preferences ->
             preferences[PreferencesKeys.PARENTAL_CONTROL_LEVEL] ?: 1 // Default to 1 = LOCKED
         }
+
+    val hasParentalPin: Flow<Boolean> = context.dataStore.data.map(::hasStoredParentalPin)
 
     suspend fun setLastActiveProviderId(id: Long) {
         context.dataStore.edit { preferences ->
@@ -120,14 +128,10 @@ class PreferencesRepository @Inject constructor(
         }
 
         val legacyPin = preferences[PreferencesKeys.LEGACY_PARENTAL_PIN]
-        val valid = if (!legacyPin.isNullOrBlank()) {
-            pin == legacyPin
-        } else {
-            pin == "0000"
-        }
+        val valid = !legacyPin.isNullOrBlank() && pin == legacyPin
 
         if (valid) {
-            // One-way migrate legacy/default behavior to hashed PIN storage.
+            // One-way migrate legacy PIN storage to hashed PIN storage.
             setParentalPin(pin)
         }
 
@@ -281,21 +285,36 @@ class PreferencesRepository @Inject constructor(
         }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getAspectRatioForChannel(channelId: Long): Flow<String?> {
-        val key = stringPreferencesKey("aspect_ratio_$channelId")
-        return context.dataStore.data.map { preferences ->
-            preferences[key]
+        return channelPreferenceDao.observeAspectRatio(channelId).flatMapLatest { persistedRatio ->
+            if (persistedRatio != null) {
+                flowOf(persistedRatio)
+            } else {
+                val legacyKey = stringPreferencesKey("aspect_ratio_$channelId")
+                context.dataStore.data.map { preferences ->
+                    preferences[legacyKey]
+                }
+            }
         }
     }
 
     suspend fun setAspectRatioForChannel(channelId: Long, ratio: String) {
+        channelPreferenceDao.upsert(
+            ChannelPreferenceEntity(
+                channelId = channelId,
+                aspectRatio = ratio,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
         val key = stringPreferencesKey("aspect_ratio_$channelId")
         context.dataStore.edit { preferences ->
-            preferences[key] = ratio
+            preferences.remove(key)
         }
     }
 
     suspend fun clearAllRecentData() {
+        channelPreferenceDao.deleteAll()
         context.dataStore.edit { preferences ->
             val keysToRemove = preferences.asMap().keys.filter { key ->
                 key.name.startsWith("last_live_category_id_") || 
@@ -312,5 +331,15 @@ class PreferencesRepository @Inject constructor(
         val spec = PBEKeySpec(pin.toCharArray(), salt, PIN_HASH_ITERATIONS, PIN_HASH_KEY_BITS)
         val secret = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec)
         return java.util.Base64.getEncoder().encodeToString(secret.encoded)
+    }
+
+    private fun hasStoredParentalPin(preferences: Preferences): Boolean {
+        val storedHash = preferences[PreferencesKeys.PARENTAL_PIN_HASH]
+        val storedSaltBase64 = preferences[PreferencesKeys.PARENTAL_PIN_SALT]
+        if (!storedHash.isNullOrBlank() && !storedSaltBase64.isNullOrBlank()) {
+            return true
+        }
+
+        return !preferences[PreferencesKeys.LEGACY_PARENTAL_PIN].isNullOrBlank()
     }
 }

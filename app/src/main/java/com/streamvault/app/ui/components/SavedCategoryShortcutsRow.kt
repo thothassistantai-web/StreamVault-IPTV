@@ -1,5 +1,6 @@
 package com.streamvault.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,16 +12,22 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
+import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.streamvault.app.R
+import com.streamvault.app.ui.design.FocusSpec
+import com.streamvault.app.ui.theme.FocusBorder
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
 import com.streamvault.app.ui.theme.Primary
@@ -31,6 +38,7 @@ data class SavedCategoryShortcut(
     val count: Int
 )
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun SavedCategoryShortcutsRow(
     title: String,
@@ -77,15 +85,11 @@ fun SavedCategoryShortcutsRow(
 
         if (shortcuts.isEmpty()) {
             Surface(
-                enabled = false,
-                onClick = { },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp),
-                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
-                colors = ClickableSurfaceDefaults.colors(
-                    containerColor = SurfaceElevated
-                )
+                shape = RoundedCornerShape(14.dp),
+                colors = SurfaceDefaults.colors(containerColor = SurfaceElevated)
             ) {
                 Text(
                     text = emptyHint,
@@ -100,6 +104,7 @@ fun SavedCategoryShortcutsRow(
         }
 
         LazyRow(
+            modifier = Modifier.focusRestorer(),
             contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -115,8 +120,17 @@ fun SavedCategoryShortcutsRow(
                             } else {
                                 SurfaceElevated
                             },
-                            focusedContainerColor = Primary.copy(alpha = 0.22f)
-                        )
+                            focusedContainerColor = Primary.copy(alpha = 0.22f),
+                            contentColor = if (isPrimaryShortcutSelected) Primary else OnSurface,
+                            focusedContentColor = OnSurface
+                        ),
+                        border = ClickableSurfaceDefaults.border(
+                            focusedBorder = Border(
+                                border = BorderStroke(FocusSpec.BorderWidth, FocusBorder),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                        ),
+                        scale = ClickableSurfaceDefaults.scale(focusedScale = FocusSpec.FocusedScale)
                     ) {
                         Column(
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -150,8 +164,17 @@ fun SavedCategoryShortcutsRow(
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = if (isSelected) Primary.copy(alpha = 0.18f) else SurfaceElevated,
-                        focusedContainerColor = Primary.copy(alpha = 0.22f)
-                    )
+                        focusedContainerColor = Primary.copy(alpha = 0.22f),
+                        contentColor = if (isSelected) Primary else OnSurface,
+                        focusedContentColor = OnSurface
+                    ),
+                    border = ClickableSurfaceDefaults.border(
+                        focusedBorder = Border(
+                            border = BorderStroke(FocusSpec.BorderWidth, FocusBorder),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                    ),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = FocusSpec.FocusedScale)
                 ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

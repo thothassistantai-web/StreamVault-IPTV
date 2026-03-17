@@ -278,6 +278,7 @@
     <string name="settings_change">Change</string>
     <string name="settings_parental_pin">Parental PIN</string>
     <string name="settings_change_pin">Change PIN</string>
+    <string name="settings_set_pin">Set PIN</string>
     <string name="settings_expiration_unknown">Expiration: Unknown</string>
     <string name="settings_expiration_never">Expiration: Never</string>
     <string name="settings_expires">Expires: %1$s</string>
@@ -358,6 +359,7 @@
     <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_stop">Stop</string>
     <string name="settings_recording_cancel">Cancel</string>
+    <string name="settings_recording_delete">Delete</string>
 
     <!-- Favorites -->
     <string name="favorites_title">Saved</string>
@@ -763,6 +765,7 @@
     <string name="label_slots_count">%1$d/4 slots</string>
     <string name="label_rating">RTG %1$s</string>
     <string name="label_episode">E%1$d</string>
+    <string name="label_episode_full">Episode %1$d</string>
     <string name="label_duration_min">%1$d min</string>
     <string name="label_tv">TV</string>
     <string name="badge_saved">SAVED</string>
@@ -818,6 +821,6 @@
     <string name="home_removed_from_favorites">Removed %1$s from Favorites</string>
     <string name="home_error_load_failed">Failed to load channels. Please check your connection and try again.</string>
     <string name="settings_history_cleared">Watch history and recents cleared</string>
-    <string name="settings_pin_changed">PIN changed successfully</string>
+    <string name="settings_pin_changed">PIN saved successfully</string>
     <string name="home_reorder_channels">Reorder Channels</string>
 </resources>

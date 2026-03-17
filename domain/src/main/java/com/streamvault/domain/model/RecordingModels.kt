@@ -37,7 +37,8 @@ data class RecordingItem(
     val programTitle: String? = null,
     val outputPath: String? = null,
     val status: RecordingStatus = RecordingStatus.SCHEDULED,
-    val failureReason: String? = null
+    val failureReason: String? = null,
+    val terminalAtMs: Long? = null
 ) {
     init {
         require(id.isNotBlank()) { "id must not be blank" }

@@ -52,6 +52,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.text.style.TextAlign
 import com.streamvault.app.R
 import java.util.Locale
+import com.streamvault.app.BuildConfig
 
 
 @Composable
@@ -88,6 +89,7 @@ fun SettingsScreen(
     var showClearHistoryDialog by rememberSaveable { mutableStateOf(false) }
     var pinError by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingAction by remember { mutableStateOf<ParentalAction?>(null) }
+    var pendingProtectionLevel by rememberSaveable { mutableStateOf<Int?>(null) }
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -234,13 +236,24 @@ fun SettingsScreen(
                 )
                 ParentalControlCard(
                     level = uiState.parentalControlLevel,
+                    hasParentalPin = uiState.hasParentalPin,
                     hasActiveProvider = uiState.activeProviderId != null,
-                    onChangeLevel = { 
-                        pendingAction = ParentalAction.ChangeLevel
-                        showPinDialog = true
+                    onChangeLevel = {
+                        pendingProtectionLevel = null
+                        if (uiState.hasParentalPin) {
+                            pendingAction = ParentalAction.ChangeLevel
+                            showPinDialog = true
+                        } else {
+                            showLevelDialog = true
+                        }
                     },
                     onChangePin = {
-                        pendingAction = ParentalAction.ChangePin
+                        pendingProtectionLevel = null
+                        pendingAction = if (uiState.hasParentalPin) {
+                            ParentalAction.ChangePin
+                        } else {
+                            ParentalAction.SetNewPin
+                        }
                         showPinDialog = true
                     },
                     onManageProtectedGroups = {
@@ -376,7 +389,8 @@ fun SettingsScreen(
                     RecordingItemCard(
                         item = item,
                         onStop = { viewModel.stopRecording(item.id) },
-                        onCancel = { viewModel.cancelRecording(item.id) }
+                        onCancel = { viewModel.cancelRecording(item.id) },
+                        onDelete = { viewModel.deleteRecording(item.id) }
                     )
                 }
             }
@@ -488,7 +502,7 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_about),
                     subtitle = stringResource(R.string.settings_about_subtitle)
                 )
-                SettingsRow(label = stringResource(R.string.settings_app_version), value = "1.0.0")
+                SettingsRow(label = stringResource(R.string.settings_app_version), value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
                 SettingsRow(label = stringResource(R.string.settings_build), value = stringResource(R.string.settings_build_desc))
                 SettingsRow(label = stringResource(R.string.settings_developed_by), value = stringResource(R.string.settings_developer_name))
                 ClickableSettingsRow(
@@ -563,12 +577,18 @@ fun SettingsScreen(
             PinDialog(
                 onDismissRequest = { 
                     showPinDialog = false
-                    pinError = null 
+                    pinError = null
+                    if (pendingAction == ParentalAction.SetNewPin) {
+                        pendingAction = null
+                        pendingProtectionLevel = null
+                    }
                 },
                 onPinEntered = { pin ->
                     scope.launch {
                         if (pendingAction == ParentalAction.SetNewPin) {
                             viewModel.changePin(pin)
+                            pendingProtectionLevel?.let(viewModel::setParentalControlLevel)
+                            pendingProtectionLevel = null
                             showPinDialog = false
                             pendingAction = null
                         } else {
@@ -604,11 +624,23 @@ fun SettingsScreen(
                     showLevelDialog = false
                 }
                 LevelOption(1, stringResource(R.string.settings_level_locked_desc), uiState.parentalControlLevel) {
-                    viewModel.setParentalControlLevel(1)
+                    if (uiState.hasParentalPin) {
+                        viewModel.setParentalControlLevel(1)
+                    } else {
+                        pendingProtectionLevel = 1
+                        pendingAction = ParentalAction.SetNewPin
+                        showPinDialog = true
+                    }
                     showLevelDialog = false
                 }
                 LevelOption(2, stringResource(R.string.settings_level_hidden_desc), uiState.parentalControlLevel) {
-                    viewModel.setParentalControlLevel(2)
+                    if (uiState.hasParentalPin) {
+                        viewModel.setParentalControlLevel(2)
+                    } else {
+                        pendingProtectionLevel = 2
+                        pendingAction = ParentalAction.SetNewPin
+                        showPinDialog = true
+                    }
                     showLevelDialog = false
                 }
             }
@@ -673,7 +705,7 @@ fun SettingsScreen(
                 },
                 containerColor = SurfaceElevated,
                 titleContentColor = OnSurface,
-                textContentColor = OnSurfaceVariant
+                textContentColor = TextSecondary
             )
         }
     }
@@ -759,6 +791,7 @@ private fun LevelOption(level: Int, text: String, currentLevel: Int, onSelect: (
 @Composable
 private fun ParentalControlCard(
     level: Int,
+    hasParentalPin: Boolean,
     hasActiveProvider: Boolean,
     onChangeLevel: () -> Unit,
     onChangePin: () -> Unit,
@@ -830,7 +863,7 @@ private fun ParentalControlCard(
                 )
             ) {
                 Text(
-                    text = stringResource(R.string.settings_change_pin),
+                    text = stringResource(if (hasParentalPin) R.string.settings_change_pin else R.string.settings_set_pin),
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                 )
@@ -1721,7 +1754,8 @@ private fun RecordingOverviewCard(
 private fun RecordingItemCard(
     item: RecordingItem,
     onStop: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1799,6 +1833,22 @@ private fun RecordingItemCard(
                     ) {
                         Text(
                             text = stringResource(R.string.settings_recording_cancel),
+                            color = OnBackground,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        )
+                    }
+                }
+                if (item.status == RecordingStatus.COMPLETED || item.status == RecordingStatus.FAILED || item.status == RecordingStatus.CANCELLED) {
+                    Surface(
+                        onClick = onDelete,
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = SurfaceHighlight,
+                            focusedContainerColor = Primary.copy(alpha = 0.2f)
+                        )
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_recording_delete),
                             color = OnBackground,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                         )

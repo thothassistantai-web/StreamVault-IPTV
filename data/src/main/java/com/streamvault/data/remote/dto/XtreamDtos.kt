@@ -1,163 +1,179 @@
 package com.streamvault.data.remote.dto
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class XtreamAuthResponse(
-    @SerializedName("user_info") val userInfo: XtreamUserInfo,
-    @SerializedName("server_info") val serverInfo: XtreamServerInfo
+    @SerialName("user_info") val userInfo: XtreamUserInfo,
+    @SerialName("server_info") val serverInfo: XtreamServerInfo
 )
 
+@Serializable
 data class XtreamUserInfo(
-    @SerializedName("username") val username: String = "",
-    @SerializedName("password") val password: String = "",
-    @SerializedName("message") val message: String = "",
-    @SerializedName("auth") val auth: Int = 0,
-    @SerializedName("status") val status: String = "",
-    @SerializedName("exp_date") val expDate: String? = null,
-    @SerializedName("is_trial") val isTrial: String = "0",
-    @SerializedName("active_cons") val activeConnections: String = "0",
-    @SerializedName("created_at") val createdAt: String = "",
-    @SerializedName("max_connections") val maxConnections: String = "1",
-    @SerializedName("allowed_output_formats") val allowedOutputFormats: List<String> = emptyList()
+    @SerialName("username") val username: String = "",
+    @SerialName("password") val password: String = "",
+    @SerialName("message") val message: String = "",
+    @SerialName("auth") @Serializable(with = LenientIntSerializer::class) val auth: Int = 0,
+    @SerialName("status") val status: String = "",
+    @SerialName("exp_date") val expDate: String? = null,
+    @SerialName("is_trial") val isTrial: String = "0",
+    @SerialName("active_cons") val activeConnections: String = "0",
+    @SerialName("created_at") val createdAt: String = "",
+    @SerialName("max_connections") val maxConnections: String = "1",
+    @SerialName("allowed_output_formats") val allowedOutputFormats: List<String> = emptyList()
 )
 
+@Serializable
 data class XtreamServerInfo(
-    @SerializedName("url") val url: String = "",
-    @SerializedName("port") val port: String = "",
-    @SerializedName("https_port") val httpsPort: String = "",
-    @SerializedName("server_protocol") val serverProtocol: String = "http",
-    @SerializedName("rtmp_port") val rtmpPort: String = "",
-    @SerializedName("timezone") val timezone: String = "",
-    @SerializedName("timestamp_now") val timestampNow: Long = 0,
-    @SerializedName("time_now") val timeNow: String = ""
+    @SerialName("url") val url: String = "",
+    @SerialName("port") val port: String = "",
+    @SerialName("https_port") val httpsPort: String = "",
+    @SerialName("server_protocol") val serverProtocol: String = "http",
+    @SerialName("rtmp_port") val rtmpPort: String = "",
+    @SerialName("timezone") val timezone: String = "",
+    @SerialName("timestamp_now") @Serializable(with = LenientLongSerializer::class) val timestampNow: Long = 0,
+    @SerialName("time_now") val timeNow: String = ""
 )
 
+@Serializable
 data class XtreamCategory(
-    @SerializedName("category_id") val categoryId: String = "0",
-    @SerializedName("category_name") val categoryName: String = "",
-    @SerializedName("parent_id") val parentId: Int = 0
+    @SerialName("category_id") val categoryId: String = "0",
+    @SerialName("category_name") val categoryName: String = "",
+    @SerialName("parent_id") @Serializable(with = LenientIntSerializer::class) val parentId: Int = 0
 )
 
+@Serializable
 data class XtreamStream(
-    @SerializedName("num") val num: Int = 0,
-    @SerializedName("name") val name: String = "",
-    @SerializedName("stream_type") val streamType: String = "",
-    @SerializedName("stream_id") val streamId: Long = 0,
-    @SerializedName("stream_icon") val streamIcon: String? = null,
-    @SerializedName("epg_channel_id") val epgChannelId: String? = null,
-    @SerializedName("added") val added: String? = null,
-    @SerializedName("category_id") val categoryId: String? = null,
-    @SerializedName("category_name") val categoryName: String? = null,
-    @SerializedName("custom_sid") val customSid: String? = null,
-    @SerializedName("tv_archive") val tvArchive: Int = 0,
-    @SerializedName("direct_source") val directSource: String? = null,
-    @SerializedName("tv_archive_duration") val tvArchiveDuration: Int? = null,
-    @SerializedName("container_extension") val containerExtension: String? = null,
-    @SerializedName("rating") val rating: String? = null,
-    @SerializedName("rating_5based") val rating5based: String? = null
+    @SerialName("num") @Serializable(with = LenientIntSerializer::class) val num: Int = 0,
+    @SerialName("name") val name: String = "",
+    @SerialName("stream_type") val streamType: String = "",
+    @SerialName("stream_id") @Serializable(with = LenientLongSerializer::class) val streamId: Long = 0,
+    @SerialName("stream_icon") val streamIcon: String? = null,
+    @SerialName("epg_channel_id") val epgChannelId: String? = null,
+    @SerialName("added") val added: String? = null,
+    @SerialName("category_id") val categoryId: String? = null,
+    @SerialName("category_name") val categoryName: String? = null,
+    @SerialName("custom_sid") val customSid: String? = null,
+    @SerialName("tv_archive") @Serializable(with = LenientIntSerializer::class) val tvArchive: Int = 0,
+    @SerialName("direct_source") val directSource: String? = null,
+    @SerialName("tv_archive_duration") @Serializable(with = LenientNullableIntSerializer::class) val tvArchiveDuration: Int? = null,
+    @SerialName("container_extension") val containerExtension: String? = null,
+    @SerialName("rating") val rating: String? = null,
+    @SerialName("rating_5based") val rating5based: String? = null
 )
 
+@Serializable
 data class XtreamSeriesItem(
-    @SerializedName("series_id") val seriesId: Long = 0,
-    @SerializedName("name") val name: String = "",
-    @SerializedName("cover") val cover: String? = null,
-    @SerializedName("plot") val plot: String? = null,
-    @SerializedName("cast") val cast: String? = null,
-    @SerializedName("director") val director: String? = null,
-    @SerializedName("genre") val genre: String? = null,
-    @SerializedName("releaseDate") val releaseDate: String? = null,
-    @SerializedName("rating") val rating: String? = null,
-    @SerializedName("rating_5based") val rating5based: String? = null,
-    @SerializedName("backdrop_path") val backdropPath: List<String>? = null,
-    @SerializedName("youtube_trailer") val youtubeTrailer: String? = null,
-    @SerializedName("episode_run_time") val episodeRunTime: String? = null,
-    @SerializedName("category_id") val categoryId: String? = null,
-    @SerializedName("last_modified") val lastModified: String? = null
+    @SerialName("series_id") @Serializable(with = LenientLongSerializer::class) val seriesId: Long = 0,
+    @SerialName("name") val name: String = "",
+    @SerialName("cover") val cover: String? = null,
+    @SerialName("plot") val plot: String? = null,
+    @SerialName("cast") val cast: String? = null,
+    @SerialName("director") val director: String? = null,
+    @SerialName("genre") val genre: String? = null,
+    @SerialName("releaseDate") val releaseDate: String? = null,
+    @SerialName("rating") val rating: String? = null,
+    @SerialName("rating_5based") val rating5based: String? = null,
+    @SerialName("backdrop_path") val backdropPath: List<String>? = null,
+    @SerialName("youtube_trailer") val youtubeTrailer: String? = null,
+    @SerialName("episode_run_time") val episodeRunTime: String? = null,
+    @SerialName("category_id") val categoryId: String? = null,
+    @SerialName("last_modified") val lastModified: String? = null
 )
 
+@Serializable
 data class XtreamSeriesInfoResponse(
-    @SerializedName("info") val info: XtreamSeriesItem? = null,
-    @SerializedName("episodes") val episodes: Map<String, List<XtreamEpisode>> = emptyMap(),
-    @SerializedName("seasons") val seasons: List<XtreamSeason> = emptyList()
+    @SerialName("info") val info: XtreamSeriesItem? = null,
+    @SerialName("episodes") val episodes: Map<String, List<XtreamEpisode>> = emptyMap(),
+    @SerialName("seasons") val seasons: List<XtreamSeason> = emptyList()
 )
 
+@Serializable
 data class XtreamSeason(
-    @SerializedName("season_number") val seasonNumber: Int = 0,
-    @SerializedName("name") val name: String = "",
-    @SerializedName("cover") val cover: String? = null,
-    @SerializedName("air_date") val airDate: String? = null,
-    @SerializedName("episode_count") val episodeCount: Int = 0
+    @SerialName("season_number") @Serializable(with = LenientIntSerializer::class) val seasonNumber: Int = 0,
+    @SerialName("name") val name: String = "",
+    @SerialName("cover") val cover: String? = null,
+    @SerialName("air_date") val airDate: String? = null,
+    @SerialName("episode_count") @Serializable(with = LenientIntSerializer::class) val episodeCount: Int = 0
 )
 
+@Serializable
 data class XtreamEpisode(
-    @SerializedName("id") val id: String = "",
-    @SerializedName("episode_num") val episodeNum: Int = 0,
-    @SerializedName("title") val title: String = "",
-    @SerializedName("container_extension") val containerExtension: String? = null,
-    @SerializedName("custom_sid") val customSid: String? = null,
-    @SerializedName("added") val added: String? = null,
-    @SerializedName("season") val season: Int = 0,
-    @SerializedName("direct_source") val directSource: String? = null,
-    @SerializedName("info") val info: XtreamEpisodeInfo? = null
+    @SerialName("id") val id: String = "",
+    @SerialName("episode_num") @Serializable(with = LenientIntSerializer::class) val episodeNum: Int = 0,
+    @SerialName("title") val title: String = "",
+    @SerialName("container_extension") val containerExtension: String? = null,
+    @SerialName("custom_sid") val customSid: String? = null,
+    @SerialName("added") val added: String? = null,
+    @SerialName("season") @Serializable(with = LenientIntSerializer::class) val season: Int = 0,
+    @SerialName("direct_source") val directSource: String? = null,
+    @SerialName("info") val info: XtreamEpisodeInfo? = null
 )
 
+@Serializable
 data class XtreamEpisodeInfo(
-    @SerializedName("movie_image") val movieImage: String? = null,
-    @SerializedName("plot") val plot: String? = null,
-    @SerializedName("releasedate") val releaseDate: String? = null,
-    @SerializedName("rating") val rating: String? = null,
-    @SerializedName("duration_secs") val durationSecs: Int = 0,
-    @SerializedName("duration") val duration: String? = null,
-    @SerializedName("name") val name: String? = null,
-    @SerializedName("bitrate") val bitrate: Int = 0
+    @SerialName("movie_image") val movieImage: String? = null,
+    @SerialName("plot") val plot: String? = null,
+    @SerialName("releasedate") val releaseDate: String? = null,
+    @SerialName("rating") val rating: String? = null,
+    @SerialName("duration_secs") @Serializable(with = LenientIntSerializer::class) val durationSecs: Int = 0,
+    @SerialName("duration") val duration: String? = null,
+    @SerialName("name") val name: String? = null,
+    @SerialName("bitrate") @Serializable(with = LenientIntSerializer::class) val bitrate: Int = 0
 )
 
+@Serializable
 data class XtreamVodInfoResponse(
-    @SerializedName("info") val info: XtreamVodInfo? = null,
-    @SerializedName("movie_data") val movieData: XtreamVodMovieData? = null
+    @SerialName("info") val info: XtreamVodInfo? = null,
+    @SerialName("movie_data") val movieData: XtreamVodMovieData? = null
 )
 
+@Serializable
 data class XtreamVodInfo(
-    @SerializedName("movie_image") val movieImage: String? = null,
-    @SerializedName("tmdb_id") val tmdbId: Long? = null,
-    @SerializedName("plot") val plot: String? = null,
-    @SerializedName("cast") val cast: String? = null,
-    @SerializedName("director") val director: String? = null,
-    @SerializedName("genre") val genre: String? = null,
-    @SerializedName("releasedate") val releaseDate: String? = null,
-    @SerializedName("rating") val rating: String? = null,
-    @SerializedName("youtube_trailer") val youtubeTrailer: String? = null,
-    @SerializedName("duration_secs") val durationSecs: Int = 0,
-    @SerializedName("duration") val duration: String? = null,
-    @SerializedName("backdrop_path") val backdropPath: List<String>? = null,
-    @SerializedName("bitrate") val bitrate: Int = 0
+    @SerialName("movie_image") val movieImage: String? = null,
+    @SerialName("tmdb_id") @Serializable(with = LenientNullableLongSerializer::class) val tmdbId: Long? = null,
+    @SerialName("plot") val plot: String? = null,
+    @SerialName("cast") val cast: String? = null,
+    @SerialName("director") val director: String? = null,
+    @SerialName("genre") val genre: String? = null,
+    @SerialName("releasedate") val releaseDate: String? = null,
+    @SerialName("rating") val rating: String? = null,
+    @SerialName("youtube_trailer") val youtubeTrailer: String? = null,
+    @SerialName("duration_secs") @Serializable(with = LenientIntSerializer::class) val durationSecs: Int = 0,
+    @SerialName("duration") val duration: String? = null,
+    @SerialName("backdrop_path") val backdropPath: List<String>? = null,
+    @SerialName("bitrate") @Serializable(with = LenientIntSerializer::class) val bitrate: Int = 0
 )
 
+@Serializable
 data class XtreamVodMovieData(
-    @SerializedName("stream_id") val streamId: Long = 0,
-    @SerializedName("name") val name: String = "",
-    @SerializedName("added") val added: String? = null,
-    @SerializedName("category_id") val categoryId: String? = null,
-    @SerializedName("container_extension") val containerExtension: String? = null,
-    @SerializedName("custom_sid") val customSid: String? = null,
-    @SerializedName("direct_source") val directSource: String? = null
+    @SerialName("stream_id") @Serializable(with = LenientLongSerializer::class) val streamId: Long = 0,
+    @SerialName("name") val name: String = "",
+    @SerialName("added") val added: String? = null,
+    @SerialName("category_id") val categoryId: String? = null,
+    @SerialName("container_extension") val containerExtension: String? = null,
+    @SerialName("custom_sid") val customSid: String? = null,
+    @SerialName("direct_source") val directSource: String? = null
 )
 
+@Serializable
 data class XtreamEpgResponse(
-    @SerializedName("epg_listings") val epgListings: List<XtreamEpgListing> = emptyList()
+    @SerialName("epg_listings") val epgListings: List<XtreamEpgListing> = emptyList()
 )
 
+@Serializable
 data class XtreamEpgListing(
-    @SerializedName("id") val id: String = "",
-    @SerializedName("epg_id") val epgId: String = "",
-    @SerializedName("title") val title: String = "",
-    @SerializedName("lang") val lang: String = "",
-    @SerializedName("start") val start: String = "",
-    @SerializedName("end") val end: String = "",
-    @SerializedName("description") val description: String = "",
-    @SerializedName("channel_id") val channelId: String = "",
-    @SerializedName("start_timestamp") val startTimestamp: Long = 0,
-    @SerializedName("stop_timestamp") val stopTimestamp: Long = 0,
-    @SerializedName("now_playing") val nowPlaying: Int = 0,
-    @SerializedName("has_archive") val hasArchive: Int = 0
+    @SerialName("id") val id: String = "",
+    @SerialName("epg_id") val epgId: String = "",
+    @SerialName("title") val title: String = "",
+    @SerialName("lang") val lang: String = "",
+    @SerialName("start") val start: String = "",
+    @SerialName("end") val end: String = "",
+    @SerialName("description") val description: String = "",
+    @SerialName("channel_id") val channelId: String = "",
+    @SerialName("start_timestamp") @Serializable(with = LenientLongSerializer::class) val startTimestamp: Long = 0,
+    @SerialName("stop_timestamp") @Serializable(with = LenientLongSerializer::class) val stopTimestamp: Long = 0,
+    @SerialName("now_playing") @Serializable(with = LenientIntSerializer::class) val nowPlaying: Int = 0,
+    @SerialName("has_archive") @Serializable(with = LenientIntSerializer::class) val hasArchive: Int = 0
 )

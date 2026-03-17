@@ -92,7 +92,7 @@ class FavoriteRepositoryImpl @Inject constructor(
             com.streamvault.data.local.entity.VirtualGroupEntity(
                 name = name,
                 iconEmoji = iconEmoji,
-                contentType = contentType.name
+                contentType = contentType
             )
         )
         Result.success(VirtualGroup(id = id, name = name, iconEmoji = iconEmoji, contentType = contentType))

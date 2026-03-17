@@ -1,5 +1,6 @@
 package com.streamvault.app.ui.screens.player
 
+import android.app.Activity
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -32,8 +33,6 @@ import androidx.compose.foundation.focusable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import androidx.tv.material3.*
 import com.streamvault.app.ui.theme.*
 import com.streamvault.domain.model.DecoderMode
@@ -44,6 +43,7 @@ import com.streamvault.domain.repository.EpgRepository
 import com.streamvault.player.PlaybackState
 import com.streamvault.player.PlayerEngine
 import com.streamvault.player.PlayerError
+import com.streamvault.player.PlayerSurfaceResizeMode
 import com.streamvault.player.PlayerTrack
 import com.streamvault.player.TrackType
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -63,6 +63,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.streamvault.app.R
+import com.streamvault.app.MainActivity
 import com.streamvault.app.ui.screens.player.overlay.ChannelInfoOverlay
 import com.streamvault.app.ui.screens.player.overlay.CategoryListOverlay
 import com.streamvault.app.ui.screens.player.overlay.ChannelListOverlay
@@ -103,6 +104,12 @@ fun PlayerScreen(
     viewModel: PlayerViewModel = hiltViewModel(),
     multiViewViewModel: MultiViewViewModel = hiltViewModel()
 ) {
+    val mainActivity = LocalContext.current.findMainActivity()
+    val isInPictureInPictureMode = mainActivity
+        ?.pictureInPictureModeFlow
+        ?.collectAsState(initial = mainActivity.isInPictureInPictureMode)
+        ?.value
+        ?: false
     val playbackState by viewModel.playerEngine.playbackState.collectAsState()
     val isPlaying by viewModel.playerEngine.isPlaying.collectAsState()
     val showControls by viewModel.showControls.collectAsState()
@@ -132,7 +139,6 @@ fun PlayerScreen(
     val availableVideoQualities by viewModel.availableVideoQualities.collectAsState()
     val aspectRatio by viewModel.aspectRatio.collectAsState()
     val showDiagnostics by viewModel.showDiagnostics.collectAsState()
-    val playerStats by viewModel.playerStats.collectAsState()
     val playerDiagnostics by viewModel.playerDiagnostics.collectAsState()
     val currentPosition by viewModel.playerEngine.currentPosition.collectAsState()
     val duration by viewModel.playerEngine.duration.collectAsState()
@@ -154,22 +160,48 @@ fun PlayerScreen(
     val layoutDirection = LocalLayoutDirection.current
     val isRtl = layoutDirection == LayoutDirection.Rtl
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentPictureInPictureMode by rememberUpdatedState(isInPictureInPictureMode)
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
 
-    DisposableEffect(lifecycleOwner) {
+    LaunchedEffect(mainActivity, streamUrl, playbackState, isPlaying, videoFormat.width, videoFormat.height) {
+        mainActivity?.updatePlayerPictureInPictureState(
+            enabled = streamUrl.isNotBlank() && playbackState != PlaybackState.ERROR,
+            isPlaying = isPlaying,
+            videoWidth = videoFormat.width,
+            videoHeight = videoFormat.height
+        )
+    }
+
+    LaunchedEffect(isInPictureInPictureMode) {
+        if (isInPictureInPictureMode) {
+            viewModel.closeOverlays()
+            if (showControls) {
+                viewModel.toggleControls()
+            }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, mainActivity) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> viewModel.onAppForegrounded()
-                Lifecycle.Event.ON_STOP -> viewModel.onAppBackgrounded()
+                Lifecycle.Event.ON_STOP -> {
+                    if (currentPictureInPictureMode) {
+                        viewModel.closeOverlays()
+                    } else {
+                        viewModel.onAppBackgrounded()
+                    }
+                }
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            mainActivity?.clearPlayerPictureInPictureState()
             viewModel.onPlayerScreenDisposed()
         }
     }
@@ -206,7 +238,7 @@ fun PlayerScreen(
         }
     }
 
-    if (showProgramHistory) {
+    if (!isInPictureInPictureMode && showProgramHistory) {
         ProgramHistoryDialog(
             programs = programHistory,
             onDismiss = { showProgramHistory = false },
@@ -464,26 +496,21 @@ fun PlayerScreen(
             }
     ) {
         // ExoPlayer Video Surface
-        val player = viewModel.playerEngine.getPlayerView()
-        if (player is androidx.media3.common.Player) {
-            AndroidView<androidx.media3.ui.PlayerView>(
-                factory = { context ->
-                    androidx.media3.ui.PlayerView(context).apply {
-                        this.player = player
-                        useController = false
-                        setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
-                    }
-                },
-                update = { playerView ->
-                    playerView.resizeMode = when (aspectRatio) {
-                        AspectRatio.FIT -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        AspectRatio.FILL -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                        AspectRatio.ZOOM -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        }
+        AndroidView(
+            factory = { context ->
+                viewModel.playerEngine.createRenderView(
+                    context = context,
+                    resizeMode = aspectRatio.toPlayerSurfaceResizeMode()
+                )
+            },
+            update = { renderView ->
+                viewModel.playerEngine.bindRenderView(
+                    renderView = renderView,
+                    resizeMode = aspectRatio.toPlayerSurfaceResizeMode()
+                )
+            },
+            modifier = Modifier.fillMaxSize()
+        )
 
         // Buffering indicator
         if (playbackState == PlaybackState.BUFFERING) {
@@ -598,7 +625,7 @@ fun PlayerScreen(
         )
         
         // Resume Prompt Dialog
-        if (resumePrompt.show) {
+        if (!isInPictureInPictureMode && resumePrompt.show) {
             PlayerResumePrompt(
                 title = resumePrompt.title,
                 onStartOver = { viewModel.dismissResumePrompt(resume = false) },
@@ -607,19 +634,22 @@ fun PlayerScreen(
         }
         
         // Track Selection Dialog
-        PlayerTrackSelectionDialog(
-            trackType = showTrackSelection,
-            audioTracks = availableAudioTracks,
-            subtitleTracks = availableSubtitleTracks,
-            videoTracks = availableVideoQualities,
-            onDismiss = { showTrackSelection = null },
-            onSelectAudio = viewModel::selectAudioTrack,
-            onSelectVideo = viewModel::selectVideoQuality,
-            onSelectSubtitle = viewModel::selectSubtitleTrack
-        )
+        if (!isInPictureInPictureMode) {
+            PlayerTrackSelectionDialog(
+                trackType = showTrackSelection,
+                audioTracks = availableAudioTracks,
+                subtitleTracks = availableSubtitleTracks,
+                videoTracks = availableVideoQualities,
+                onDismiss = { showTrackSelection = null },
+                onSelectAudio = viewModel::selectAudioTrack,
+                onSelectVideo = viewModel::selectVideoQuality,
+                onSelectSubtitle = viewModel::selectSubtitleTrack
+            )
+        }
 
         // --- Overlays ---
-        if (showDiagnostics) {
+        if (!isInPictureInPictureMode && showDiagnostics) {
+            val playerStats by viewModel.playerStats.collectAsState()
             DiagnosticsOverlay(
                 stats = playerStats,
                 diagnostics = playerDiagnostics,
@@ -743,4 +773,16 @@ fun PlayerScreen(
             )
         }
     }
+}
+
+private fun AspectRatio.toPlayerSurfaceResizeMode(): PlayerSurfaceResizeMode = when (this) {
+    AspectRatio.FIT -> PlayerSurfaceResizeMode.FIT
+    AspectRatio.FILL -> PlayerSurfaceResizeMode.FILL
+    AspectRatio.ZOOM -> PlayerSurfaceResizeMode.ZOOM
+}
+
+private tailrec fun android.content.Context.findMainActivity(): MainActivity? = when (this) {
+    is MainActivity -> this
+    is android.content.ContextWrapper -> baseContext.findMainActivity()
+    else -> null
 }

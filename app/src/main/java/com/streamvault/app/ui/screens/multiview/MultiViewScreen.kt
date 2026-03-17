@@ -46,8 +46,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Button
@@ -58,6 +56,7 @@ import com.streamvault.app.ui.components.dialogs.PremiumDialog
 import com.streamvault.app.ui.components.dialogs.PremiumDialogActionButton
 import com.streamvault.app.ui.components.dialogs.PremiumDialogFooterButton
 import com.streamvault.app.ui.theme.Primary
+import com.streamvault.player.PlayerSurfaceResizeMode
 
 @Composable
 fun MultiViewScreen(
@@ -316,27 +315,25 @@ private fun PlayerCell(
                 else -> {
                     val engine = slot.playerEngine
                     if (engine != null) {
-                        val exoPlayer = engine.getPlayerView()
-                        if (exoPlayer is androidx.media3.common.Player) {
-                            AndroidView(
-                                factory = { ctx ->
-                                    PlayerView(ctx).apply {
-                                        player = exoPlayer
-                                        useController = false
-                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                        isFocusable = false
-                                        isFocusableInTouchMode = false
-                                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                                    }
-                                },
-                                update = { view ->
-                                    if (view.player != exoPlayer) {
-                                        view.player = exoPlayer
-                                    }
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                        AndroidView(
+                            factory = { ctx ->
+                                engine.createRenderView(
+                                    context = ctx,
+                                    resizeMode = PlayerSurfaceResizeMode.FILL
+                                ).apply {
+                                    isFocusable = false
+                                    isFocusableInTouchMode = false
+                                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                                }
+                            },
+                            update = { renderView ->
+                                engine.bindRenderView(
+                                    renderView = renderView,
+                                    resizeMode = PlayerSurfaceResizeMode.FILL
+                                )
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
 
                     // Buffering indicator for active streams

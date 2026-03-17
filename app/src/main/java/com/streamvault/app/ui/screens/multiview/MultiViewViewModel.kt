@@ -6,8 +6,11 @@ import android.os.Build
 import android.os.PowerManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streamvault.app.di.AuxiliaryPlayerEngine
+import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.domain.model.Channel
+import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.repository.ChannelRepository
 import com.streamvault.domain.repository.FavoriteRepository
 import com.streamvault.domain.repository.PlaybackHistoryRepository
@@ -28,11 +31,13 @@ import javax.inject.Provider
 class MultiViewViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     val multiViewManager: MultiViewManager,
+    @AuxiliaryPlayerEngine
     private val playerEngineProvider: Provider<PlayerEngine>,
     private val preferencesRepository: PreferencesRepository,
     private val channelRepository: ChannelRepository,
     private val favoriteRepository: FavoriteRepository,
-    private val playbackHistoryRepository: PlaybackHistoryRepository
+    private val playbackHistoryRepository: PlaybackHistoryRepository,
+    private val xtreamStreamUrlResolver: XtreamStreamUrlResolver
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MultiViewUiState())
@@ -168,14 +173,24 @@ class MultiViewViewModel @Inject constructor(
                     if (initVersion != slotInitVersion) return@launch
                     try {
                         val engine = playerEngineProvider.get()
+                        // Cap each multi-view slot to 720p so slots don't compete for 4K bandwidth
+                        (engine as? com.streamvault.player.Media3PlayerEngine)
+                            ?.let { it.constrainResolutionForMultiView = true }
                         if (initVersion != slotInitVersion) {
                             engine.release()
                             return@launch
                         }
                         playerEngines[index] = engine
-                        
+
+                        val resolvedUrl = xtreamStreamUrlResolver.resolve(
+                            url = slot.streamUrl,
+                            fallbackProviderId = slot.channel?.providerId,
+                            fallbackStreamId = slot.channel?.streamId,
+                            fallbackContentType = ContentType.LIVE
+                        ) ?: throw IllegalStateException("No playable URL for ${slot.title}")
+
                         engine.prepare(
-                            com.streamvault.domain.model.StreamInfo(url = slot.streamUrl)
+                            com.streamvault.domain.model.StreamInfo(url = resolvedUrl)
                         )
                         engine.play()
                         

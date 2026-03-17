@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,9 +28,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.shape.CircleShape
 import kotlinx.coroutines.delay
-import com.streamvault.app.ui.screens.multiview.MultiViewPlannerDialog
-import com.streamvault.app.ui.screens.multiview.MultiViewViewModel
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.tv.material3.*
 
 @Composable
 fun AddToGroupDialog(
@@ -45,40 +42,21 @@ fun AddToGroupDialog(
     onAddToGroup: (Category) -> Unit,
     onRemoveFromGroup: (Category) -> Unit,
     onCreateGroup: (String) -> Unit,
-    onNavigateToSplitScreen: (() -> Unit)? = null  // navigate to MultiViewScreen when launched
+    isQueuedForSplitScreen: Boolean = false,
+    onOpenSplitScreenPlanner: (() -> Unit)? = null
 ) {
     var showCreateGroup by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
+    val contentFocusRequester = remember { FocusRequester() }  // focuses first interactive item, not close button
 
     // Ghost-click debounce
     var canInteract by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        runCatching { contentFocusRequester.requestFocus() }
         delay(500)
         canInteract = true
     }
 
     val safeDismiss = { if (canInteract) onDismiss() }
-
-    // Split screen state
-    val multiViewViewModel: MultiViewViewModel = hiltViewModel()
-    val slots by multiViewViewModel.slotsFlow.collectAsState()
-    val isQueued = channel != null && multiViewViewModel.isQueued(channel.id)
-    var showSlotPicker by remember { mutableStateOf(false) }
-
-    // Show slot-picker dialog when user taps the split screen button
-    if (showSlotPicker && channel != null) {
-        MultiViewPlannerDialog(
-            pendingChannel = channel,
-            onDismiss = { showSlotPicker = false },
-            onLaunch = {
-                showSlotPicker = false
-                onDismiss()
-                onNavigateToSplitScreen?.invoke()
-            },
-            viewModel = multiViewViewModel
-        )
-    }
 
     if (showCreateGroup) {
         CreateGroupDialog(
@@ -90,14 +68,14 @@ fun AddToGroupDialog(
         )
     }
 
-    if (!showCreateGroup && !showSlotPicker) {
+    if (!showCreateGroup) {
         Dialog(
             onDismissRequest = safeDismiss,
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = AppColors.SurfaceElevated,
+                colors = SurfaceDefaults.colors(containerColor = AppColors.SurfaceElevated),
                 modifier = Modifier
                     .width(400.dp)
                     .padding(16.dp)
@@ -116,8 +94,7 @@ fun AddToGroupDialog(
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(
-                            onClick = safeDismiss,
-                            modifier = Modifier.focusRequester(focusRequester)
+                            onClick = safeDismiss
                         ) {
                             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.add_group_close_cd))
                         }
@@ -134,6 +111,7 @@ fun AddToGroupDialog(
                                 onClick = onToggleFavorite,
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .focusRequester(contentFocusRequester)
                                     .onFocusChanged { isFocused = it.isFocused }
                                     .background(
                                         color = if (isFocused) AppColors.Focus else Color.Transparent,
@@ -144,7 +122,7 @@ fun AddToGroupDialog(
                                         if (isFocused) AppColors.Focus else Color.Transparent,
                                         CircleShape
                                     ),
-                                colors = ButtonDefaults.buttonColors(
+                                colors = ButtonDefaults.colors(
                                     containerColor = when {
                                         isFocused -> AppColors.Focus
                                         isFavorite -> AppColors.Warning
@@ -169,11 +147,11 @@ fun AddToGroupDialog(
                         }
 
                         // ── Split Screen ─────────────────────────────
-                        if (channel != null) {
+                        if (channel != null && onOpenSplitScreenPlanner != null) {
                             item {
                                 var isFocused by remember { mutableStateOf(false) }
                                 Button(
-                                    onClick = { showSlotPicker = true },
+                                    onClick = onOpenSplitScreenPlanner,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .onFocusChanged { isFocused = it.isFocused }
@@ -186,10 +164,10 @@ fun AddToGroupDialog(
                                             if (isFocused) AppColors.Focus else Color.Transparent,
                                             CircleShape
                                         ),
-                                    colors = ButtonDefaults.buttonColors(
+                                    colors = ButtonDefaults.colors(
                                     containerColor = when {
                                         isFocused -> AppColors.Focus
-                                        isQueued -> AppColors.Success.copy(alpha = 0.8f)
+                                        isQueuedForSplitScreen -> AppColors.Success.copy(alpha = 0.8f)
                                         else -> AppColors.Success
                                     }
                                 )
@@ -201,7 +179,7 @@ fun AddToGroupDialog(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = if (isQueued) stringResource(R.string.multiview_queued)
+                                        text = if (isQueuedForSplitScreen) stringResource(R.string.multiview_queued)
                                         else stringResource(R.string.multiview_add_to_split),
                                         color = if (isFocused) Color.Black else Color.White
                                     )
@@ -211,7 +189,13 @@ fun AddToGroupDialog(
 
                         // ── Custom Groups Section ─────────────────────
                         item {
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                                    .height(1.dp)
+                                    .background(AppColors.SurfaceAccent.copy(alpha = 0.7f))
+                            )
                             Text(
                                 text = stringResource(R.string.add_group_custom_groups_title),
                                 style = MaterialTheme.typography.titleMedium,
@@ -251,7 +235,7 @@ fun AddToGroupDialog(
                                             if (isFocused) AppColors.Focus else Color.Transparent,
                                             CircleShape
                                         ),
-                                    colors = ButtonDefaults.buttonColors(
+                                    colors = ButtonDefaults.colors(
                                         containerColor = when {
                                             isFocused -> AppColors.Focus
                                             isMember -> AppColors.Live.copy(alpha = 0.2f)
@@ -285,7 +269,7 @@ fun AddToGroupDialog(
                                     if (isFocused) AppColors.Focus else AppColors.BrandMuted.copy(alpha = 0.55f),
                                     CircleShape
                                 ),
-                            colors = ButtonDefaults.outlinedButtonColors(
+                            colors = ButtonDefaults.colors(
                                 containerColor = if (isFocused) AppColors.Focus else Color.Transparent,
                                 contentColor = if (isFocused) Color.Black else AppColors.TextPrimary
                             )

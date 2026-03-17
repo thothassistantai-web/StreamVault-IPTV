@@ -62,14 +62,15 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.streamvault.app.R
+import com.streamvault.app.ui.components.rememberCrossfadeImageModel
 import com.streamvault.app.ui.components.shell.StatusPill
 import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.screens.player.PlayerDiagnosticsUiState
 import com.streamvault.domain.model.RecordingStatus
-import com.streamvault.app.ui.theme.OnSurfaceDim
-import com.streamvault.app.ui.theme.Primary
-import com.streamvault.app.ui.theme.SurfaceVariant
-import com.streamvault.app.ui.theme.TextSecondary
+import com.streamvault.app.ui.design.AppColors.Brand as Primary
+import com.streamvault.app.ui.design.AppColors.SurfaceElevated as SurfaceVariant
+import com.streamvault.app.ui.design.AppColors.TextSecondary as TextSecondary
+import com.streamvault.app.ui.design.AppColors.TextTertiary as OnSurfaceDim
 import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Program
 import com.streamvault.player.PlayerStats
@@ -205,7 +206,7 @@ fun ChannelInfoOverlay(
                         ) {
                             if (!currentChannel.logoUrl.isNullOrBlank()) {
                                 AsyncImage(
-                                    model = currentChannel.logoUrl,
+                                    model = rememberCrossfadeImageModel(currentChannel.logoUrl),
                                     contentDescription = currentChannel.name,
                                     modifier = Modifier
                                         .fillMaxSize()

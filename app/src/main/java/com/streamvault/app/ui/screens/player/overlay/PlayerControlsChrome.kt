@@ -58,7 +58,6 @@ import com.streamvault.app.ui.screens.player.NumericChannelInputState
 import com.streamvault.app.ui.theme.ErrorColor
 import com.streamvault.app.ui.theme.OnSurfaceDim
 import com.streamvault.app.ui.theme.Primary
-import com.streamvault.app.ui.theme.PrimaryVariant
 import com.streamvault.domain.model.Program
 import com.streamvault.domain.model.RecordingStatus
 import kotlinx.coroutines.delay

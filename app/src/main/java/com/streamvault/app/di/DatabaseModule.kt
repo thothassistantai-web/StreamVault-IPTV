@@ -2,6 +2,7 @@ package com.streamvault.app.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.RoomDatabase
 import com.streamvault.data.local.StreamVaultDatabase
 import com.streamvault.data.local.dao.*
 import dagger.Module
@@ -23,7 +24,9 @@ object DatabaseModule {
             StreamVaultDatabase::class.java,
             "streamvault.db"
         )
+            .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
             .addMigrations(
+                StreamVaultDatabase.MIGRATION_1_2,
                 StreamVaultDatabase.MIGRATION_2_3,
                 StreamVaultDatabase.MIGRATION_3_4,
                 StreamVaultDatabase.MIGRATION_4_5,
@@ -32,7 +35,9 @@ object DatabaseModule {
                 StreamVaultDatabase.MIGRATION_7_8,
                 StreamVaultDatabase.MIGRATION_8_9,
                 StreamVaultDatabase.MIGRATION_9_10,
-                StreamVaultDatabase.MIGRATION_10_11
+                StreamVaultDatabase.MIGRATION_10_11,
+                StreamVaultDatabase.MIGRATION_11_12,
+                StreamVaultDatabase.MIGRATION_12_13
             )
             // NOTE: fallbackToDestructiveMigration() intentionally removed.
             // All future schema changes MUST add a corresponding Migration in StreamVaultDatabase.
@@ -40,6 +45,7 @@ object DatabaseModule {
 
     @Provides fun provideProviderDao(db: StreamVaultDatabase): ProviderDao = db.providerDao()
     @Provides fun provideChannelDao(db: StreamVaultDatabase): ChannelDao = db.channelDao()
+    @Provides fun provideChannelPreferenceDao(db: StreamVaultDatabase): ChannelPreferenceDao = db.channelPreferenceDao()
     @Provides fun provideMovieDao(db: StreamVaultDatabase): MovieDao = db.movieDao()
     @Provides fun provideSeriesDao(db: StreamVaultDatabase): SeriesDao = db.seriesDao()
     @Provides fun provideEpisodeDao(db: StreamVaultDatabase): EpisodeDao = db.episodeDao()

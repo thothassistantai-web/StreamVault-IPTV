@@ -55,6 +55,7 @@ import com.streamvault.app.ui.components.SkeletonCard
 import com.streamvault.app.ui.components.shimmerEffect
 import com.streamvault.app.ui.components.shell.AppNavigationChrome
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
+import com.streamvault.app.ui.design.FocusRestoreHost
 import androidx.activity.compose.BackHandler
 import com.streamvault.app.ui.theme.*
 import com.streamvault.domain.model.Category
@@ -70,9 +71,7 @@ import com.streamvault.app.ui.screens.multiview.MultiViewPlannerDialog
 import com.streamvault.app.navigation.Routes
 import com.streamvault.domain.model.VirtualCategoryIds
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.Player
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
+import com.streamvault.player.PlayerSurfaceResizeMode
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -121,6 +120,7 @@ fun HomeScreen(
     val splitSlots by multiViewViewModel.slotsFlow.collectAsState()
     val hasSplitChannels = splitSlots.any { it != null }
     var showSplitManagerDialog by rememberSaveable { mutableStateOf(false) }
+    var pendingSplitPlannerChannel by remember { mutableStateOf<Channel?>(null) }
     
     // Parental Control State
     var showPinDialog by rememberSaveable { mutableStateOf(false) }
@@ -142,7 +142,7 @@ fun HomeScreen(
         }
     }
 
-    val hasOverlay = showPinDialog || showSplitManagerDialog ||
+    val hasOverlay = showPinDialog || showSplitManagerDialog || pendingSplitPlannerChannel != null ||
         uiState.showDialog || uiState.showDeleteGroupDialog ||
         uiState.showRenameGroupDialog || uiState.selectedCategoryForOptions != null ||
         uiState.isChannelReorderMode
@@ -155,6 +155,7 @@ fun HomeScreen(
                 pendingUnlockCategory = null
                 pendingUnlockChannel = null
             }
+            pendingSplitPlannerChannel != null -> pendingSplitPlannerChannel = null
             uiState.showDeleteGroupDialog -> viewModel.cancelDeleteGroup()
             uiState.showRenameGroupDialog -> viewModel.cancelRenameGroup()
             uiState.selectedCategoryForOptions != null -> viewModel.dismissCategoryOptions()
@@ -268,7 +269,7 @@ fun HomeScreen(
                                     .height(48.dp)
                                     .padding(vertical = 4.dp)
                                     .background(Color.DarkGray, RoundedCornerShape(8.dp))
-                                    .shimmerEffect()
+                                    .shimmerEffect(baseColor = MaterialTheme.colorScheme.onSurface)
                             )
                         }
                     }
@@ -361,6 +362,43 @@ fun HomeScreen(
                     shouldRestoreCategoryFocus = false
                 }
 
+                FocusRestoreHost(
+                    enabled = !hasOverlay && !uiState.isLoading && uiState.categories.isNotEmpty(),
+                    onRestore = {
+                        kotlinx.coroutines.delay(80)
+                        val restoreTarget = runCatching {
+                            FocusRestoreTarget.valueOf(preferredRestoreTarget)
+                        }.getOrDefault(FocusRestoreTarget.CHANNEL)
+
+                        val canRestoreChannel = lastFocusedChannelId != null &&
+                            uiState.filteredChannels.any { it.id == lastFocusedChannelId }
+                        val canRestoreCategory = lastFocusedCategoryId != null &&
+                            uiState.categories.any { it.id == lastFocusedCategoryId }
+
+                        when {
+                            restoreTarget == FocusRestoreTarget.CATEGORY && canRestoreCategory -> {
+                                runCatching { categoryFocusRequesters[lastFocusedCategoryId]?.requestFocus() }
+                            }
+                            canRestoreChannel -> {
+                                val restored = runCatching {
+                                    channelFocusRequesters[lastFocusedChannelId]?.requestFocus()
+                                }.isSuccess
+                                if (!restored) {
+                                    val fallbackId = uiState.filteredChannels.firstOrNull()?.id
+                                    fallbackId?.let { runCatching { channelFocusRequesters[it]?.requestFocus() } }
+                                }
+                            }
+                            canRestoreCategory -> {
+                                runCatching { categoryFocusRequesters[lastFocusedCategoryId]?.requestFocus() }
+                            }
+                            else -> {
+                                uiState.categories.firstOrNull()?.id?.let { firstCategoryId ->
+                                    runCatching { categoryFocusRequesters[firstCategoryId]?.requestFocus() }
+                                }
+                            }
+                        }
+                    }
+                ) {
                 Row(modifier = Modifier.fillMaxSize()) {
                     // Sidebar - Categories
                     val categorySearchFocusRequester = remember { FocusRequester() }
@@ -792,6 +830,7 @@ fun HomeScreen(
                         )
                     }
                 }
+                }
             }
         }
         }
@@ -804,7 +843,20 @@ fun HomeScreen(
         )
     }
 
-    if (uiState.showDialog && uiState.selectedChannelForDialog != null) {
+    if (pendingSplitPlannerChannel != null) {
+        MultiViewPlannerDialog(
+            pendingChannel = pendingSplitPlannerChannel,
+            onDismiss = { pendingSplitPlannerChannel = null },
+            onLaunch = {
+                pendingSplitPlannerChannel = null
+                viewModel.onDismissDialog()
+                onNavigate(Routes.MULTI_VIEW)
+            },
+            viewModel = multiViewViewModel
+        )
+    }
+
+    if (uiState.showDialog && uiState.selectedChannelForDialog != null && pendingSplitPlannerChannel == null) {
         val channel = uiState.selectedChannelForDialog!!
         com.streamvault.app.ui.components.dialogs.AddToGroupDialog(
             contentTitle = channel.name,
@@ -819,7 +871,8 @@ fun HomeScreen(
             onAddToGroup = { group -> viewModel.addToGroup(channel, group) },
             onRemoveFromGroup = { group -> viewModel.removeFromGroup(channel, group) },
             onCreateGroup = { name -> viewModel.createCustomGroup(name) },
-            onNavigateToSplitScreen = { onNavigate(Routes.MULTI_VIEW) }
+            isQueuedForSplitScreen = multiViewViewModel.isQueued(channel.id),
+            onOpenSplitScreenPlanner = { pendingSplitPlannerChannel = channel }
         )
     }
 
@@ -878,6 +931,7 @@ fun HomeScreen(
             }
         )
     }
+
 }
 
 @Composable
@@ -912,21 +966,19 @@ private fun LivePreviewPane(
                     .background(Color.Black, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                val player = playerEngine?.getPlayerView()
-                if (channel != null && player is Player && errorMessage == null) {
+                if (channel != null && playerEngine != null && errorMessage == null) {
                     AndroidView(
                         factory = { context ->
-                            PlayerView(context).apply {
-                                this.player = player
-                                useController = false
-                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                            }
+                            playerEngine.createRenderView(
+                                context = context,
+                                resizeMode = PlayerSurfaceResizeMode.FIT
+                            )
                         },
-                        update = { view ->
-                            if (view.player != player) {
-                                view.player = player
-                            }
+                        update = { renderView ->
+                            playerEngine.bindRenderView(
+                                renderView = renderView,
+                                resizeMode = PlayerSurfaceResizeMode.FIT
+                            )
                         },
                         modifier = Modifier.fillMaxSize()
                     )
@@ -1023,6 +1075,7 @@ private fun LivePreviewPane(
             }
         }
     }
+
 }
 
 private fun formatProgramTime(timestampMs: Long): String {
@@ -1249,6 +1302,7 @@ fun ReorderSidePanel(
                         }
                     }
                 }
+                }
             }
             
             // Helper Text
@@ -1261,4 +1315,3 @@ fun ReorderSidePanel(
             )
         }
     }
-}

@@ -23,12 +23,13 @@ class XtreamProvider(
 ) : IptvProvider {
 
     private var serverInfo: XtreamServerInfo? = null
-    private val apiEndpoint: String = "${serverUrl.trimEnd('/')}/player_api.php"
     private val adultCategoryCache = mutableMapOf<ContentType, Set<Long>>()
     private val adultCategoryCacheMutex = Mutex()
 
     override suspend fun authenticate(): Result<Provider> = try {
-        val response = api.authenticate(apiEndpoint, username, password)
+        val response = api.authenticate(
+            XtreamUrlFactory.buildPlayerApiUrl(serverUrl, username, password)
+        )
         serverInfo = response.serverInfo
 
         if (response.userInfo.auth != 1) {
@@ -55,7 +56,7 @@ class XtreamProvider(
                         var parsed: Long? = null
                         for (fmt in formats) {
                             try {
-                                parsed = java.text.SimpleDateFormat(fmt, java.util.Locale.getDefault()).parse(expDateStr)?.time
+                                parsed = java.text.SimpleDateFormat(fmt, java.util.Locale.ROOT).parse(expDateStr)?.time
                                 if (parsed != null) break
                             } catch (_: Exception) {}
                         }
@@ -89,53 +90,75 @@ class XtreamProvider(
             )
         }
     } catch (e: Exception) {
-        Result.error("Authentication failed: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Authentication failed", e), e)
     }
 
     // ── Live TV ────────────────────────────────────────────────────
 
     override suspend fun getLiveCategories(): Result<List<Category>> = try {
-        val categories = api.getLiveCategories(apiEndpoint, username, password)
+        val categories = api.getLiveCategories(
+            XtreamUrlFactory.buildPlayerApiUrl(serverUrl, username, password, action = "get_live_categories")
+        )
         cacheAdultCategoryIds(ContentType.LIVE, categories)
         Result.success(categories.map { it.toDomain(ContentType.LIVE) })
     } catch (e: Exception) {
-        Result.error("Failed to load live categories: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load live categories", e), e)
     }
 
     override suspend fun getLiveStreams(categoryId: Long?): Result<List<Channel>> = try {
         val adultCategoryIds = loadAdultCategoryIds(ContentType.LIVE)
         val streams = api.getLiveStreams(
-            apiEndpoint, username, password,
-            categoryId = categoryId?.toString()
+            XtreamUrlFactory.buildPlayerApiUrl(
+                serverUrl = serverUrl,
+                username = username,
+                password = password,
+                action = "get_live_streams",
+                extraQueryParams = mapOf("category_id" to categoryId?.toString())
+            )
         )
         Result.success(streams.map { it.toChannel(adultCategoryIds) })
     } catch (e: Exception) {
-        Result.error("Failed to load live streams: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load live streams", e), e)
     }
 
     // ── VOD ────────────────────────────────────────────────────────
 
     override suspend fun getVodCategories(): Result<List<Category>> = try {
-        val categories = api.getVodCategories(apiEndpoint, username, password)
+        val categories = api.getVodCategories(
+            XtreamUrlFactory.buildPlayerApiUrl(serverUrl, username, password, action = "get_vod_categories")
+        )
         cacheAdultCategoryIds(ContentType.MOVIE, categories)
         Result.success(categories.map { it.toDomain(ContentType.MOVIE) })
     } catch (e: Exception) {
-        Result.error("Failed to load VOD categories: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load VOD categories", e), e)
     }
 
     override suspend fun getVodStreams(categoryId: Long?): Result<List<Movie>> = try {
         val adultCategoryIds = loadAdultCategoryIds(ContentType.MOVIE)
         val streams = api.getVodStreams(
-            apiEndpoint, username, password,
-            categoryId = categoryId?.toString()
+            XtreamUrlFactory.buildPlayerApiUrl(
+                serverUrl = serverUrl,
+                username = username,
+                password = password,
+                action = "get_vod_streams",
+                extraQueryParams = mapOf("category_id" to categoryId?.toString())
+            )
         )
         Result.success(streams.map { it.toMovie(adultCategoryIds) })
     } catch (e: Exception) {
-        Result.error("Failed to load VOD: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load VOD", e), e)
     }
 
     override suspend fun getVodInfo(vodId: Long): Result<Movie> = try {
-        val response = api.getVodInfo(apiEndpoint, username, password, vodId = vodId)
+        val response = api.getVodInfo(
+            XtreamUrlFactory.buildPlayerApiUrl(
+                serverUrl = serverUrl,
+                username = username,
+                password = password,
+                action = "get_vod_info",
+                extraQueryParams = mapOf("vod_id" to vodId.toString())
+            )
+        )
         val movieData = response.movieData
         val info = response.info
 
@@ -172,32 +195,47 @@ class XtreamProvider(
             )
         }
     } catch (e: Exception) {
-        Result.error("Failed to load movie details: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load movie details", e), e)
     }
 
     // ── Series ─────────────────────────────────────────────────────
 
     override suspend fun getSeriesCategories(): Result<List<Category>> = try {
-        val categories = api.getSeriesCategories(apiEndpoint, username, password)
+        val categories = api.getSeriesCategories(
+            XtreamUrlFactory.buildPlayerApiUrl(serverUrl, username, password, action = "get_series_categories")
+        )
         cacheAdultCategoryIds(ContentType.SERIES, categories)
         Result.success(categories.map { it.toDomain(ContentType.SERIES) })
     } catch (e: Exception) {
-        Result.error("Failed to load series categories: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load series categories", e), e)
     }
 
     override suspend fun getSeriesList(categoryId: Long?): Result<List<Series>> = try {
         val adultCategoryIds = loadAdultCategoryIds(ContentType.SERIES)
         val items = api.getSeriesList(
-            apiEndpoint, username, password,
-            categoryId = categoryId?.toString()
+            XtreamUrlFactory.buildPlayerApiUrl(
+                serverUrl = serverUrl,
+                username = username,
+                password = password,
+                action = "get_series",
+                extraQueryParams = mapOf("category_id" to categoryId?.toString())
+            )
         )
         Result.success(items.map { it.toDomain(adultCategoryIds) })
     } catch (e: Exception) {
-        Result.error("Failed to load series: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load series", e), e)
     }
 
     override suspend fun getSeriesInfo(seriesId: Long): Result<Series> = try {
-        val response = api.getSeriesInfo(apiEndpoint, username, password, seriesId = seriesId)
+        val response = api.getSeriesInfo(
+            XtreamUrlFactory.buildPlayerApiUrl(
+                serverUrl = serverUrl,
+                username = username,
+                password = password,
+                action = "get_series_info",
+                extraQueryParams = mapOf("series_id" to seriesId.toString())
+            )
+        )
         val info = response.info
 
         if (info == null) {
@@ -231,9 +269,11 @@ class XtreamProvider(
                             releaseDate = ep.info?.releaseDate,
                             seriesId = seriesId,
                             providerId = providerId,
-                            streamUrl = buildSeriesStreamUrl(
-                                ep.id.toLongOrNull() ?: 0,
-                                ep.containerExtension
+                            streamUrl = XtreamUrlFactory.buildInternalStreamUrl(
+                                providerId = providerId,
+                                kind = XtreamStreamKind.SERIES,
+                                streamId = ep.id.toLongOrNull() ?: 0,
+                                containerExtension = ep.containerExtension
                             ),
                             isAdult = isAdult,
                             isUserProtected = false,
@@ -253,53 +293,87 @@ class XtreamProvider(
             )
         }
     } catch (e: Exception) {
-        Result.error("Failed to load series details: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load series details", e), e)
     }
 
     // ── EPG ────────────────────────────────────────────────────────
 
     override suspend fun getEpg(channelId: String): Result<List<Program>> = try {
         val streamId = channelId.toLongOrNull() ?: 0
-        val response = api.getFullEpg(apiEndpoint, username, password, streamId = streamId)
+        val response = api.getFullEpg(
+            XtreamUrlFactory.buildPlayerApiUrl(
+                serverUrl = serverUrl,
+                username = username,
+                password = password,
+                action = "get_simple_data_table",
+                extraQueryParams = mapOf("stream_id" to streamId.toString())
+            )
+        )
         Result.success(response.epgListings.map { it.toDomain() })
     } catch (e: Exception) {
-        Result.error("Failed to load EPG: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load EPG", e), e)
     }
 
     override suspend fun getShortEpg(channelId: String, limit: Int): Result<List<Program>> = try {
         val streamId = channelId.toLongOrNull() ?: 0
-        val response = api.getShortEpg(apiEndpoint, username, password, streamId = streamId, limit = limit)
+        val response = api.getShortEpg(
+            XtreamUrlFactory.buildPlayerApiUrl(
+                serverUrl = serverUrl,
+                username = username,
+                password = password,
+                action = "get_short_epg",
+                extraQueryParams = mapOf(
+                    "stream_id" to streamId.toString(),
+                    "limit" to limit.toString()
+                )
+            )
+        )
         Result.success(response.epgListings.map { it.toDomain() })
     } catch (e: Exception) {
-        Result.error("Failed to load EPG: ${e.message}", e)
+        Result.error(XtreamErrorFormatter.message("Failed to load EPG", e), e)
     }
 
     // ── Stream URLs ────────────────────────────────────────────────
 
     override suspend fun buildStreamUrl(streamId: Long, containerExtension: String?): String {
-        val baseUrl = serverUrl.trimEnd('/')
-        return "$baseUrl/live/$username/$password/$streamId.ts"
+        return XtreamUrlFactory.buildPlaybackUrl(serverUrl, username, password, XtreamStreamKind.LIVE, streamId)
     }
 
     private fun buildMovieStreamUrl(streamId: Long, containerExtension: String?): String {
-        val baseUrl = serverUrl.trimEnd('/')
-        val ext = containerExtension ?: "mp4"
-        return "$baseUrl/movie/$username/$password/$streamId.$ext"
+        return XtreamUrlFactory.buildPlaybackUrl(
+            serverUrl = serverUrl,
+            username = username,
+            password = password,
+            kind = XtreamStreamKind.MOVIE,
+            streamId = streamId,
+            containerExtension = containerExtension
+        )
     }
 
     private fun buildSeriesStreamUrl(streamId: Long, containerExtension: String?): String {
-        val baseUrl = serverUrl.trimEnd('/')
-        val ext = containerExtension ?: "mp4"
-        return "$baseUrl/series/$username/$password/$streamId.$ext"
+        return XtreamUrlFactory.buildPlaybackUrl(
+            serverUrl = serverUrl,
+            username = username,
+            password = password,
+            kind = XtreamStreamKind.SERIES,
+            streamId = streamId,
+            containerExtension = containerExtension
+        )
     }
 
     override suspend fun buildCatchUpUrl(streamId: Long, start: Long, end: Long): String? {
-        val baseUrl = serverUrl.trimEnd('/')
-        val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd:HH-mm", java.util.Locale.getDefault())
+        val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd:HH-mm", java.util.Locale.ROOT)
         dateFormat.timeZone = java.util.TimeZone.getTimeZone("UTC") // Xtream servers typically use UTC for EPG timeshifts
         val formattedStart = dateFormat.format(java.util.Date(start * 1000L))
         val durationMinutes = (end - start) / 60
-        return "$baseUrl/timeshift/$username/$password/$durationMinutes/$formattedStart/$streamId.ts"
+        return XtreamUrlFactory.buildCatchUpUrl(
+            serverUrl = serverUrl,
+            username = username,
+            password = password,
+            durationMinutes = durationMinutes,
+            formattedStart = formattedStart,
+            streamId = streamId
+        )
     }
 
     // ── Mappers ────────────────────────────────────────────────────
@@ -307,22 +381,24 @@ class XtreamProvider(
     private suspend fun loadAdultCategoryIds(type: ContentType): Set<Long> {
         adultCategoryCacheMutex.withLock {
             adultCategoryCache[type]?.let { return it }
-        }
-        val categories = when (type) {
-            ContentType.LIVE -> api.getLiveCategories(apiEndpoint, username, password)
-            ContentType.MOVIE -> api.getVodCategories(apiEndpoint, username, password)
-            ContentType.SERIES -> api.getSeriesCategories(apiEndpoint, username, password)
-            ContentType.SERIES_EPISODE -> emptyList()
-        }
-        return categories
-            .filter { AdultContentClassifier.isAdultCategoryName(it.categoryName) }
-            .mapNotNull { it.categoryId.toLongOrNull() }
-            .toSet()
-            .also { ids ->
-                adultCategoryCacheMutex.withLock {
-                    adultCategoryCache[type] = ids
-                }
+            val categories = when (type) {
+                ContentType.LIVE -> api.getLiveCategories(
+                    XtreamUrlFactory.buildPlayerApiUrl(serverUrl, username, password, action = "get_live_categories")
+                )
+                ContentType.MOVIE -> api.getVodCategories(
+                    XtreamUrlFactory.buildPlayerApiUrl(serverUrl, username, password, action = "get_vod_categories")
+                )
+                ContentType.SERIES -> api.getSeriesCategories(
+                    XtreamUrlFactory.buildPlayerApiUrl(serverUrl, username, password, action = "get_series_categories")
+                )
+                ContentType.SERIES_EPISODE -> emptyList()
             }
+            return categories
+                .filter { AdultContentClassifier.isAdultCategoryName(it.categoryName) }
+                .mapNotNull { it.categoryId.toLongOrNull() }
+                .toSet()
+                .also { adultCategoryCache[type] = it }
+        }
     }
 
     private suspend fun cacheAdultCategoryIds(type: ContentType, categories: List<XtreamCategory>) {
@@ -364,7 +440,11 @@ class XtreamProvider(
             catchUpSupported = tvArchive == 1,
             catchUpDays = tvArchiveDuration ?: 0,
             providerId = providerId,
-            streamUrl = "$serverUrl/live/$username/$password/$streamId.ts",
+            streamUrl = XtreamUrlFactory.buildInternalStreamUrl(
+                providerId = providerId,
+                kind = XtreamStreamKind.LIVE,
+                streamId = streamId
+            ),
             isAdult = resolveAdultFlag(
                 categoryId = categoryId?.toLongOrNull(),
                 categoryName = categoryName,
@@ -385,7 +465,12 @@ class XtreamProvider(
         containerExtension = containerExtension,
         rating = rating5based?.toFloatOrNull() ?: 0f,
         providerId = providerId,
-        streamUrl = buildMovieStreamUrl(streamId, containerExtension),
+        streamUrl = XtreamUrlFactory.buildInternalStreamUrl(
+            providerId = providerId,
+            kind = XtreamStreamKind.MOVIE,
+            streamId = streamId,
+            containerExtension = containerExtension
+        ),
         isAdult = resolveAdultFlag(
             categoryId = categoryId?.toLongOrNull(),
             categoryName = categoryName,

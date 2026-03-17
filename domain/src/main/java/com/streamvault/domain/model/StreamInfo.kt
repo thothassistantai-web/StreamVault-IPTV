@@ -2,6 +2,7 @@ package com.streamvault.domain.model
 
 data class StreamInfo(
     val url: String,
+    val title: String? = null,
     val headers: Map<String, String> = emptyMap(),
     val userAgent: String? = null,
     val streamType: StreamType = StreamType.UNKNOWN,
@@ -18,6 +19,7 @@ enum class StreamType {
     DASH,
     MPEG_TS,
     PROGRESSIVE,
+    RTSP,    // PE-H03: native RTSP via Media3 RtspMediaSource
     UNKNOWN
 }
 

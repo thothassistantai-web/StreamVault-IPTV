@@ -14,41 +14,33 @@ import com.streamvault.domain.model.Result
 import com.streamvault.domain.repository.MovieRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import com.streamvault.data.util.toFtsPrefixQuery
 import javax.inject.Inject
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import javax.inject.Singleton
 
 @Singleton
 class MovieRepositoryImpl @Inject constructor(
     private val movieDao: MovieDao,
     private val categoryDao: CategoryDao,
-    private val preferencesRepository: PreferencesRepository
+    private val preferencesRepository: PreferencesRepository,
+    private val xtreamStreamUrlResolver: XtreamStreamUrlResolver
 ) : MovieRepository {
 
     override fun getMovies(providerId: Long): Flow<List<Movie>> =
-        combine(
-            movieDao.getByProvider(providerId),
-            preferencesRepository.parentalControlLevel
-        ) { entities: List<MovieEntity>, level: Int ->
-            if (level == 2) {
-                entities.filter { !it.isUserProtected }
-            } else {
-                entities
-            }
+        preferencesRepository.parentalControlLevel.flatMapLatest { level ->
+            if (level == 2) movieDao.getByProviderUnprotected(providerId)
+            else movieDao.getByProvider(providerId)
         }.map { list -> list.map { it.toDomain() } }
 
     override fun getMoviesByCategory(providerId: Long, categoryId: Long): Flow<List<Movie>> =
-        combine(
-            movieDao.getByCategory(providerId, categoryId),
-            preferencesRepository.parentalControlLevel
-        ) { entities: List<MovieEntity>, level: Int ->
-            if (level == 2) {
-                entities.filter { !it.isUserProtected }
-            } else {
-                entities
-            }
+        preferencesRepository.parentalControlLevel.flatMapLatest { level ->
+            if (level == 2) movieDao.getByCategoryUnprotected(providerId, categoryId)
+            else movieDao.getByCategory(providerId, categoryId)
         }.map { list -> list.map { it.toDomain() } }
 
     override fun getMoviesByCategoryPage(
@@ -82,18 +74,27 @@ class MovieRepositoryImpl @Inject constructor(
 
     override fun getCategoryPreviewRows(providerId: Long, limitPerCategory: Int): Flow<Map<Long?, List<Movie>>> =
         combine(
-            movieDao.getByProvider(providerId),
+            categoryDao.getByProviderAndType(providerId, ContentType.MOVIE.name),
             preferencesRepository.parentalControlLevel
-        ) { entities: List<MovieEntity>, level: Int ->
-            if (level == 2) {
-                entities.filter { !it.isUserProtected }
+        ) { categories, level ->
+            val filtered = if (level == 2) categories.filter { !it.isAdult && !it.isUserProtected } else categories
+            filtered to level
+        }.flatMapLatest { (filteredCategories, level) ->
+            if (filteredCategories.isEmpty()) {
+                flowOf(emptyMap())
             } else {
-                entities
+                // SQL LIMIT applied per-category — avoids loading the full catalog into memory
+                val categoryGroupFlows: List<Flow<Pair<Long?, List<Movie>>>> = filteredCategories.map { cat ->
+                    movieDao.getByCategoryPreview(providerId, cat.categoryId, limitPerCategory)
+                        .map { entities ->
+                            val items = if (level == 2) entities.filter { !it.isUserProtected } else entities
+                            (cat.categoryId as Long?) to items.map { it.toDomain() }
+                        }
+                }
+                combine(categoryGroupFlows) { pairs ->
+                    pairs.associate { it.first to it.second }
+                }
             }
-        }.map { entities ->
-            entities.map { it.toDomain() }
-                .groupBy { it.categoryId }
-                .mapValues { (_, items) -> items.take(limitPerCategory) }
         }
 
     override fun getTopRatedPreview(providerId: Long, limit: Int): Flow<List<Movie>> =
@@ -197,25 +198,20 @@ class MovieRepositoryImpl @Inject constructor(
 
     @Deprecated("Use getStreamInfo() instead", ReplaceWith("getStreamInfo(movie)"))
     override suspend fun getStreamUrl(movie: Movie): Result<String> =
-        if (movie.streamUrl.isNotBlank()) {
-            Result.success(movie.streamUrl)
-        } else {
-            Result.error("No stream URL available for movie: ${movie.name}")
-        }
+        xtreamStreamUrlResolver.resolve(
+            url = movie.streamUrl,
+            fallbackProviderId = movie.providerId,
+            fallbackStreamId = movie.streamId,
+            fallbackContentType = ContentType.MOVIE,
+            fallbackContainerExtension = movie.containerExtension
+        )?.let { resolvedUrl ->
+            Result.success(resolvedUrl)
+        } ?: Result.error("No stream URL available for movie: ${movie.name}")
 
     override suspend fun refreshMovies(providerId: Long): Result<Unit> =
         Result.success(Unit) // Handled by ProviderRepository
 
     override suspend fun updateWatchProgress(movieId: Long, progress: Long) {
         movieDao.updateWatchProgress(movieId, progress)
-    }
-
-    private fun String.toFtsPrefixQuery(): String {
-        val tokens = trim()
-            .split(Regex("\\s+"))
-            .map { token -> token.replace(Regex("[^\\p{L}\\p{N}_]"), "") }
-            .filter { it.length >= 2 }
-
-        return tokens.joinToString(" AND ") { "$it*" }
     }
 }

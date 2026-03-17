@@ -35,7 +35,6 @@ import com.streamvault.app.ui.components.SeriesCard
 import com.streamvault.app.ui.components.TvEmptyState
 import com.streamvault.app.ui.components.shell.AppNavigationChrome
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
-import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.theme.*
 import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Movie
@@ -271,7 +270,7 @@ fun SearchScreen(
                 Text(
                     text = stringResource(R.string.search_title),
                     style = MaterialTheme.typography.headlineSmall,
-                    color = AppColors.TextPrimary
+                    color = TextPrimary
                 )
             }
 
@@ -279,7 +278,7 @@ fun SearchScreen(
                 Text(
                     text = stringResource(R.string.search_command_subtitle),
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppColors.TextSecondary,
+                    color = TextSecondary,
                     modifier = Modifier.widthIn(max = 640.dp)
                 )
             }
@@ -482,7 +481,7 @@ fun SectionHeader(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleMedium,
-        color = AppColors.Brand,
+        color = Primary,
         modifier = Modifier.padding(vertical = 8.dp)
     )
 }
