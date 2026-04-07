@@ -13,6 +13,7 @@ import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.repository.ChannelRepository
 import com.streamvault.domain.repository.EpgRepository
+import com.streamvault.domain.repository.EpgSourceRepository
 import com.streamvault.domain.repository.FavoriteRepository
 import com.streamvault.domain.repository.ProviderRepository
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +40,7 @@ class EpgViewModelTest {
     private val providerRepository: ProviderRepository = mock()
     private val channelRepository: ChannelRepository = mock()
     private val epgRepository: EpgRepository = mock()
+    private val epgSourceRepository: EpgSourceRepository = mock()
     private val favoriteRepository: FavoriteRepository = mock()
     private val preferencesRepository: PreferencesRepository = mock()
     private val parentalControlManager: ParentalControlManager = mock()
@@ -119,6 +121,7 @@ class EpgViewModelTest {
             providerRepository = providerRepository,
             channelRepository = channelRepository,
             epgRepository = epgRepository,
+            epgSourceRepository = epgSourceRepository,
             favoriteRepository = favoriteRepository,
             preferencesRepository = preferencesRepository,
             parentalControlManager = parentalControlManager
@@ -128,7 +131,7 @@ class EpgViewModelTest {
         waitForUiState { viewModel.uiState.value.programsByChannel.keys.containsAll(listOf("one", "two")) }
 
         assertThat(viewModel.uiState.value.programsByChannel.keys).containsExactly("one", "two")
-    verify(epgRepository).getResolvedProgramsForChannels(eq(provider.id), eq(listOf(1L, 2L)), any(), any())
+        verify(epgRepository).getResolvedProgramsForChannels(eq(provider.id), eq(listOf(1L, 2L)), any(), any())
         verify(epgRepository).getProgramsForChannels(eq(provider.id), eq(listOf("one", "two")), any(), any())
         verify(epgRepository, never()).getProgramsForChannel(any(), any(), any(), any())
     }
@@ -194,6 +197,7 @@ class EpgViewModelTest {
             providerRepository = providerRepository,
             channelRepository = channelRepository,
             epgRepository = epgRepository,
+            epgSourceRepository = epgSourceRepository,
             favoriteRepository = favoriteRepository,
             preferencesRepository = preferencesRepository,
             parentalControlManager = parentalControlManager
@@ -272,6 +276,7 @@ class EpgViewModelTest {
             providerRepository = providerRepository,
             channelRepository = channelRepository,
             epgRepository = epgRepository,
+            epgSourceRepository = epgSourceRepository,
             favoriteRepository = favoriteRepository,
             preferencesRepository = preferencesRepository,
             parentalControlManager = parentalControlManager
