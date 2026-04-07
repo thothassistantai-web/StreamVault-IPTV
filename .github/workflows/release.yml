@@ -129,13 +129,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download release APK artifact
         uses: actions/download-artifact@v4
         with:
           name: release-apk
           path: dist
-
-      - uses: actions/checkout@v4
 
       - name: Read app version
         id: app_version
