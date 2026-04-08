@@ -70,11 +70,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build release APK
-        run: ./gradlew --no-daemon --console=plain :app:assembleRelease
-
       - name: Run unit tests and coverage
-        run: ./gradlew --no-daemon --console=plain testDebugUnitTest koverXmlReportCi koverHtmlReportCi
+        run: ./gradlew --console=plain testDebugUnitTest koverXmlReportCi koverHtmlReportCi
+
+      - name: Build release APK
+        run: ./gradlew --console=plain :app:assembleRelease
 
       - name: Prepare release artifact
         if: github.event_name == 'workflow_dispatch'

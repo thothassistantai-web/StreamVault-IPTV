@@ -74,6 +74,7 @@ class HomeViewModelTest {
         whenever(preferencesRepository.liveTvChannelMode).thenReturn(flowOf("COMPACT"))
         whenever(preferencesRepository.liveTvCategoryFilters).thenReturn(flowOf(emptyList()))
         whenever(preferencesRepository.liveTvQuickFilterVisibility).thenReturn(flowOf(null))
+        whenever(preferencesRepository.showLiveSourceSwitcher).thenReturn(flowOf(false))
         whenever(preferencesRepository.liveChannelNumberingMode).thenReturn(flowOf(ChannelNumberingMode.PROVIDER))
         whenever(preferencesRepository.isIncognitoMode).thenReturn(flowOf(false))
         whenever(preferencesRepository.getHiddenCategoryIds(any(), any())).thenReturn(flowOf(emptySet()))
