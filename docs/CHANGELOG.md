@@ -2,16 +2,16 @@
 
 All notable product changes are recorded in this document.
 
-## 1.0.3 - 08/04/2026
+## 1.0.3 - 09/04/2026
 
 ### Added
 - Added a full DVR workflow with scheduled and background recording, conflict detection, recording persistence, repair/reconcile support, and app-managed default storage for recordings.
 - Added combined M3U live source support, including merged-provider profiles, active source selection, and provider-management controls in Settings for building combined Live TV sources.
+- Added an optional Live TV provider/source browser for M3U sources, with compact in-browser switching and the setting disabled by default.
 - Added in-app playback actions for completed recordings, plus an on-player recording indicator so active captures remain visible during playback.
 - Added broader shipped locale coverage together with locale-aware typography fallbacks to improve multilingual rendering across the TV UI.
 
 ### Changed
-- Updated the Live TV source browser to use a compact provider switcher inside the categories header, removing the duplicate source controls and reclaiming browsing space for categories and channels.
 - Updated provider and recording settings surfaces with improved TV focus treatment, white focus strokes, fixed combined-provider dialogs, and much denser recording cards and action layouts.
 - Updated local playback handling so completed recordings open through local-file-capable player data sources and are treated as local media instead of live transport streams.
 - Updated recording storage and playback flows to default to safe app-managed folders while still supporting custom storage selection when users want it.
