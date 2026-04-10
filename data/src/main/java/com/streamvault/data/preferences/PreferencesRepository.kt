@@ -71,6 +71,7 @@ class PreferencesRepository @Inject constructor(
         val VOD_VIEW_MODE = stringPreferencesKey("vod_view_mode")
         val GUIDE_DENSITY = stringPreferencesKey("guide_density")
         val GUIDE_CHANNEL_MODE = stringPreferencesKey("guide_channel_mode")
+        val GUIDE_DEFAULT_CATEGORY_ID = longPreferencesKey("guide_default_category_id")
         val GUIDE_FAVORITES_ONLY = intPreferencesKey("guide_favorites_only")
         val GUIDE_ANCHOR_TIME = longPreferencesKey("guide_anchor_time")
         val PROMOTED_LIVE_GROUP_IDS = stringPreferencesKey("promoted_live_group_ids")
@@ -815,6 +816,16 @@ class PreferencesRepository @Inject constructor(
     suspend fun setGuideChannelMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.GUIDE_CHANNEL_MODE] = mode
+        }
+    }
+
+    val guideDefaultCategoryId: Flow<Long?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.GUIDE_DEFAULT_CATEGORY_ID]
+    }
+
+    suspend fun setGuideDefaultCategoryId(categoryId: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.GUIDE_DEFAULT_CATEGORY_ID] = categoryId
         }
     }
 

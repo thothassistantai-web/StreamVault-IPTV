@@ -250,6 +250,7 @@ class ProviderRepositoryImpl @Inject constructor(
         providerId: Long,
         force: Boolean,
         movieFastSyncOverride: Boolean?,
+        epgSyncModeOverride: ProviderEpgSyncMode?,
         onProgress: ((String) -> Unit)?
     ): Result<Unit> {
         return when (
@@ -257,6 +258,7 @@ class ProviderRepositoryImpl @Inject constructor(
                 providerId,
                 force = force,
                 movieFastSyncOverride = movieFastSyncOverride,
+                epgSyncModeOverride = epgSyncModeOverride,
                 onProgress = onProgress
             )
         ) {

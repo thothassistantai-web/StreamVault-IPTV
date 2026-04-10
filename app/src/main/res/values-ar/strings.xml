@@ -277,6 +277,7 @@
     <string name="settings_category_type_movies_description">رتّب وأخفِ فئات الأفلام من المزوّد دون التأثير على المفضلة، أو الاستئناف، أو الأرفف المخصصة.</string>
     <string name="settings_category_type_series_description">رتّب وأخفِ فئات المسلسلات من المزوّد دون التأثير على المفضلة، أو متابعة المشاهدة، أو الأرفف المخصصة.</string>
     <string name="settings_playback">التشغيل</string>
+    <string name="settings_browsing">التصفح</string>
     <string name="settings_playback_subtitle">اضبط سلوك وحدة فك الترميز والتخزين المؤقت لتشغيل أكثر سلاسة.</string>
     <string name="settings_live_tv_channel_mode">وضع قنوات البث المباشر</string>
     <string name="settings_live_tv_channel_mode_subtitle">اختر كيف يعرض متصفح البث المباشر القنوات وما إذا كان يعرض معاينة قبل التشغيل.</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">اختر ما تريد تحديثه لهذا المزوّد.</string>
     <string name="settings_sync_option_all">مزامنة الكل</string>
     <string name="settings_sync_option_fast">مزامنة سريعة</string>
+    <string name="settings_syncing_preparing">جارٍ تحضير المزامنة...</string>
+    <string name="settings_syncing_section">جارٍ مزامنة %1$s...</string>
     <string name="settings_sync_option_tv">مزامنة القنوات</string>
     <string name="settings_sync_option_movies">مزامنة الأفلام</string>
     <string name="settings_sync_option_series">مزامنة المسلسلات</string>

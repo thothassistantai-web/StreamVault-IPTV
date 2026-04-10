@@ -79,6 +79,7 @@ class BackupManagerImpl @Inject constructor(
                 "playerEthernetMaxVideoHeight" to (preferencesRepository.playerEthernetMaxVideoHeight.first() ?: 0).toString(),
                 "guideDensity" to (preferencesRepository.guideDensity.first() ?: ""),
                 "guideChannelMode" to (preferencesRepository.guideChannelMode.first() ?: ""),
+                "guideDefaultCategoryId" to (preferencesRepository.guideDefaultCategoryId.first() ?: 0L).toString(),
                 "guideFavoritesOnly" to preferencesRepository.guideFavoritesOnly.first().toString(),
                 "guideAnchorTime" to (preferencesRepository.guideAnchorTime.first() ?: 0L).toString(),
                 "lastActiveProviderId" to (preferencesRepository.lastActiveProviderId.first() ?: -1L).toString(),
@@ -316,6 +317,9 @@ class BackupManagerImpl @Inject constructor(
                 preferencesRepository.setPlayerEthernetMaxVideoHeight(prefs["playerEthernetMaxVideoHeight"]?.toIntOrNull()?.takeIf { it > 0 })
                 prefs["guideDensity"]?.takeIf { it.isNotBlank() }?.let { preferencesRepository.setGuideDensity(it) }
                 prefs["guideChannelMode"]?.takeIf { it.isNotBlank() }?.let { preferencesRepository.setGuideChannelMode(it) }
+                prefs["guideDefaultCategoryId"]?.toLongOrNull()?.takeIf { it != 0L }?.let {
+                    preferencesRepository.setGuideDefaultCategoryId(it)
+                }
                 prefs["guideFavoritesOnly"]?.toBooleanStrictOrNull()?.let { preferencesRepository.setGuideFavoritesOnly(it) }
                 prefs["guideAnchorTime"]?.toLongOrNull()?.takeIf { it > 0L }?.let { preferencesRepository.setGuideAnchorTime(it) }
                 prefs["promotedLiveGroupIds"]?.let { token ->

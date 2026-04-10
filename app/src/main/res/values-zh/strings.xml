@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">StreamVault</string>
     <string name="nav_home">首页</string>
@@ -73,7 +73,7 @@
     <string name="home_saved_empty_hint">将频道设为收藏或添加到自定义直播分组，即可固定在这里。</string>
     <string name="home_delete_group_title">删除分组？</string>
     <string name="home_delete_group_body">确定要删除“%1$s”吗？这将移除此分组中的所有频道。</string>
-    <string name="home_delete_group_confirm">BYTEe5ˆ BYTEe9™₪</string>
+    <string name="home_delete_group_confirm">删除</string>
     <string name="home_delete_group_cancel">取消</string>
     <string name="home_group_created">已创建分组“%1$s”</string>
     <string name="home_group_renamed">已将分组重命名为 %1$s</string>
@@ -142,7 +142,7 @@
     <string name="add_group_move_up">上移</string>
     <string name="add_group_move_down">下移</string>
     <string name="add_group_custom_groups_title">自定义组</string>
-    <string name="add_group_remove_btn">BYTEe5ˆ BYTEe9™₪</string>
+    <string name="add_group_remove_btn">删除</string>
     <string name="add_group_add_btn">添加</string>
     <string name="add_group_create_new_btn">创建新组</string>
     <string name="card_locked_channel">锁定频道</string>
@@ -150,7 +150,7 @@
     <string name="card_locked">已锁定</string>
     <string name="category_see_all">查看全部</string>
     <string name="continue_watching_title">继续观看</string>
-    <string name="continue_watching_season_episode">BYTEe7¬¬%1$dBYTEe5­£ BYTEe7¬¬%2$dBYTEe9›†</string>
+    <string name="continue_watching_season_episode">第%1$d季 第%2$d集</string>
     <string name="playlist_no_provider">无提供商</string>
     <string name="live_source_label">来源</string>
     <string name="live_source_filter_label">播放列表筛选</string>
@@ -277,6 +277,7 @@
     <string name="settings_category_type_movies_description">排序并隐藏提供商电影分类，不影响收藏、继续观看或自定义栏目。</string>
     <string name="settings_category_type_series_description">对提供商的剧集分类进行排序和隐藏，不影响收藏、继续观看或自定义栏目。</string>
     <string name="settings_playback">播放</string>
+    <string name="settings_browsing">浏览</string>
     <string name="settings_playback_subtitle">调整解码器和缓冲行为，让播放更流畅。</string>
     <string name="settings_live_tv_channel_mode">直播电视频道模式</string>
     <string name="settings_live_tv_channel_mode_subtitle">选择直播电视浏览器如何显示频道，以及是否在播放前预览。</string>
@@ -365,7 +366,7 @@
     <string name="settings_subtitle_background_blue">深蓝</string>
     <string name="settings_select_wifi_quality_cap">选择 Wi‑Fi 画质偏好</string>
     <string name="settings_select_ethernet_quality_cap">选择以太网画质偏好</string>
-    <string name="settings_live_tv_mode_comfortable">BYTEe8ˆ’BYTEe9€‚</string>
+    <string name="settings_live_tv_mode_comfortable">舒适</string>
     <string name="settings_live_tv_mode_comfortable_desc">更大的行距，直接单击播放。</string>
     <string name="settings_live_tv_mode_compact">紧凑</string>
     <string name="settings_live_tv_mode_compact_desc">更密集的频道列表，直接单击播放。</string>
@@ -394,7 +395,7 @@
     <string name="settings_decoder_software">优先软件扩展</string>
     <string name="settings_select_decoder_mode">选择解码器模式</string>
     <string name="settings_buffer_duration">缓冲时长</string>
-    <string name="settings_buffer_5s">5BYTEe7§’</string>
+    <string name="settings_buffer_5s">5秒</string>
     <string name="settings_about">关于</string>
     <string name="settings_about_subtitle">此安装的版本、构建和支持信息。</string>
     <string name="settings_app_version">应用版本</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">选择要为此提供商刷新的内容。</string>
     <string name="settings_sync_option_all">同步全部</string>
     <string name="settings_sync_option_fast">快速同步</string>
+    <string name="settings_syncing_preparing">正在准备同步...</string>
+    <string name="settings_syncing_section">正在同步 %1$s...</string>
     <string name="settings_sync_option_tv">同步电视</string>
     <string name="settings_sync_option_movies">同步电影</string>
     <string name="settings_sync_option_series">同步系列</string>
@@ -476,7 +479,7 @@
     <string name="settings_sync_sections_failed">同步失败：%1$s。</string>
     <string name="settings_sync_sections_partial">已同步：%1$s。失败：%2$s。</string>
     <string name="settings_edit">编辑</string>
-    <string name="settings_delete">BYTEe5ˆ BYTEe9™₪</string>
+    <string name="settings_delete">删除</string>
     <string name="settings_pc_btn">家长控制</string>
     <string name="settings_active">已启用</string>
     <string name="settings_language">语言</string>
@@ -546,13 +549,13 @@
     <string name="settings_recording_status_completed">已完成</string>
     <string name="settings_recording_status_failed">失败</string>
     <string name="settings_recording_status_cancelled">已取消</string>
-    <string name="settings_recording_time_window">%1$s BYTEe2†’ %2$s</string>
+    <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_recurrence_none">一次性录制</string>
     <string name="settings_recording_recurrence_daily">每日重复</string>
     <string name="settings_recording_recurrence_weekly">每周重复</string>
     <string name="settings_recording_stop">停止</string>
     <string name="settings_recording_cancel">取消</string>
-    <string name="settings_recording_delete">BYTEe5ˆ BYTEe9™₪</string>
+    <string name="settings_recording_delete">删除</string>
     <string name="settings_recording_stopped">录音停止</string>
     <string name="settings_recording_cancelled">录音已取消</string>
     <string name="settings_recording_deleted">录音已删除</string>
@@ -776,7 +779,7 @@
     <string name="player_forward">快进</string>
     <string name="player_next">下一步</string>
     <string name="player_restart">重新开始</string>
-    <string name="player_archive">BYTEe5­˜BYTEe6¡£</string>
+    <string name="player_archive">存档</string>
     <string name="player_record">录制</string>
     <string name="player_stop_recording">停止录制</string>
     <string name="player_schedule_recording">预约</string>
@@ -824,7 +827,7 @@
     <string name="player_last_group_label">上次：%1$s</string>
     <string name="player_categories_label">分类</string>
     <string name="player_last_group_hint">返回你上次浏览的直播分组。</string>
-    <string name="player_archive_badge">BYTEe5­˜BYTEe6¡£</string>
+    <string name="player_archive_badge">存档</string>
     <string name="player_catchup_badge">回看</string>
     <string name="player_time_range_minutes">%1$s - %2$s | %3$d 分钟</string>
     <string name="player_next_label">下一个：</string>
@@ -835,7 +838,7 @@
     <string name="player_action_controls">控制</string>
     <string name="player_action_restart_short">重播</string>
     <string name="player_action_view">查看</string>
-    <string name="player_action_group">BYTEe9›†BYTEe5›¢</string>
+    <string name="player_action_group">集团</string>
     <string name="player_action_recent_short">最近</string>
     <string name="player_action_guide">节目指南</string>
     <string name="player_action_split">分屏</string>
@@ -846,7 +849,7 @@
     <string name="player_diagnostics_decoder">解码器</string>
     <string name="player_diagnostics_stream_class">流类别</string>
     <string name="player_diagnostics_playback_state">播放状态</string>
-    <string name="player_diagnostics_archive">BYTEe5­˜BYTEe6¡£</string>
+    <string name="player_diagnostics_archive">存档</string>
     <string name="player_diagnostics_alternates">备用流</string>
     <string name="player_diagnostics_channel_errors">频道错误</string>
     <string name="player_diagnostics_resolution">分辨率</string>
@@ -859,7 +862,7 @@
     <string name="player_diagnostics_troubleshooting">故障排查</string>
     <string name="player_diagnostics_section_source">来源</string>
     <string name="player_diagnostics_section_playback">播放</string>
-    <string name="player_diagnostics_section_video">BYTEe8§†BYTEe9¢‘</string>
+    <string name="player_diagnostics_section_video">视频</string>
     <string name="player_diagnostics_section_audio">音频</string>
     <string name="player_diagnostics_section_recovery">恢复</string>
     <string name="player_no_guide_data">没有节目指南数据</string>
@@ -907,7 +910,7 @@
     <string name="epg_page_forward">下一页</string>
     <string name="epg_jump_prime_time">黄金时段</string>
     <string name="epg_jump_tomorrow">明天</string>
-    <string name="epg_next_day">BYTEe6¬¡BYTEe6—¥</string>
+    <string name="epg_next_day">次日</string>
     <string name="epg_day_yesterday">昨天</string>
     <string name="epg_day_today">今天</string>
     <string name="epg_day_tomorrow">明天</string>
@@ -929,7 +932,7 @@
     <string name="epg_density_subtitle">选择节目表在屏幕上显示多少细节。</string>
     <string name="epg_density_compact">紧凑</string>
     <string name="epg_density_compact_hint">屏幕可显示更多频道</string>
-    <string name="epg_density_comfortable">BYTEe8ˆ’BYTEe9€‚</string>
+    <string name="epg_density_comfortable">舒适</string>
     <string name="epg_density_comfortable_hint">适合日常浏览的平衡布局</string>
     <string name="epg_density_cinematic">影院式</string>
     <string name="epg_density_cinematic_hint">更大的行，适合远距离观看</string>
@@ -1015,7 +1018,7 @@
     <string name="series_detail_back">返回媒体库</string>
     <string name="series_plot_fallback">暂无剧情简介</string>
     <string name="series_seasons">季</string>
-    <string name="series_episodes">BYTEe9›†BYTEe6•° (%1$d)</string>
+    <string name="series_episodes">集数 (%1$d)</string>
     <string name="series_unwatched_badge">还剩 %1$d 集未看完</string>
     <string name="vod_external_ratings_heading">评分</string>
     <string name="vod_rating_imdb">IMDb</string>
@@ -1073,7 +1076,7 @@
     <string name="multiview_telemetry_detail">总计丢弃 %1$d • 最近 +%2$d • 负载 %3$d • %4$s 温度</string>
     <string name="multiview_thermal_unknown">未知</string>
     <string name="multiview_thermal_normal">正常</string>
-    <string name="multiview_thermal_light">BYTEe5…‰</string>
+    <string name="multiview_thermal_light">光</string>
     <string name="multiview_thermal_moderate">中等</string>
     <string name="multiview_thermal_severe">严重</string>
     <string name="multiview_thermal_critical">危急</string>
@@ -1095,7 +1098,7 @@
     <string name="action_cancel">取消</string>
     <string name="action_save_order">保存顺序</string>
     <string name="action_done">完成</string>
-    <string name="action_delete">BYTEe5ˆ BYTEe9™₪</string>
+    <string name="action_delete">删除</string>
     <string name="action_clear">清除</string>
     <string name="action_space">空格</string>
     <string name="action_move">移动</string>
@@ -1110,7 +1113,7 @@
     <string name="label_episode">第%1$d集</string>
     <string name="label_episode_full">第 %1$d 集</string>
     <string name="label_duration_min">%1$d 分钟</string>
-    <string name="label_tv">BYTEe7”µBYTEe8§†</string>
+    <string name="label_tv">电视</string>
     <string name="badge_saved">已保存</string>
     <string name="badge_catch_up">回看</string>
     <string name="badge_moving">移动中</string>
@@ -1140,14 +1143,14 @@
     <string name="favorites_content_type_movie">电影</string>
     <string name="favorites_content_type_series">剧集</string>
     <string name="favorites_content_type_episode_format">第 %1$d 季 第 %2$d 集</string>
-    <string name="favorites_content_type_episode">BYTEe5‰§BYTEe9›†</string>
+    <string name="favorites_content_type_episode">剧集</string>
     <string name="favorites_content_type_live">直播</string>
     <string name="favorites_removed_home_priority">已将 %1$s 从首页优先级中移除。</string>
     <string name="favorites_pinned_home">已将 %1$s 固定到首页。</string>
     <string name="favorites_merged_group">已将 %1$s 合并到所选分组。</string>
     <string name="favorites_status_pill_format">%1$s %2$d</string>
     <string name="time_range_format">%1$s – %2$s</string>
-    <string name="channel_number_name_format">%1$dBYTEe3€‚ %2$s</string>
+    <string name="channel_number_name_format">%1$d。 %2$s</string>
     <string name="label_colon_value_format">%1$s：%2$s</string>
     <string name="split_count_format">%1$s %2$d/4</string>
     <string name="program_date_time_range">%1$s | %2$s – %3$s</string>
@@ -1174,4 +1177,3 @@
     <string name="tv_input_setup_retry_scan">重试自动扫描</string>
     <string name="tv_input_setup_success_hint">Android TV Live TV 现在可以打开您的 StreamVault 频道。</string>
 </resources>
-

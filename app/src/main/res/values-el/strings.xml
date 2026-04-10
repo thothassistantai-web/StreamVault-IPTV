@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">StreamVault</string>
     <string name="nav_home">Αρχική</string>
@@ -230,7 +230,7 @@
     <string name="library_loaded_results">Φορτώθηκαν %1$d από %2$d στοιχεία</string>
     <string name="library_load_more">Φόρτωση περισσότερων (%1$d/%2$d)</string>
     <string name="library_sort_library">Σειρά βιβλιοθήκης</string>
-    <string name="library_sort_az">BYTEce‘-BYTEce–</string>
+    <string name="library_sort_az">Α-Ζ</string>
     <string name="library_sort_release">Νεότερα</string>
     <string name="library_sort_updated">Πρόσφατα ενημερωμένα</string>
     <string name="library_sort_rating">Βαθμολογία</string>
@@ -277,6 +277,7 @@
     <string name="settings_category_type_movies_description">Ταξινομήστε και αποκρύψτε τις κατηγορίες ταινιών του παρόχου χωρίς να επηρεάζονται τα Favorites, Resume ή οι προσαρμοσμένες ράφες.</string>
     <string name="settings_category_type_series_description">Ταξινομήστε και αποκρύψτε τις κατηγορίες σειρών του παρόχου χωρίς να επηρεάζονται τα Favorites, Continue Watching ή οι προσαρμοσμένες ράφες.</string>
     <string name="settings_playback">Αναπαραγωγή</string>
+    <string name="settings_browsing">Περιήγηση</string>
     <string name="settings_playback_subtitle">Ρυθμίστε τον αποκωδικοποιητή και τη συμπεριφορά προσωρινής αποθήκευσης για πιο ομαλή αναπαραγωγή.</string>
     <string name="settings_live_tv_channel_mode">Λειτουργία Καναλιών Live TV</string>
     <string name="settings_live_tv_channel_mode_subtitle">Επιλέξτε πώς θα εμφανίζει τα κανάλια ο περιηγητής Live TV και αν θα γίνεται προεπισκόπηση πριν από την αναπαραγωγή.</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">Επιλέξτε τι να ανανεώσετε για αυτόν τον πάροχο.</string>
     <string name="settings_sync_option_all">Συγχρονισμός όλων</string>
     <string name="settings_sync_option_fast">Γρήγορος συγχρονισμός</string>
+    <string name="settings_syncing_preparing">Προετοιμασία συγχρονισμού...</string>
+    <string name="settings_syncing_section">Συγχρονίζεται το %1$s...</string>
     <string name="settings_sync_option_tv">Συγχρονισμός τηλεόρασης</string>
     <string name="settings_sync_option_movies">Συγχρονισμός ταινιών</string>
     <string name="settings_sync_option_series">Συγχρονισμός σειράς</string>
@@ -544,9 +547,9 @@
     <string name="settings_recording_status_scheduled">Προγραμματισμένη</string>
     <string name="settings_recording_status_recording">Εγγραφή</string>
     <string name="settings_recording_status_completed">Ολοκληρώθηκε</string>
-    <string name="settings_recording_status_failed">BYTEce‘BYTEcf€BYTEce­BYTEcf„BYTEcf…BYTEcf‡BYTEceµ</string>
+    <string name="settings_recording_status_failed">Απέτυχε</string>
     <string name="settings_recording_status_cancelled">Ακυρώθηκε</string>
-    <string name="settings_recording_time_window">%1$s BYTEe2†’ %2$s</string>
+    <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_recurrence_none">Εφάπαξ εγγραφή</string>
     <string name="settings_recording_recurrence_daily">Επαναλαμβάνεται καθημερινά</string>
     <string name="settings_recording_recurrence_weekly">Επαναλαμβάνεται εβδομαδιαία</string>
@@ -653,7 +656,7 @@
     <string name="favorites_sort_default_hint">Χρησιμοποίησε τη σειρά των αποθηκευμένων και των ομάδων σου</string>
     <string name="favorites_sort_recent">Πρόσφατα</string>
     <string name="favorites_sort_recent_hint">Φέρε μπροστά τα πρόσφατα προβληθέντα στοιχεία</string>
-    <string name="favorites_sort_title_alpha">BYTEce‘-BYTEce–</string>
+    <string name="favorites_sort_title_alpha">Α-Ζ</string>
     <string name="favorites_sort_title_hint">Αλφαβητική περιήγηση σε όλες τις ενότητες</string>
     <string name="favorites_jump_title">Μετάβαση σε ενότητα</string>
     <string name="favorites_jump_subtitle">Συντόμευση απευθείας στην αποθηκευμένη ομάδα ή στην ενότητα συστήματος που χρειάζεσαι.</string>
@@ -786,7 +789,7 @@
     <string name="player_recording_stopped">Η εγγραφή σταμάτησε.</string>
     <string name="player_recording_scheduled">Η εγγραφή προγραμματίστηκε για το %1$s.</string>
     <string name="player_recording_missing_context">Η εγγραφή χρειάζεται έγκυρο περιβάλλον ζωντανού καναλιού.</string>
-    <string name="player_subs">BYTEce¥BYTEcf€</string>
+    <string name="player_subs">Υπ</string>
     <string name="player_audio">Ήχος</string>
     <string name="player_action_mute">Σίγαση</string>
     <string name="player_action_cast">Μετάδοση</string>
@@ -1099,7 +1102,7 @@
     <string name="action_clear">Εκκαθάριση</string>
     <string name="action_space">Κενό</string>
     <string name="action_move">ΜΕΤΑΚΙΝΗΣΗ</string>
-    <string name="action_split">BYTEce£BYTEce BYTEce™BYTEce₪</string>
+    <string name="action_split">ΣΠΙΤ</string>
     <string name="label_provider">ΠΑΡΟΧΟΣ</string>
     <string name="label_selected">Επιλεγμένα</string>
     <string name="label_categories">Κατηγορίες</string>
@@ -1112,12 +1115,12 @@
     <string name="label_duration_min">%1$d λεπτά</string>
     <string name="label_tv">TV</string>
     <string name="badge_saved">ΑΠΟΘΗΚΕΥΜΕΝΟ</string>
-    <string name="badge_catch_up">BYTEce BYTEce›BYTEce—BYTEce¡BYTEce©BYTEce£BYTEce₪BYTEce•</string>
+    <string name="badge_catch_up">ΠΛΗΡΩΣΤΕ</string>
     <string name="badge_moving">ΜΕΤΑΚΙΝΗΣΗ</string>
     <string name="badge_fav">ΑΓΑΠ</string>
     <string name="badge_error">ΣΦΑΛΜΑ</string>
     <string name="badge_movie">ΤΑΙΝΙΑ</string>
-    <string name="badge_series">BYTEce£BYTEce•BYTEce™BYTEce¡BYTEce‘</string>
+    <string name="badge_series">ΣΕΙΡΑ</string>
     <string name="action_see_all">Προβολή όλων</string>
     <string name="dashboard_resume_movie">Συνέχιση ταινίας</string>
     <string name="dashboard_resume_series">Συνέχιση σειράς</string>
@@ -1146,11 +1149,11 @@
     <string name="favorites_pinned_home">Το %1$s καρφιτσώθηκε στην Αρχική.</string>
     <string name="favorites_merged_group">Το %1$s συγχωνεύτηκε στην επιλεγμένη ομάδα.</string>
     <string name="favorites_status_pill_format">%1$s %2$d</string>
-    <string name="time_range_format">%1$s BYTEe2€“ %2$s</string>
+    <string name="time_range_format">%1$s – %2$s</string>
     <string name="channel_number_name_format">%1$d. %2$s</string>
     <string name="label_colon_value_format">%1$s: %2$s</string>
     <string name="split_count_format">%1$s %2$d/4</string>
-    <string name="program_date_time_range">%1$s | %2$s BYTEe2€“ %3$s</string>
+    <string name="program_date_time_range">%1$s | %2$s – %3$s</string>
     <string name="diagnostics_summary_format">%1$s | %2$s</string>
     <string name="home_added_to_favorites">Το %1$s προστέθηκε στα Αγαπημένα</string>
     <string name="home_removed_from_favorites">Το %1$s αφαιρέθηκε από τα Αγαπημένα</string>
@@ -1174,4 +1177,3 @@
     <string name="tv_input_setup_retry_scan">Δοκιμάστε ξανά την αυτόματη σάρωση</string>
     <string name="tv_input_setup_success_hint">Το Android TV Live TV μπορεί πλέον να ανοίξει τα κανάλια σας StreamVault.</string>
 </resources>
-

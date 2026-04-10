@@ -300,6 +300,7 @@
     <string name="settings_category_type_series_description">Sort and hide provider series categories without affecting Favorites, Continue Watching, or custom shelves.</string>
     <string name="settings_playback">Playback</string>
     <string name="settings_playback_subtitle">Tune decoder and buffering behavior for smoother playback.</string>
+    <string name="settings_browsing">Browsing</string>
     <string name="settings_live_tv_channel_mode">Live TV Channel Mode</string>
     <string name="settings_live_tv_channel_mode_subtitle">Choose how the Live TV browser should present channels and whether it should preview before playback.</string>
     <string name="settings_live_tv_quick_filters">Live TV Quick Filters</string>
@@ -329,6 +330,9 @@
     <string name="settings_live_tv_quick_filter_removed">Removed %1$s from Live TV quick filters.</string>
     <string name="settings_live_channel_numbering_mode">Live TV Channel Numbering</string>
     <string name="settings_live_channel_numbering_mode_subtitle">Choose whether live channels use their position in the current group or keep the original numbers from the provider.</string>
+    <string name="settings_guide_default_category">Guide default category</string>
+    <string name="settings_select_guide_default_category">Select guide default category</string>
+    <string name="settings_guide_default_category_fallback">All Channels</string>
     <string name="settings_default_playback_speed">Default Playback Speed</string>
     <string name="settings_media_session">System Media Session</string>
     <string name="settings_media_session_subtitle">Expose playback to Android system media controls. Disable this if playback crashes on a specific device when opening the player.</string>
@@ -493,7 +497,9 @@
     <string name="settings_sync_dialog_title">Sync %1$s</string>
     <string name="settings_sync_dialog_subtitle">Choose what to refresh for this provider.</string>
     <string name="settings_sync_option_all">Sync All</string>
-    <string name="settings_sync_option_fast">Fast Sync</string>
+    <string name="settings_sync_option_fast">Quick Sync</string>
+    <string name="settings_syncing_preparing">Preparing sync...</string>
+    <string name="settings_syncing_section">Syncing %1$s...</string>
     <string name="settings_sync_option_tv">Sync TV</string>
     <string name="settings_sync_option_movies">Sync Movies</string>
     <string name="settings_sync_option_series">Sync Series</string>

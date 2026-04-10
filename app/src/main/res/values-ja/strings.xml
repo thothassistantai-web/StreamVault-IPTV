@@ -1,11 +1,11 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">StreamVault</string>
     <string name="nav_home">ホーム</string>
-    <string name="nav_live_tv">BYTEe3ƒ©BYTEe3‚₪BYTEe3ƒ–BYTEe3ƒ†BYTEe3ƒ¬BYTEe3ƒ“</string>
+    <string name="nav_live_tv">ライブテレビ</string>
     <string name="nav_movies">映画</string>
     <string name="nav_series">シリーズ</string>
-    <string name="nav_epg">BYTEe3‚¬BYTEe3‚₪BYTEe3ƒ‰</string>
+    <string name="nav_epg">ガイド</string>
     <string name="nav_settings">設定</string>
     <string name="welcome_enter_app">アプリを開く</string>
     <string name="welcome_manage_providers">プロバイダーを管理</string>
@@ -108,7 +108,7 @@
     <string name="dashboard_update_open_settings">更新を開く</string>
     <string name="dashboard_update_open_installer">設定からインストール</string>
     <string name="dashboard_updated_series_badge">更新されたシリーズ</string>
-    <string name="dashboard_stat_live">%1$d BYTEe3ƒ©BYTEe3‚₪BYTEe3ƒ–</string>
+    <string name="dashboard_stat_live">%1$d ライブ</string>
     <string name="dashboard_stat_favorites">%1$d 件のお気に入り</string>
     <string name="dashboard_stat_recent">%1$d 件の最近の項目</string>
     <string name="dashboard_stat_resume">%1$d 件を再開</string>
@@ -146,7 +146,7 @@
     <string name="add_group_add_btn">追加</string>
     <string name="add_group_create_new_btn">新しいグループを作成</string>
     <string name="card_locked_channel">チャンネルはロックされています</string>
-    <string name="card_live_badge">BYTEe3ƒ©BYTEe3‚₪BYTEe3ƒ–</string>
+    <string name="card_live_badge">ライブ</string>
     <string name="card_locked">ロック済み</string>
     <string name="category_see_all">すべて表示</string>
     <string name="continue_watching_title">視聴を続ける</string>
@@ -206,7 +206,7 @@
     <string name="library_full_browse_title_series">シリーズライブラリ全体を閲覧</string>
     <string name="library_saved_title">保存済み</string>
     <string name="library_saved_subtitle">お気に入りとカスタムグループ</string>
-    <string name="library_saved_items_count">%1$d BYTEe3‚¢BYTEe3‚₪BYTEe3ƒ†BYTEe3ƒ</string>
+    <string name="library_saved_items_count">%1$d ד‚¢ד‚₪דƒ†דƒ</string>
     <string name="library_saved_active_title">保存済みグループ</string>
     <string name="library_saved_active_summary">この保存済み表示には %1$d 件あります</string>
     <string name="library_saved_manage_action">管理</string>
@@ -277,6 +277,7 @@
     <string name="settings_category_type_movies_description">プロバイダーの映画カテゴリを並べ替え・非表示にしつつ、「お気に入り」「再開」「カスタム棚」には影響しません。</string>
     <string name="settings_category_type_series_description">プロバイダーのシリーズカテゴリを並べ替え・非表示にしつつ、「お気に入り」「視聴を続ける」「カスタム棚」には影響しません。</string>
     <string name="settings_playback">再生</string>
+    <string name="settings_browsing">ブラウズ</string>
     <string name="settings_playback_subtitle">より滑らかに再生できるよう、デコーダーとバッファリングの動作を調整します。</string>
     <string name="settings_live_tv_channel_mode">ライブTVチャンネルモード</string>
     <string name="settings_live_tv_channel_mode_subtitle">ライブTVブラウザーでチャンネルをどう表示し、再生前にプレビューするかを選択します。</string>
@@ -325,7 +326,7 @@
     <string name="settings_subtitle_background">字幕の背景</string>
     <string name="settings_wifi_quality_cap">Wi‑Fiの画質設定</string>
     <string name="settings_ethernet_quality_cap">Ethernetの画質設定</string>
-    <string name="settings_quality_cap_auto">BYTEe8‡×BYTEe5‹•</string>
+    <string name="settings_quality_cap_auto">自動</string>
     <string name="settings_speed_test_title">インターネット速度テスト</string>
     <string name="settings_speed_test_not_run">未テスト</string>
     <string name="settings_speed_test_summary_default">簡単なダウンロードテストを実行し、その結果を使って安定した再生画質の上限を選びます。</string>
@@ -352,13 +353,13 @@
     <string name="settings_select_subtitle_text_color">字幕の文字色を選択</string>
     <string name="settings_select_subtitle_background">字幕の背景を選択</string>
     <string name="settings_subtitle_size_small">小</string>
-    <string name="settings_subtitle_size_default">BYTEe3ƒ‡BYTEe3ƒ•BYTEe3‚©BYTEe3ƒ«BYTEe3ƒˆ</string>
-    <string name="settings_subtitle_size_large">BYTEe5₪§</string>
+    <string name="settings_subtitle_size_default">デフォルト</string>
+    <string name="settings_subtitle_size_large">大</string>
     <string name="settings_subtitle_size_extra_large">特大</string>
     <string name="settings_subtitle_color_white">白</string>
     <string name="settings_subtitle_color_yellow">黄</string>
     <string name="settings_subtitle_color_cyan">シアン</string>
-    <string name="settings_subtitle_color_green">BYTEe7·‘</string>
+    <string name="settings_subtitle_color_green">緑</string>
     <string name="settings_subtitle_background_transparent">透明</string>
     <string name="settings_subtitle_background_dim">薄暗い黒</string>
     <string name="settings_subtitle_background_black">黒</string>
@@ -369,7 +370,7 @@
     <string name="settings_live_tv_mode_comfortable_desc">大きめの行で、1回のクリックですぐ再生。</string>
     <string name="settings_live_tv_mode_compact">コンパクト</string>
     <string name="settings_live_tv_mode_compact_desc">より多くのチャンネルを一覧表示し、1回のクリックですぐ再生。</string>
-    <string name="settings_live_tv_mode_pro">BYTEe3ƒ—BYTEe3ƒ­</string>
+    <string name="settings_live_tv_mode_pro">プロ</string>
     <string name="settings_live_tv_mode_pro_desc">高密度のチャンネル一覧にプレビューと EPG を表示。1回目のクリックでプレビュー、2回目で再生。</string>
     <string name="settings_live_channel_numbering_group">グループごと</string>
     <string name="settings_live_channel_numbering_group_desc">デフォルトの動作です。現在のカテゴリまたはカスタムグループ内での位置に基づいてチャンネル番号を振り直します。</string>
@@ -394,7 +395,7 @@
     <string name="settings_decoder_software">ソフトウェア拡張を優先</string>
     <string name="settings_select_decoder_mode">デコーダーモードを選択</string>
     <string name="settings_buffer_duration">バッファ時間</string>
-    <string name="settings_buffer_5s">5BYTEe7§’</string>
+    <string name="settings_buffer_5s">5秒</string>
     <string name="settings_about">情報</string>
     <string name="settings_about_subtitle">このインストールのバージョン、ビルド、サポート情報です。</string>
     <string name="settings_app_version">アプリバージョン</string>
@@ -402,7 +403,7 @@
     <string name="settings_build_desc">Android TV向けStreamVault</string>
     <string name="settings_enabled">有効</string>
     <string name="settings_disabled">無効</string>
-    <string name="settings_developed_by">BYTEe9–‹BYTEe7™÷BYTEe8€…</string>
+    <string name="settings_developed_by">開発者</string>
     <string name="settings_developer_name">David Nashash</string>
     <string name="settings_github">GitHub</string>
     <string name="settings_github_url">https://github.com/Davidona</string>
@@ -446,7 +447,7 @@
     <string name="settings_level_hidden_desc">HIDDEN - コンテンツはすべてのリストから非表示</string>
     <string name="settings_cancel">キャンセル</string>
     <string name="settings_protection_level">保護レベル</string>
-    <string name="settings_level_off">BYTEe3‚×BYTEe3ƒ•</string>
+    <string name="settings_level_off">オフ</string>
     <string name="settings_level_locked">ロック中</string>
     <string name="settings_level_hidden">非表示</string>
     <string name="settings_level_unknown">不明</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">このプロバイダーの何を更新するかを選択します。</string>
     <string name="settings_sync_option_all">すべてを同期</string>
     <string name="settings_sync_option_fast">高速同期</string>
+    <string name="settings_syncing_preparing">同期を準備しています...</string>
+    <string name="settings_syncing_section">%1$sを同期しています...</string>
     <string name="settings_sync_option_tv">テレビを同期する</string>
     <string name="settings_sync_option_movies">ムービーを同期する</string>
     <string name="settings_sync_option_series">シンクシリーズ</string>
@@ -503,16 +506,16 @@
     <string name="settings_backup_section_recordings">録画スケジュール</string>
     <string name="settings_backup_conflict_count">競合 %1$d 件</string>
     <string name="settings_backup_no_conflicts">競合なし</string>
-    <string name="settings_backup_item_count">%1$d BYTEe3‚¢BYTEe3‚₪BYTEe3ƒ†BYTEe3ƒ</string>
+    <string name="settings_backup_item_count">%1$d ד‚¢ד‚₪דƒ†דƒ</string>
     <string name="settings_provider_warnings">警告: %1$s</string>
     <string name="settings_provider_diagnostics_title">プロバイダー診断</string>
-    <string name="settings_diagnostic_live">BYTEe3ƒ©BYTEe3‚₪BYTEe3ƒ–</string>
+    <string name="settings_diagnostic_live">ライブ</string>
     <string name="settings_diagnostic_movies">映画</string>
     <string name="settings_diagnostic_series">シリーズ</string>
     <string name="settings_diagnostic_epg">EPG</string>
     <string name="settings_diagnostic_status">最終同期ステータス: %1$s</string>
     <string name="settings_diagnostic_never">なし</string>
-    <string name="settings_diagnostic_items">%1$d BYTEe3‚¢BYTEe3‚₪BYTEe3ƒ†BYTEe3ƒ</string>
+    <string name="settings_diagnostic_items">%1$d ד‚¢ד‚₪דƒ†דƒ</string>
     <string name="settings_retry_epg">EPG を再試行</string>
     <string name="settings_retry_movies">映画を再試行</string>
     <string name="settings_retry_series">シリーズを再試行</string>
@@ -546,7 +549,7 @@
     <string name="settings_recording_status_completed">完了</string>
     <string name="settings_recording_status_failed">失敗</string>
     <string name="settings_recording_status_cancelled">キャンセル済み</string>
-    <string name="settings_recording_time_window">%1$s BYTEe2†’ %2$s</string>
+    <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_recurrence_none">1回のみ録画</string>
     <string name="settings_recording_recurrence_daily">毎日繰り返し</string>
     <string name="settings_recording_recurrence_weekly">毎週繰り返し</string>
@@ -637,7 +640,7 @@
     <string name="saved_preset_custom_groups">カスタムグループ</string>
     <string name="saved_group_manage_title">カスタムグループを管理</string>
     <string name="saved_group_manage_subtitle">グループを開くか、長押しして結合、削除、並べ替え、ホーム優先の操作を行います。</string>
-    <string name="saved_group_manage_count">%1$d BYTEe3‚¢BYTEe3‚₪BYTEe3ƒ†BYTEe3ƒ</string>
+    <string name="saved_group_manage_count">%1$d ד‚¢ד‚₪דƒ†דƒ</string>
     <string name="saved_group_manage_promoted">ホームに固定済み • %1$d 件</string>
     <string name="saved_group_promote_home">ホームに固定</string>
     <string name="saved_group_demote_home">ホームから削除</string>
@@ -679,7 +682,7 @@
     <string name="search_no_provider_subtitle">ライブラリを検索する前に、プロバイダーを追加または有効化してください。</string>
     <string name="search_results_title">%1$d件の結果</string>
     <string name="search_results_count">%1$s %2$d</string>
-    <string name="search_live_tv">BYTEe3ƒ©BYTEe3‚₪BYTEe3ƒ–BYTEe3ƒ†BYTEe3ƒ¬BYTEe3ƒ“</string>
+    <string name="search_live_tv">ライブテレビ</string>
     <string name="search_all">すべて</string>
     <string name="search_movies">映画</string>
     <string name="search_series">シリーズ</string>
@@ -739,7 +742,7 @@
     <string name="setup_epg_sync_mode_skip_description">番組表データを自動取得しません。EPGは後で設定から更新できます。</string>
     <string name="setup_m3u_hint">M3U URL</string>
     <string name="setup_tab_url">URL</string>
-    <string name="setup_tab_file">BYTEe3ƒ•BYTEe3‚¡BYTEe3‚₪BYTEe3ƒ«</string>
+    <string name="setup_tab_file">ファイル</string>
     <string name="setup_choose_file">M3Uファイルを選択</string>
     <string name="setup_file_replace_hint">押してファイルを置き換え</string>
     <string name="setup_file_select_title">M3Uファイルを選択</string>
@@ -786,7 +789,7 @@
     <string name="player_recording_stopped">録画を停止しました。</string>
     <string name="player_recording_scheduled">%1$s の録画を予約しました。</string>
     <string name="player_recording_missing_context">録画には有効なライブチャンネルのコンテキストが必要です。</string>
-    <string name="player_subs">BYTEe3‚µBYTEe3ƒ–</string>
+    <string name="player_subs">サブ</string>
     <string name="player_audio">音声</string>
     <string name="player_action_mute">ミュート</string>
     <string name="player_action_cast">キャスト</string>
@@ -811,10 +814,10 @@
     <string name="player_playback_speed_value">速度 %1$s</string>
     <string name="player_track_audio">音声トラックを選択</string>
     <string name="player_track_subs">字幕を選択</string>
-    <string name="player_track_off">BYTEe3‚×BYTEe3ƒ•</string>
+    <string name="player_track_off">オフ</string>
     <string name="player_video_quality">画質</string>
     <string name="player_aspect_ratio_label">アスペクト %1$s</string>
-    <string name="player_resolution_auto_label">BYTEe8‡×BYTEe5‹•: %1$s</string>
+    <string name="player_resolution_auto_label">自動: %1$s</string>
     <string name="player_channel_not_found">チャンネルが見つかりません</string>
     <string name="player_type_channel_number">チャンネル番号を入力</string>
     <string name="player_selected">選択済み</string>
@@ -826,7 +829,7 @@
     <string name="player_last_group_hint">最後に閲覧していたライブグループに戻ります。</string>
     <string name="player_archive_badge">アーカイブ</string>
     <string name="player_catchup_badge">見逃し配信</string>
-    <string name="player_time_range_minutes">%1$s - %2$s | %3$dBYTEe5ˆ†</string>
+    <string name="player_time_range_minutes">%1$s - %2$s | %3$d分</string>
     <string name="player_next_label">次:</string>
     <string name="player_full_epg">EPG 全体</string>
     <string name="player_stats">統計</string>
@@ -837,7 +840,7 @@
     <string name="player_action_view">表示</string>
     <string name="player_action_group">グループ</string>
     <string name="player_action_recent_short">最近</string>
-    <string name="player_action_guide">BYTEe3‚¬BYTEe3‚₪BYTEe3ƒ‰</string>
+    <string name="player_action_guide">ガイド</string>
     <string name="player_action_split">分割</string>
     <string name="player_action_diagnostics">診断</string>
     <string name="player_diagnostics_title">再生診断</string>
@@ -859,7 +862,7 @@
     <string name="player_diagnostics_troubleshooting">トラブルシューティング</string>
     <string name="player_diagnostics_section_source">ソース</string>
     <string name="player_diagnostics_section_playback">再生</string>
-    <string name="player_diagnostics_section_video">BYTEe3ƒ“BYTEe3ƒ‡BYTEe3‚×</string>
+    <string name="player_diagnostics_section_video">ビデオ</string>
     <string name="player_diagnostics_section_audio">オーディオ</string>
     <string name="player_diagnostics_section_recovery">復旧</string>
     <string name="player_no_guide_data">番組表データがありません</string>
@@ -900,10 +903,10 @@
     <string name="epg_previous_day">前日</string>
     <string name="epg_page_back">ページ -</string>
     <string name="epg_jump_back_half_hour">-30分</string>
-    <string name="epg_jump_back">-3BYTEe6™‚BYTEe9–“</string>
+    <string name="epg_jump_back">-3時間</string>
     <string name="epg_jump_now">現在</string>
     <string name="epg_jump_forward_half_hour">+30分</string>
-    <string name="epg_jump_forward">+3BYTEe6™‚BYTEe9–“</string>
+    <string name="epg_jump_forward">+3時間</string>
     <string name="epg_page_forward">ページ +</string>
     <string name="epg_jump_prime_time">ゴールデンタイム</string>
     <string name="epg_jump_tomorrow">明日</string>
@@ -960,13 +963,13 @@
     <string name="epg_search_empty_hint">別のタイトルを試す、カテゴリを広げる、または検索をクリアしてください。</string>
     <string name="epg_scheduled_only_hint">予定ありのみをオフにするか、別のカテゴリに切り替えてください。</string>
     <string name="epg_filter_hint">別のカテゴリを選ぶか、番組表を更新してください。</string>
-    <string name="epg_title">BYTEe3ƒ†BYTEe3ƒ¬BYTEe3ƒ“BYTEe3‚¬BYTEe3‚₪BYTEe3ƒ‰</string>
+    <string name="epg_title">テレビガイド</string>
     <string name="epg_catchup_available">キャッチアップ利用可（%1$d日）</string>
     <string name="epg_archive_ready_hint">この番組ではアーカイブまたはキャッチアップ再生が利用できるはずです。</string>
     <string name="epg_archive_provider_hint">このプロバイダーはチャンネルのキャッチアップに対応していますが、この番組は現在の番組表範囲でアーカイブ対応としてマークされていません。</string>
     <string name="epg_archive_unavailable_hint">このチャンネルではアーカイブ再生は利用できません。</string>
     <string name="epg_archive_stale_hint">番組表データが古いため、番組表が更新されるまで再生可能な番組が一部表示されない場合があります。</string>
-    <string name="epg_refresh_guide">BYTEe3ƒ×BYTEe3ƒ•BYTEe3ƒ¬BYTEe3ƒƒBYTEe3‚·BYTEe3ƒ¥BYTEe3‚¬BYTEe3‚₪BYTEe3ƒ‰</string>
+    <string name="epg_refresh_guide">リフレッシュガイド</string>
     <string name="epg_upcoming_schedule">今後の番組表</string>
     <string name="epg_minutes_remaining">残り%1$d分</string>
     <string name="epg_no_info">EPG情報なし</string>
@@ -976,7 +979,7 @@
     <string name="epg_program_provider_type_label">ソース</string>
     <string name="epg_program_language_label">言語</string>
     <string name="epg_program_status_title">再生ステータス</string>
-    <string name="epg_program_replay_label">BYTEe3ƒ×BYTEe3ƒ—BYTEe3ƒ¬BYTEe3‚₪</string>
+    <string name="epg_program_replay_label">リプレイ</string>
     <string name="epg_program_progress_label">進行状況</string>
     <string name="epg_program_unknown_value">不明</string>
     <string name="epg_program_replay_ready">アーカイブ対応</string>
@@ -1064,7 +1067,7 @@
     <string name="multiview_replace_empty">置き換え候補を表示するには、まず Live TV のお気に入りまたは最近のチャンネルを使用してください。</string>
     <string name="multiview_slot_label">スロット %1$d</string>
     <string name="multiview_policy_summary">%1$s ティア • アクティブスロット %2$d 個</string>
-    <string name="multiview_policy_auto">BYTEe8‡×BYTEe5‹•</string>
+    <string name="multiview_policy_auto">自動</string>
     <string name="multiview_policy_conservative">控えめ</string>
     <string name="multiview_policy_balanced">バランス</string>
     <string name="multiview_policy_maximum">最大</string>
@@ -1073,7 +1076,7 @@
     <string name="multiview_telemetry_detail">合計ドロップ %1$d • 直近 +%2$d • 負荷 %3$d • 熱状態 %4$s</string>
     <string name="multiview_thermal_unknown">不明</string>
     <string name="multiview_thermal_normal">通常</string>
-    <string name="multiview_thermal_light">BYTEe3ƒ©BYTEe3‚₪BYTEe3ƒˆ</string>
+    <string name="multiview_thermal_light">ライト</string>
     <string name="multiview_thermal_moderate">中程度</string>
     <string name="multiview_thermal_severe">深刻</string>
     <string name="multiview_thermal_critical">危険</string>
@@ -1097,7 +1100,7 @@
     <string name="action_done">完了</string>
     <string name="action_delete">削除</string>
     <string name="action_clear">クリア</string>
-    <string name="action_space">BYTEe5®‡BYTEe5®™</string>
+    <string name="action_space">宇宙</string>
     <string name="action_move">移動</string>
     <string name="action_split">分割</string>
     <string name="label_provider">プロバイダー</string>
@@ -1109,8 +1112,8 @@
     <string name="label_rating">★ %1$s/10</string>
     <string name="label_episode">E%1$d</string>
     <string name="label_episode_full">エピソード %1$d</string>
-    <string name="label_duration_min">%1$dBYTEe5ˆ†</string>
-    <string name="label_tv">BYTEe3ƒ†BYTEe3ƒ¬BYTEe3ƒ“</string>
+    <string name="label_duration_min">%1$d分</string>
+    <string name="label_tv">テレビ</string>
     <string name="badge_saved">保存済み</string>
     <string name="badge_catch_up">追っかけ再生</string>
     <string name="badge_moving">移動中</string>
@@ -1141,13 +1144,13 @@
     <string name="favorites_content_type_series">シリーズ</string>
     <string name="favorites_content_type_episode_format">エピソード S%1$d E%2$d</string>
     <string name="favorites_content_type_episode">エピソード</string>
-    <string name="favorites_content_type_live">BYTEe3ƒ©BYTEe3‚₪BYTEe3ƒ–</string>
+    <string name="favorites_content_type_live">ライブ</string>
     <string name="favorites_removed_home_priority">%1$s をホーム優先から削除しました。</string>
     <string name="favorites_pinned_home">%1$s をホームにピン留めしました。</string>
     <string name="favorites_merged_group">%1$s を選択したグループに統合しました。</string>
     <string name="favorites_status_pill_format">%1$s %2$d</string>
     <string name="time_range_format">%1$s – %2$s</string>
-    <string name="channel_number_name_format">%1$dBYTEe3€‚ %2$s</string>
+    <string name="channel_number_name_format">%1$d。 %2$s</string>
     <string name="label_colon_value_format">%1$s: %2$s</string>
     <string name="split_count_format">%1$s %2$d/4</string>
     <string name="program_date_time_range">%1$s | %2$s – %3$s</string>
@@ -1174,4 +1177,3 @@
     <string name="tv_input_setup_retry_scan">自動スキャンを再試行します</string>
     <string name="tv_input_setup_success_hint">Android TV Live TV で StreamVault チャンネルを開くことができるようになりました。</string>
 </resources>
-

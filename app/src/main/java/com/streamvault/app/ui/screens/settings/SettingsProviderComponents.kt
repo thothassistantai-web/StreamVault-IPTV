@@ -512,8 +512,8 @@ internal fun ProviderSyncOptionsDialog(
                 style = MaterialTheme.typography.bodyMedium,
                 color = OnSurface
             )
-            SyncOptionButton(stringResource(R.string.settings_sync_option_all)) {
-                onSelect(ProviderSyncSelection.ALL)
+            SyncOptionButton(stringResource(R.string.settings_sync_option_fast)) {
+                onSelect(ProviderSyncSelection.FAST)
             }
             availableSyncSelections(provider).forEach { option ->
                 SyncOptionButton(text = syncSelectionLabel(option)) {

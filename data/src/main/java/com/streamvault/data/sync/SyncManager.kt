@@ -309,6 +309,7 @@ class SyncManager @Inject constructor(
         providerId: Long,
         force: Boolean = false,
         movieFastSyncOverride: Boolean? = null,
+        epgSyncModeOverride: ProviderEpgSyncMode? = null,
         onProgress: ((String) -> Unit)? = null
     ): com.streamvault.domain.model.Result<Unit> = withProviderLock(providerId) lock@{
         val providerEntity = providerDao.getById(providerId)
@@ -318,9 +319,10 @@ class SyncManager @Inject constructor(
             .copy(password = CredentialCrypto.decryptIfNeeded(providerEntity.password))
             .toDomain()
             .let { resolvedProvider ->
-                movieFastSyncOverride?.let { override ->
-                    resolvedProvider.copy(xtreamFastSyncEnabled = override)
-                } ?: resolvedProvider
+                resolvedProvider.copy(
+                    xtreamFastSyncEnabled = movieFastSyncOverride ?: resolvedProvider.xtreamFastSyncEnabled,
+                    epgSyncMode = epgSyncModeOverride ?: resolvedProvider.epgSyncMode
+                )
             }
         publishSyncState(providerId, SyncState.Syncing("Starting..."))
 
@@ -614,16 +616,18 @@ class SyncManager @Inject constructor(
                 }
                 is CatalogStrategyResult.Failure -> {
                     val existingMovieCount = movieDao.getCount(provider.id).first()
-                    val finalMode = if (movieSyncResult.syncMode == VodSyncMode.LAZY_BY_CATEGORY) {
+                    val enteringLazyMode = movieSyncResult.syncMode == VodSyncMode.LAZY_BY_CATEGORY && !movieSyncResult.categories.isNullOrEmpty()
+                    val finalMode = if (enteringLazyMode) {
                         VodSyncMode.LAZY_BY_CATEGORY
                     } else {
                         metadata.movieSyncMode
                     }
-                    if (movieSyncResult.syncMode == VodSyncMode.LAZY_BY_CATEGORY) {
+                    if (enteringLazyMode) {
                         movieSyncResult.categories?.let { syncCatalogStore.replaceCategories(provider.id, "MOVIE", it) }
                     }
                     Log.w(TAG, "Movies sync preserved previous catalog for provider ${provider.id}: strategy=${catalogResult.strategyName}, existingCount=$existingMovieCount, mode=${movieSyncResult.syncMode}, reason=${sanitizeThrowableMessage(catalogResult.error)}")
                     metadata = metadata.copy(
+                        lastMovieSync = if (enteringLazyMode) now else metadata.lastMovieSync,
                         lastMovieAttempt = now,
                         movieSyncMode = finalMode,
                         movieWarningsCount = (movieSyncResult.warnings + catalogResult.warnings).size,
@@ -1170,26 +1174,30 @@ class SyncManager @Inject constructor(
                             }
                         )
                     }
-                    is CatalogStrategyResult.Failure -> {
-                        val existingMovieCount = movieDao.getCount(provider.id).first()
-                        if (movieSyncResult.syncMode == VodSyncMode.LAZY_BY_CATEGORY) {
-                            movieSyncResult.categories?.let { syncCatalogStore.replaceCategories(provider.id, "MOVIE", it) }
-                        }
-                        syncMetadataRepository.updateMetadata(
-                            metadata.copy(
-                                movieCatalogStale = existingMovieCount > 0 || movieSyncResult.syncMode == VodSyncMode.LAZY_BY_CATEGORY,
-                                movieAvoidFullUntil = movieAvoidFullUntil,
-                                movieParallelFailuresRemembered = currentMetadata.movieParallelFailuresRemembered || sawSequentialStress || shouldRememberSequentialPreference(catalogResult.error),
-                                movieHealthySyncStreak = 0
-                            )
-                        )
-                        throw IllegalStateException(
-                            syncErrorSanitizer.userMessage(catalogResult.error, "Failed to fetch VOD streams"),
-                            catalogResult.error
-                        )
-                    }
+            is CatalogStrategyResult.Failure -> {
+                val existingMovieCount = movieDao.getCount(provider.id).first()
+                val enteringLazyMode = movieSyncResult.syncMode == VodSyncMode.LAZY_BY_CATEGORY && !movieSyncResult.categories.isNullOrEmpty()
+                if (enteringLazyMode) {
+                    movieSyncResult.categories?.let { syncCatalogStore.replaceCategories(provider.id, "MOVIE", it) }
+                }
+                syncMetadataRepository.updateMetadata(
+                    metadata.copy(
+                        lastMovieSync = if (enteringLazyMode) now else metadata.lastMovieSync,
+                        movieCatalogStale = existingMovieCount > 0 || movieSyncResult.syncMode == VodSyncMode.LAZY_BY_CATEGORY,
+                        movieAvoidFullUntil = movieAvoidFullUntil,
+                        movieParallelFailuresRemembered = currentMetadata.movieParallelFailuresRemembered || sawSequentialStress || shouldRememberSequentialPreference(catalogResult.error),
+                        movieHealthySyncStreak = 0
+                    )
+                )
+                if (!enteringLazyMode) {
+                    throw IllegalStateException(
+                        syncErrorSanitizer.userMessage(catalogResult.error, "Failed to fetch VOD streams"),
+                        catalogResult.error
+                    )
                 }
             }
+        }
+    }
             ProviderType.M3U -> {
                 progress(provider.id, onProgress, "Retrying Movies...")
                 val stats = withContext(Dispatchers.IO) {

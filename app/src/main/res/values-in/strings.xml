@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">StreamVault</string>
     <string name="nav_home">Rumah</string>
@@ -52,7 +52,7 @@
     <string name="home_recent_channels_hint">Tonton beberapa saluran langsung untuk membuat daftar terbaru di sini</string>
     <string name="home_locked_short">TERKUNCI</string>
     <string name="live_shell_subtitle">Pindai kategori langsung dengan cepat, pertahankan deterministik navigasi, dan hanya tampilkan data jadwal yang penting di layar.</string>
-    <string name="live_shell_context">%1$d kategori BYTEe2€¢ %2$d saluran</string>
+    <string name="live_shell_context">%1$d kategori • %2$d saluran</string>
     <string name="live_shell_provider">Penyedia</string>
     <string name="live_shell_last_group">Kelompok terakhir</string>
     <string name="live_shell_split">Multitampilan</string>
@@ -148,7 +148,7 @@
     <string name="card_locked_channel">Saluran Terkunci</string>
     <string name="card_live_badge">LANGSUNG</string>
     <string name="card_locked">Terkunci</string>
-    <string name="category_see_all">Lihat Semua BYTEe2†’</string>
+    <string name="category_see_all">Lihat Semua →</string>
     <string name="continue_watching_title">Lanjutkan Menonton</string>
     <string name="continue_watching_season_episode">S%1$d E%2$d</string>
     <string name="playlist_no_provider">Tidak Ada Penyedia</string>
@@ -277,6 +277,7 @@
     <string name="settings_category_type_movies_description">Urutkan dan sembunyikan kategori film provider tanpa memengaruhi Favorit, Lanjutkan, atau rak kustom.</string>
     <string name="settings_category_type_series_description">Urutkan dan sembunyikan kategori serial provider tanpa memengaruhi Favorit, Lanjutkan Menonton, atau rak kustom.</string>
     <string name="settings_playback">Pemutaran</string>
+    <string name="settings_browsing">Penelusuran</string>
     <string name="settings_playback_subtitle">Sesuaikan perilaku decoder dan buffering untuk pemutaran yang lebih lancar.</string>
     <string name="settings_live_tv_channel_mode">Mode Saluran TV Langsung</string>
     <string name="settings_live_tv_channel_mode_subtitle">Pilih bagaimana browser TV Langsung menyajikan saluran dan apakah saluran tersebut harus dipratinjau sebelum diputar.</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">Pilih apa yang akan disegarkan untuk penyedia ini.</string>
     <string name="settings_sync_option_all">Sinkronkan Semua</string>
     <string name="settings_sync_option_fast">Sinkronisasi Cepat</string>
+    <string name="settings_syncing_preparing">Menyiapkan sinkronisasi...</string>
+    <string name="settings_syncing_section">Menyinkronkan %1$s...</string>
     <string name="settings_sync_option_tv">Sinkronkan TV</string>
     <string name="settings_sync_option_movies">Sinkronkan Film</string>
     <string name="settings_sync_option_series">Seri Sinkronisasi</string>
@@ -546,7 +549,7 @@
     <string name="settings_recording_status_completed">Selesai</string>
     <string name="settings_recording_status_failed">Gagal</string>
     <string name="settings_recording_status_cancelled">Dibatalkan</string>
-    <string name="settings_recording_time_window">%1$s BYTEe2†’ %2$s</string>
+    <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_recurrence_none">Rekaman satu kali</string>
     <string name="settings_recording_recurrence_daily">Berulang setiap hari</string>
     <string name="settings_recording_recurrence_weekly">Berulang setiap minggu</string>
@@ -638,7 +641,7 @@
     <string name="saved_group_manage_title">Kelola Grup Kustom</string>
     <string name="saved_group_manage_subtitle">Buka grup atau tahan grup untuk menggabungkan, menghapus, menyusun ulang, dan tindakan prioritas Beranda.</string>
     <string name="saved_group_manage_count">%1$d item</string>
-    <string name="saved_group_manage_promoted">Disematkan ke Beranda BYTEe2€¢ %1$d item</string>
+    <string name="saved_group_manage_promoted">Disematkan ke Beranda • %1$d item</string>
     <string name="saved_group_promote_home">Sematkan ke Beranda</string>
     <string name="saved_group_demote_home">Hapus dari Rumah</string>
     <string name="saved_group_merge">Gabung ke Grup Lain</string>
@@ -750,9 +753,9 @@
     <string name="setup_add">Tambahkan Daftar Putar</string>
     <string name="player_buffering">Penyangga...</string>
     <string name="player_error_title">Kesalahan Pemutaran</string>
-    <string name="player_error_network">Streaming tidak tersedia BYTEe2€” periksa koneksi internet Anda</string>
+    <string name="player_error_network">Streaming tidak tersedia — periksa koneksi internet Anda</string>
     <string name="player_error_source">Streaming tidak ditemukan atau akses ditolak</string>
-    <string name="player_error_decoder">Tidak dapat memutar format ini BYTEe2€” coba ubah mode decoder di Pengaturan</string>
+    <string name="player_error_decoder">Tidak dapat memutar format ini — coba ubah mode decoder di Pengaturan</string>
     <string name="player_error_drm">Lisensi DRM atau persyaratan keamanan perangkat mencegah pemutaran</string>
     <string name="player_error_unknown">Kesalahan pemutaran tidak diketahui</string>
     <string name="player_retry">Coba lagi</string>
@@ -982,7 +985,7 @@
     <string name="epg_program_replay_ready">Siap diarsipkan</string>
     <string name="epg_program_replay_partial">Hanya untuk mengejar ketertinggalan penyedia</string>
     <string name="epg_program_replay_unavailable">Tidak tersedia</string>
-    <string name="epg_program_progress_value">%1$d%% selesai BYTEe2€¢ %2$s</string>
+    <string name="epg_program_progress_value">%1$d%% selesai • %2$s</string>
     <string name="epg_provider_troubleshooting_title">Pemecahan Masalah Penyedia</string>
     <string name="epg_provider_troubleshooting_no_archive">Saluran ini tidak ditandai sebagai saluran siap arsip oleh penyedia.</string>
     <string name="epg_provider_troubleshooting_missing_template">Pemutaran ulang mungkin gagal karena penyedia mengekspos dukungan mengejar ketinggalan tanpa templat pemutaran ulang yang dapat digunakan.</string>
@@ -1063,14 +1066,14 @@
     <string name="multiview_replace_title">Ganti Slot Terfokus</string>
     <string name="multiview_replace_empty">Gunakan TV Langsung favorit atau saluran terbaru terlebih dahulu sehingga pilihan penggantinya muncul di sini.</string>
     <string name="multiview_slot_label">Slot %1$d</string>
-    <string name="multiview_policy_summary">%1$s tingkat BYTEe2€¢ %2$d slot aktif</string>
+    <string name="multiview_policy_summary">%1$s tingkat • %2$d slot aktif</string>
     <string name="multiview_policy_auto">Otomatis</string>
     <string name="multiview_policy_conservative">Konservatif</string>
     <string name="multiview_policy_balanced">Seimbang</string>
     <string name="multiview_policy_maximum">Maksimal</string>
     <string name="multiview_policy_blocked">Slot Siaga</string>
-    <string name="multiview_telemetry_snapshot">%1$d aktif BYTEe2€¢ %2$d siaga BYTEe2€¢ %3$d buffering BYTEe2€¢ %4$d kesalahan</string>
-    <string name="multiview_telemetry_detail">%1$d turun total BYTEe2€¢ +%2$d terkini BYTEe2€¢ beban %3$d BYTEe2€¢ %4$s termal</string>
+    <string name="multiview_telemetry_snapshot">%1$d aktif • %2$d siaga • %3$d buffering • %4$d kesalahan</string>
+    <string name="multiview_telemetry_detail">%1$d turun total • +%2$d terkini • beban %3$d • %4$s termal</string>
     <string name="multiview_thermal_unknown">Tidak diketahui</string>
     <string name="multiview_thermal_normal">Biasa</string>
     <string name="multiview_thermal_light">Ringan</string>
@@ -1133,7 +1136,7 @@
     <string name="dashboard_open_series">Seri Terbuka</string>
     <string name="dashboard_library_ready">Perpustakaan IPTV Anda sudah siap</string>
     <string name="dashboard_open_live_tv">Buka TV Langsung</string>
-    <string name="dashboard_pinned_channels_format">Disematkan BYTEc2· %1$d saluran</string>
+    <string name="dashboard_pinned_channels_format">Disematkan · %1$d saluran</string>
     <string name="dashboard_channels_format">%1$d saluran</string>
     <string name="favorites_all_favorites">Semua Favorit</string>
     <string name="favorites_saved_items_format">%1$d item yang disimpan</string>
@@ -1146,11 +1149,11 @@
     <string name="favorites_pinned_home">Disematkan %1$s ke Beranda.</string>
     <string name="favorites_merged_group">Digabung %1$s ke dalam grup yang dipilih.</string>
     <string name="favorites_status_pill_format">%1$s %2$d</string>
-    <string name="time_range_format">%1$s BYTEe2€“ %2$s</string>
+    <string name="time_range_format">%1$s – %2$s</string>
     <string name="channel_number_name_format">%1$d. %2$s</string>
     <string name="label_colon_value_format">%1$s: %2$s</string>
     <string name="split_count_format">%1$s %2$d/4</string>
-    <string name="program_date_time_range">%1$s | %2$s BYTEe2€“ %3$s</string>
+    <string name="program_date_time_range">%1$s | %2$s – %3$s</string>
     <string name="diagnostics_summary_format">%1$s | %2$s</string>
     <string name="home_added_to_favorites">Ditambahkan %1$s ke Favorit</string>
     <string name="home_removed_from_favorites">Dihapus %1$s dari Favorit</string>
@@ -1174,4 +1177,3 @@
     <string name="tv_input_setup_retry_scan">Coba lagi Pindai Otomatis</string>
     <string name="tv_input_setup_success_hint">Android TV Live TV sekarang dapat membuka saluran StreamVault Anda.</string>
 </resources>
-

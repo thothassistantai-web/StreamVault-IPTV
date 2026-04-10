@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">StreamVault</string>
     <string name="nav_home">Hjem</string>
@@ -50,29 +50,29 @@
     <string name="home_no_channels_found_subtitle">Prøv en anden kategori eller søgeterm.</string>
     <string name="home_add_favorites_hint">Tilføj kanaler til favoritter for at se dem her</string>
     <string name="home_recent_channels_hint">Se et par live-kanaler for at opbygge en nylig liste her</string>
-    <string name="home_locked_short">LBYTEc3…ST</string>
+    <string name="home_locked_short">LÅST</string>
     <string name="live_shell_subtitle">Scan livekategorier hurtigt, hold navigationen forudsigelig, og vis kun de programdata, der betyder noget på skærmen.</string>
-    <string name="live_shell_context">%1$d kategorier BYTEe2€¢ %2$d kanaler</string>
+    <string name="live_shell_context">%1$d kategorier • %2$d kanaler</string>
     <string name="live_shell_provider">Udbyder</string>
     <string name="live_shell_last_group">Sidste gruppe</string>
     <string name="live_shell_split">Multivisning</string>
     <string name="live_manage_groups">Administrer multiview slots</string>
     <string name="live_channel_results">%1$d kanaler i udsigt</string>
-    <string name="live_preview_title">KanalforhBYTEc3¥ndsvisning</string>
+    <string name="live_preview_title">Kanalforhåndsvisning</string>
     <string name="live_preview_placeholder_title">Vælg en kanal for at forhåndsvise</string>
     <string name="live_preview_placeholder_subtitle">I Pro-tilstand viser første klik forhåndsvisning af streamen, og andet klik åbner fuld afspilning.</string>
     <string name="live_preview_no_epg">Ingen tidsplanoplysninger</string>
-    <string name="live_preview_open_hint">Tryk pBYTEc3¥ OK igen for at BYTEc3¥bne denne kanal</string>
+    <string name="live_preview_open_hint">Tryk på OK igen for at åbne denne kanal</string>
     <string name="live_preview_loading">Indlæser forhåndsvisning…</string>
     <string name="live_preview_failed">Forhåndsvisning ikke tilgængelig</string>
     <string name="live_reorder_title">Genbestilling %1$s</string>
     <string name="live_reorder_subtitle">D-pad flytter den valgte kanal. Gem rækkefølgen, når du er færdig.</string>
     <string name="live_empty_hint_favorites">Tilføj kanaler til Favoritter eller en gemt gruppe for at udfylde denne række.</string>
-    <string name="live_empty_hint_recent">Start afspilning pBYTEc3¥ nogle fBYTEc3¥ kanaler, og de vises her.</string>
+    <string name="live_empty_hint_recent">Start afspilning på nogle få kanaler, og de vises her.</string>
     <string name="home_saved_subtitle">Favoritter og brugerdefinerede livegrupper</string>
     <string name="home_saved_empty_hint">Gør en kanal til favorit eller tilføj den til en brugerdefineret live-gruppe for at fastgøre den her.</string>
     <string name="home_delete_group_title">Slet gruppe?</string>
-    <string name="home_delete_group_body">Er du sikker pBYTEc3¥, at du vil slette \'%1$s\'? Dette fjerner alle kanaler fra denne gruppe.</string>
+    <string name="home_delete_group_body">Er du sikker på, at du vil slette \'%1$s\'? Dette fjerner alle kanaler fra denne gruppe.</string>
     <string name="home_delete_group_confirm">Slet</string>
     <string name="home_delete_group_cancel">Annuller</string>
     <string name="home_group_created">Gruppen \'%1$s\' oprettet</string>
@@ -101,7 +101,7 @@
     <string name="dashboard_provider_expires_at">Udløber %1$s</string>
     <string name="dashboard_provider_no_expiry">Ingen udløbsdato rapporteret</string>
     <string name="dashboard_warning_title">Udbyderen kræver opmærksomhed</string>
-    <string name="dashboard_warning_review">BYTEc3…bn udbyderoplysninger</string>
+    <string name="dashboard_warning_review">Åbn udbyderoplysninger</string>
     <string name="dashboard_update_title">StreamVault %1$s er tilgængelig</string>
     <string name="dashboard_update_available">En nyere appversion er gemt og klar til at blive gennemgået i Indstillinger.</string>
     <string name="dashboard_update_install_ready">Den seneste opdatering er allerede downloadet. Åbn Indstillinger for at installere den.</string>
@@ -120,8 +120,8 @@
     <string name="pin_dialog_cancel">Annuller</string>
     <string name="category_options_set_default">Indstil som standardgruppe</string>
     <string name="category_options_rename">Omdøb gruppe</string>
-    <string name="category_options_unlock">LBYTEc3¥s gruppe op</string>
-    <string name="category_options_lock">LBYTEc3¥s gruppe</string>
+    <string name="category_options_unlock">Lås gruppe op</string>
+    <string name="category_options_lock">Lås gruppe</string>
     <string name="category_options_delete">Slet gruppe</string>
     <string name="category_options_cancel">Annuller</string>
     <string name="category_options_reorder">Genbestil varer</string>
@@ -145,10 +145,10 @@
     <string name="add_group_remove_btn">Fjern</string>
     <string name="add_group_add_btn">Tilføj</string>
     <string name="add_group_create_new_btn">Opret ny gruppe</string>
-    <string name="card_locked_channel">LBYTEc3¥st kanal</string>
+    <string name="card_locked_channel">Låst kanal</string>
     <string name="card_live_badge">LIVE</string>
-    <string name="card_locked">LBYTEc3¥st</string>
-    <string name="category_see_all">Se alle BYTEe2†’</string>
+    <string name="card_locked">Låst</string>
+    <string name="category_see_all">Se alle →</string>
     <string name="continue_watching_title">Fortsæt med at se</string>
     <string name="continue_watching_season_episode">S%1$d E%2$d</string>
     <string name="playlist_no_provider">Ingen udbyder</string>
@@ -243,7 +243,7 @@
     <string name="settings_parental_control">Forældrekontrol</string>
     <string name="settings_parental_subtitle">Beskyt voksen- eller følsomt indhold med TV-venlige kontroller.</string>
     <string name="settings_parental_groups_title">Beskyttede grupper</string>
-    <string name="settings_parental_groups_hint">LBYTEc3¥s eller oplBYTEc3¥s kategorier for den aktive udbyder.</string>
+    <string name="settings_parental_groups_hint">Lås eller oplås kategorier for den aktive udbyder.</string>
     <string name="settings_parental_groups_action">Administrer</string>
     <string name="settings_provider_category_controls_action">Kategorikontrol</string>
     <string name="settings_provider_category_controls_title">Kategorikontrol</string>
@@ -277,6 +277,7 @@
     <string name="settings_category_type_movies_description">Sorter og skjul leverandørens filmkategorier uden at påvirke Favoritter, Genoptag eller brugerdefinerede hylder.</string>
     <string name="settings_category_type_series_description">Sorter og skjul leverandørens serie-kategorier uden at påvirke Favoritter, Fortsæt med at se eller brugerdefinerede hylder.</string>
     <string name="settings_playback">Afspilning</string>
+    <string name="settings_browsing">Gennemse</string>
     <string name="settings_playback_subtitle">Juster dekoder- og bufferadfærd for mere jævn afspilning.</string>
     <string name="settings_live_tv_channel_mode">Live tv-kanaltilstand</string>
     <string name="settings_live_tv_channel_mode_subtitle">Vælg, hvordan Live TV-browseren skal vise kanaler, og om den skal forhåndsvise før afspilning.</string>
@@ -329,7 +330,7 @@
     <string name="settings_speed_test_title">Test af internethastighed</string>
     <string name="settings_speed_test_not_run">Ikke testet endnu</string>
     <string name="settings_speed_test_summary_default">Kør en hurtig downloadtest, og brug resultatet til at vælge stabile grænser for afspilningskvalitet.</string>
-    <string name="settings_speed_test_summary_measured">MBYTEc3¥lt pBYTEc3¥ %1$s ved %2$s.</string>
+    <string name="settings_speed_test_summary_measured">Målt på %1$s ved %2$s.</string>
     <string name="settings_speed_test_summary_estimated">Estimeret på %1$s ved %2$s, fordi det aktive netværk ikke fuldførte downloadtesten.</string>
     <string name="settings_speed_test_recommendation">Anbefalet kvalitetsgrænse: %1$s</string>
     <string name="settings_speed_test_run_action">Kør test</string>
@@ -362,7 +363,7 @@
     <string name="settings_subtitle_background_transparent">Gennemsigtig</string>
     <string name="settings_subtitle_background_dim">Dim sort</string>
     <string name="settings_subtitle_background_black">Solid Sort</string>
-    <string name="settings_subtitle_background_blue">Dyb blBYTEc3¥</string>
+    <string name="settings_subtitle_background_blue">Dyb blå</string>
     <string name="settings_select_wifi_quality_cap">Vælg Wi-Fi-kvalitetspreference</string>
     <string name="settings_select_ethernet_quality_cap">Vælg Ethernet-kvalitetspreference</string>
     <string name="settings_live_tv_mode_comfortable">Komfortabel</string>
@@ -406,7 +407,7 @@
     <string name="settings_developer_name">David Nashash</string>
     <string name="settings_github">GitHub</string>
     <string name="settings_github_url">https://github.com/Davidona</string>
-    <string name="settings_donate">Support pBYTEc3¥ Ko-fi</string>
+    <string name="settings_donate">Support på Ko-fi</string>
     <string name="settings_donate_url">https://ko-fi.com/davidona</string>
     <string name="settings_updates_title">Opdateringer</string>
     <string name="settings_updates_subtitle">Tjek GitHub Releases for nyere StreamVault-versioner uden at forlade appen.</string>
@@ -447,7 +448,7 @@
     <string name="settings_cancel">Annuller</string>
     <string name="settings_protection_level">Beskyttelsesniveau</string>
     <string name="settings_level_off">FRA</string>
-    <string name="settings_level_locked">LBYTEc3…ST</string>
+    <string name="settings_level_locked">LÅST</string>
     <string name="settings_level_hidden">SKJULT</string>
     <string name="settings_level_unknown">UKENDT</string>
     <string name="settings_change">Skift</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">Vælg, hvad der skal opdateres for denne udbyder.</string>
     <string name="settings_sync_option_all">Synkroniser alle</string>
     <string name="settings_sync_option_fast">Hurtig synkronisering</string>
+    <string name="settings_syncing_preparing">Forbereder synkronisering...</string>
+    <string name="settings_syncing_section">Synkroniserer %1$s...</string>
     <string name="settings_sync_option_tv">Synkroniser tv</string>
     <string name="settings_sync_option_movies">Synkroniser film</string>
     <string name="settings_sync_option_series">Sync-serien</string>
@@ -488,7 +491,7 @@
     <string name="settings_backup_subtitle">Eksportér eller importér favoritter, grupper og indstillinger.</string>
     <string name="settings_backup_data">Eksporter data</string>
     <string name="settings_restore_data">Importer data</string>
-    <string name="settings_backup_preview_title">GennemgBYTEc3¥ Backup Import</string>
+    <string name="settings_backup_preview_title">Gennemgå Backup Import</string>
     <string name="settings_backup_preview_subtitle">Sikkerhedskopi version %1$d fundet. Vælg, hvad der skal importeres, før du foretager ændringer.</string>
     <string name="settings_backup_conflict_strategy">Konfliktstrategi</string>
     <string name="settings_backup_keep_existing">Behold eksisterende</string>
@@ -546,7 +549,7 @@
     <string name="settings_recording_status_completed">Afsluttet</string>
     <string name="settings_recording_status_failed">Mislykkedes</string>
     <string name="settings_recording_status_cancelled">Annulleret</string>
-    <string name="settings_recording_time_window">%1$s BYTEe2†’ %2$s</string>
+    <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_recurrence_none">Engangsoptagelse</string>
     <string name="settings_recording_recurrence_daily">Gentages dagligt</string>
     <string name="settings_recording_recurrence_weekly">Gentages ugentligt</string>
@@ -617,7 +620,7 @@
     <string name="saved_scope_title">Udbyderens omfang</string>
     <string name="saved_scope_subtitle">Filtrér det gemte hub til %1$s eller udvid det til alle udbydere, der allerede er indlæst i appen.</string>
     <string name="saved_scope_current_provider">Nuværende udbyder</string>
-    <string name="saved_scope_current_provider_hint">Hold Gemt fokus pBYTEc3¥ den aktive udbyder</string>
+    <string name="saved_scope_current_provider_hint">Hold Gemt fokus på den aktive udbyder</string>
     <string name="saved_scope_all_providers">Alle udbydere</string>
     <string name="saved_scope_all_providers_hint">Gennemse gemte elementer på tværs af alle importerede udbydere</string>
     <string name="saved_preset_all_saved">Alle gemt</string>
@@ -636,9 +639,9 @@
     <string name="saved_preset_live_recall">Live tilbagekaldelse</string>
     <string name="saved_preset_custom_groups">Brugerdefinerede grupper</string>
     <string name="saved_group_manage_title">Administrer brugerdefinerede grupper</string>
-    <string name="saved_group_manage_subtitle">BYTEc3…bn en gruppe eller hold den for at flette, slette, omarrangere og prioritere hjemme.</string>
+    <string name="saved_group_manage_subtitle">Åbn en gruppe eller hold den for at flette, slette, omarrangere og prioritere hjemme.</string>
     <string name="saved_group_manage_count">%1$d varer</string>
-    <string name="saved_group_manage_promoted">Fastgjort til hjemmet BYTEe2€¢ %1$d elementer</string>
+    <string name="saved_group_manage_promoted">Fastgjort til hjemmet • %1$d elementer</string>
     <string name="saved_group_promote_home">Fastgør til Hjem</string>
     <string name="saved_group_demote_home">Fjern fra hjemmet</string>
     <string name="saved_group_merge">Flet ind i en anden gruppe</string>
@@ -657,7 +660,7 @@
     <string name="favorites_sort_title_hint">Alfabetisk browsing på tværs af sektioner</string>
     <string name="favorites_jump_title">Hop til et afsnit</string>
     <string name="favorites_jump_subtitle">Genvej direkte til den gemte gruppe eller systemsektion, du har brug for.</string>
-    <string name="saved_shell_subtitle">Fastgjorte favoritter, brugerdefinerede grupper og seneste fremskridt i BYTEc3©n premium-hub.</string>
+    <string name="saved_shell_subtitle">Fastgjorte favoritter, brugerdefinerede grupper og seneste fremskridt i én premium-hub.</string>
     <string name="guide_shell_subtitle">Guidefiltre, programtæthed og fokuserede programdetaljer i én fjernbetjeningsvenlig visning.</string>
     <string name="favorites_reordering">Genbestilling</string>
     <string name="favorites_reorder_mode">Genarranger tilstand</string>
@@ -666,7 +669,7 @@
     <string name="favorites_confirm">Center: gem ordre</string>
     <string name="favorites_cancel">Tilbage: annuller</string>
     <string name="search_title">Søg</string>
-    <string name="parental_group_shell_subtitle">GennemgBYTEc3¥ beskyttede live-, film- og seriegrupper uden at forlade shellen med premium-indstillinger.</string>
+    <string name="parental_group_shell_subtitle">Gennemgå beskyttede live-, film- og seriegrupper uden at forlade shellen med premium-indstillinger.</string>
     <string name="search_screen_subtitle">Find kanaler, film og serier uden at forlade TV-flowet.</string>
     <string name="search_command_title">Kommandosøgning</string>
     <string name="search_command_subtitle">Start med en titel, et nøgleord, et kanalnavn eller en serie. Resultaterne forbliver grupperet for hurtig navigation med fjernbetjening.</string>
@@ -690,7 +693,7 @@
     <string name="library_action_filters_sort">Filtre og sortering</string>
     <string name="a11y_selected">Valgt</string>
     <string name="a11y_recent_search">Seneste søgning %1$s</string>
-    <string name="a11y_locked">LBYTEc3¥st</string>
+    <string name="a11y_locked">Låst</string>
     <string name="a11y_favorite">Favorit</string>
     <string name="a11y_catch_up_available">Catch-up tilgængelig</string>
     <string name="a11y_now_playing">Spiller nu %1$s</string>
@@ -705,7 +708,7 @@
     <string name="setup_form_subtitle">Vælg en kilde, indtast oplysningerne, og fortsæt. Du kan administrere det senere i Indstillinger.</string>
     <string name="setup_source_type_label">Kildetype</string>
     <string name="setup_info_xtream_title">Brug Xtream, når legitimationsoplysninger er tilgængelige</string>
-    <string name="setup_info_xtream_body">Bedst nBYTEc3¥r du har server, bruger og adgangskode.</string>
+    <string name="setup_info_xtream_body">Bedst når du har server, bruger og adgangskode.</string>
     <string name="setup_info_m3u_title">Brug M3U til URL- eller filbaserede afspilningslister</string>
     <string name="setup_info_m3u_body">Brug et afspilningslistelink, eller importer en lokal fil.</string>
     <string name="setup_info_manage_title">Du kan administrere udbydere senere</string>
@@ -758,8 +761,8 @@
     <string name="player_retry">Prøv igen</string>
     <string name="player_last_channel_action">Sidste kanal</string>
     <string name="player_try_alternate_stream">Alternativ stream</string>
-    <string name="player_open_guide_action">BYTEc3…bn guiden</string>
-    <string name="player_error_back">Eller tryk pBYTEc3¥ Tilbage for at vende tilbage</string>
+    <string name="player_open_guide_action">Åbn guiden</string>
+    <string name="player_error_back">Eller tryk på Tilbage for at vende tilbage</string>
     <string name="player_error_live_hint">Prøv igen, gå tilbage til den sidste kanal, eller tryk på Tilbage for at forlade afspilningen.</string>
     <string name="player_channel_list_hint">Vælg en kanal for at skifte med det samme. Tilbage lukker listen.</string>
     <string name="player_epg_overlay_hint">Gennemse guideoplysninger her. Vælg catch-up-knappen for at åbne arkivhistorik.</string>
@@ -774,7 +777,7 @@
     <string name="player_live_channel">Kanal %1$d</string>
     <string name="player_rewind">Spol tilbage</string>
     <string name="player_forward">Hurtigt frem</string>
-    <string name="player_next">NBYTEc3†STE</string>
+    <string name="player_next">NÆSTE</string>
     <string name="player_restart">Genstart</string>
     <string name="player_archive">Arkiv</string>
     <string name="player_record">Optag</string>
@@ -793,10 +796,10 @@
     <string name="player_action_pip">PiP</string>
     <string name="player_action_quality">Kvalitet</string>
     <string name="player_mute">Lyd fra</string>
-    <string name="player_muted_badge">SlBYTEc3¥et fra</string>
+    <string name="player_muted_badge">Slået fra</string>
     <string name="player_cast">Cast</string>
     <string name="player_stop_casting">Stop casting</string>
-    <string name="player_unmute">SlBYTEc3¥ lyden til</string>
+    <string name="player_unmute">Slå lyden til</string>
     <string name="player_picture_in_picture">Billede i billede</string>
     <string name="player_pip_short">PiP</string>
     <string name="player_epg_short">EPG</string>
@@ -908,20 +911,20 @@
     <string name="epg_jump_prime_time">Primetime</string>
     <string name="epg_jump_tomorrow">I morgen</string>
     <string name="epg_next_day">Næste dag</string>
-    <string name="epg_day_yesterday">I gBYTEc3¥r</string>
+    <string name="epg_day_yesterday">I går</string>
     <string name="epg_day_today">I dag</string>
     <string name="epg_day_tomorrow">I morgen</string>
     <string name="epg_mode_label">Guidetilstand</string>
     <string name="epg_mode_subtitle">Skift mellem bred browsing, browsing efter ankertid og rækker til arkivvisning.</string>
     <string name="epg_favorites_filter_title">Vejledende kilde</string>
-    <string name="epg_favorites_filter_subtitle">Gem guiden pBYTEc3¥ alle kanaler eller kun dine live-favoritter.</string>
+    <string name="epg_favorites_filter_subtitle">Gem guiden på alle kanaler eller kun dine live-favoritter.</string>
     <string name="epg_favorites_filter_all">Alle kanaler</string>
     <string name="epg_favorites_filter_all_hint">Gennemse hele live lineup</string>
     <string name="epg_favorites_filter_favorites">Kun favoritter</string>
-    <string name="epg_favorites_filter_favorites_hint">Bliv pBYTEc3¥ dine fastgjorte livekanaler</string>
+    <string name="epg_favorites_filter_favorites_hint">Bliv på dine fastgjorte livekanaler</string>
     <string name="epg_mode_all">Tidslinje</string>
     <string name="epg_mode_all_hint">Alle synlige rækker</string>
-    <string name="epg_mode_anchored">PBYTEc3¥ udvalgt tidspunkt</string>
+    <string name="epg_mode_anchored">På udvalgt tidspunkt</string>
     <string name="epg_mode_anchored_hint">Kun kanaler, der luftes ved det aktuelle guideanker</string>
     <string name="epg_mode_archive">Arkiv klar</string>
     <string name="epg_mode_archive_hint">Kanaler med indhentning eller arkivposter</string>
@@ -958,7 +961,7 @@
     <string name="epg_no_scheduled_channels">Ingen kanaler med guidedata i dette udvalg</string>
     <string name="epg_no_search_results">Ingen matchende programmer i dette guidevindue</string>
     <string name="epg_search_empty_hint">Prøv en anden titel, udvid kategorien, eller ryd søgningen.</string>
-    <string name="epg_scheduled_only_hint">SlBYTEc3¥ kun planlagt fra, eller skift til en anden kategori.</string>
+    <string name="epg_scheduled_only_hint">Slå kun planlagt fra, eller skift til en anden kategori.</string>
     <string name="epg_filter_hint">Vælg en anden kategori, eller opdater guiden.</string>
     <string name="epg_title">TV guide</string>
     <string name="epg_catchup_available">Catch-up tilgængelig (%1$d dage)</string>
@@ -982,7 +985,7 @@
     <string name="epg_program_replay_ready">Arkivklar</string>
     <string name="epg_program_replay_partial">Kun udbyderens indhentning</string>
     <string name="epg_program_replay_unavailable">Ikke tilgængelig</string>
-    <string name="epg_program_progress_value">%1$d%% komplet BYTEe2€¢ %2$s</string>
+    <string name="epg_program_progress_value">%1$d%% komplet • %2$s</string>
     <string name="epg_provider_troubleshooting_title">Udbyder fejlfinding</string>
     <string name="epg_provider_troubleshooting_no_archive">Denne kanal er ikke markeret som arkivklar af udbyderen.</string>
     <string name="epg_provider_troubleshooting_missing_template">Afspilning kan fejle, fordi udbyderen har angivet catch-up-understøttelse uden en brugbar afspilningsskabelon.</string>
@@ -1013,8 +1016,8 @@
     <string name="series_loading_details">Indlæser detaljer...</string>
     <string name="series_not_found">Serien blev ikke fundet</string>
     <string name="series_detail_back">Tilbage til biblioteket</string>
-    <string name="series_plot_fallback">Ingen grund til rBYTEc3¥dighed</string>
-    <string name="series_seasons">BYTEc3…rstider</string>
+    <string name="series_plot_fallback">Ingen grund til rådighed</string>
+    <string name="series_seasons">Årstider</string>
     <string name="series_episodes">Afsnit (%1$d)</string>
     <string name="series_unwatched_badge">%1$d tilbage til slut</string>
     <string name="vod_external_ratings_heading">Bedømmelser</string>
@@ -1046,7 +1049,7 @@
     <string name="multiview_planner_launch_disabled">Tilføj kanaler først</string>
     <string name="multiview_planner_pick_slot">Vælg en plads til %1$s.</string>
     <string name="multiview_planner_added">%1$s er klar til delt skærm.</string>
-    <string name="multiview_planner_ready_subtitle">GennemgBYTEc3¥ de aktive slots, udskift enhver stream, og start, nBYTEc3¥r du er klar.</string>
+    <string name="multiview_planner_ready_subtitle">Gennemgå de aktive slots, udskift enhver stream, og start, når du er klar.</string>
     <string name="multiview_planner_slot_hint">Vælg en plads til denne kanal.</string>
     <string name="multiview_empty_slot">Tom Slot</string>
     <string name="multiview_stream_error">Stream fejl</string>
@@ -1063,14 +1066,14 @@
     <string name="multiview_replace_title">Udskift fokuseret slot</string>
     <string name="multiview_replace_empty">Brug først Live TV-favoritter eller seneste kanaler, så vises erstatningsvalg her.</string>
     <string name="multiview_slot_label">Plads %1$d</string>
-    <string name="multiview_policy_summary">%1$s niveau BYTEe2€¢ %2$d aktive plads(er)</string>
+    <string name="multiview_policy_summary">%1$s niveau • %2$d aktive plads(er)</string>
     <string name="multiview_policy_auto">Auto</string>
     <string name="multiview_policy_conservative">Konservativ</string>
     <string name="multiview_policy_balanced">Balanceret</string>
     <string name="multiview_policy_maximum">Maksimum</string>
     <string name="multiview_policy_blocked">Standby slot</string>
-    <string name="multiview_telemetry_snapshot">%1$d aktiv BYTEe2€¢ %2$d standby BYTEe2€¢ %3$d buffering BYTEe2€¢ %4$d fejl</string>
-    <string name="multiview_telemetry_detail">%1$d faldt i alt BYTEe2€¢ +%2$d seneste BYTEe2€¢ belastning %3$d BYTEe2€¢ %4$s termisk</string>
+    <string name="multiview_telemetry_snapshot">%1$d aktiv • %2$d standby • %3$d buffering • %4$d fejl</string>
+    <string name="multiview_telemetry_detail">%1$d faldt i alt • +%2$d seneste • belastning %3$d • %4$s termisk</string>
     <string name="multiview_thermal_unknown">Ukendt</string>
     <string name="multiview_thermal_normal">Normal</string>
     <string name="multiview_thermal_light">Lys</string>
@@ -1112,7 +1115,7 @@
     <string name="label_duration_min">%1$d min</string>
     <string name="label_tv">TV</string>
     <string name="badge_saved">GEMT</string>
-    <string name="badge_catch_up">FBYTEc3… GEN</string>
+    <string name="badge_catch_up">FÅ GEN</string>
     <string name="badge_moving">FLYTTER</string>
     <string name="badge_fav">FAV</string>
     <string name="badge_error">ERR</string>
@@ -1128,12 +1131,12 @@
     <string name="dashboard_jump_back_live">Hop tilbage til live-tv</string>
     <string name="dashboard_watch_live">Se live</string>
     <string name="dashboard_fresh_movie_pick">Frisk filmvalg</string>
-    <string name="dashboard_open_movies">BYTEc3…bn film</string>
+    <string name="dashboard_open_movies">Åbn film</string>
     <string name="dashboard_updated_series">Opdateret seriehylde</string>
-    <string name="dashboard_open_series">BYTEc3…ben serie</string>
+    <string name="dashboard_open_series">Åben serie</string>
     <string name="dashboard_library_ready">Dit IPTV-bibliotek er klar</string>
-    <string name="dashboard_open_live_tv">BYTEc3…bn Live TV</string>
-    <string name="dashboard_pinned_channels_format">Fastgjorte BYTEc2· %1$d kanaler</string>
+    <string name="dashboard_open_live_tv">Åbn Live TV</string>
+    <string name="dashboard_pinned_channels_format">Fastgjorte · %1$d kanaler</string>
     <string name="dashboard_channels_format">%1$d kanaler</string>
     <string name="favorites_all_favorites">Alle favoritter</string>
     <string name="favorites_saved_items_format">%1$d gemte elementer</string>
@@ -1146,11 +1149,11 @@
     <string name="favorites_pinned_home">Fastgjort %1$s til Hjem.</string>
     <string name="favorites_merged_group">Flettet %1$s i den valgte gruppe.</string>
     <string name="favorites_status_pill_format">%1$s %2$d</string>
-    <string name="time_range_format">%1$s BYTEe2€“ %2$s</string>
+    <string name="time_range_format">%1$s – %2$s</string>
     <string name="channel_number_name_format">%1$d. %2$s</string>
     <string name="label_colon_value_format">%1$s: %2$s</string>
     <string name="split_count_format">%1$s %2$d/4</string>
-    <string name="program_date_time_range">%1$s | %2$s BYTEe2€“ %3$s</string>
+    <string name="program_date_time_range">%1$s | %2$s – %3$s</string>
     <string name="diagnostics_summary_format">%1$s | %2$s</string>
     <string name="home_added_to_favorites">Tilføjede %1$s til Favoritter</string>
     <string name="home_removed_from_favorites">Fjernet %1$s fra favoritter</string>
@@ -1174,4 +1177,3 @@
     <string name="tv_input_setup_retry_scan">Prøv automatisk scanning igen</string>
     <string name="tv_input_setup_success_hint">Android TV Live TV kan nu åbne dine StreamVault-kanaler.</string>
 </resources>
-

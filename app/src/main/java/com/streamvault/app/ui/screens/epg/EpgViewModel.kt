@@ -13,12 +13,14 @@ import com.streamvault.domain.model.CombinedCategory
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.EpgOverrideCandidate
 import com.streamvault.domain.model.Program
+import com.streamvault.domain.model.VirtualCategoryIds
 import com.streamvault.domain.repository.ChannelRepository
 import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.EpgRepository
 import com.streamvault.domain.repository.EpgSourceRepository
 import com.streamvault.domain.repository.FavoriteRepository
 import com.streamvault.domain.repository.ProviderRepository
+import com.streamvault.domain.usecase.GetCustomCategories
 import com.streamvault.data.preferences.PreferencesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +34,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -151,7 +155,8 @@ private data class GuideSelectionRequest(
     val anchorTime: Long,
     val favoritesOnly: Boolean,
     val parentalControlLevel: Int,
-    val unlockedCategoryIds: Set<Long>
+    val unlockedCategoryIds: Set<Long>,
+    val isStartupSelection: Boolean
 )
 
 @HiltViewModel
@@ -163,7 +168,8 @@ class EpgViewModel @Inject constructor(
     private val epgSourceRepository: EpgSourceRepository,
     private val favoriteRepository: FavoriteRepository,
     private val preferencesRepository: PreferencesRepository,
-    private val parentalControlManager: ParentalControlManager
+    private val parentalControlManager: ParentalControlManager,
+    private val getCustomCategories: GetCustomCategories
 ) : ViewModel() {
 
     companion object {
@@ -189,6 +195,7 @@ class EpgViewModel @Inject constructor(
     private val selectedDensity = MutableStateFlow(GuideDensity.COMPACT)
     private val showFavoritesOnly = MutableStateFlow(false)
     private val programSearchQuery = MutableStateFlow("")
+    private val startupCategoryId = MutableStateFlow<Long?>(null)
     private val refreshNonce = MutableStateFlow(0)
     private val baseGuideSnapshot = MutableStateFlow<GuideBaseSnapshot?>(null)
     private val _overrideUiState = MutableStateFlow(EpgOverrideUiState())
@@ -203,6 +210,7 @@ class EpgViewModel @Inject constructor(
     }
 
     fun selectCategory(categoryId: Long) {
+        startupCategoryId.value = null
         if (selectedCategoryId.value == categoryId) return
         baseGuideSnapshot.value?.providerId?.takeIf { it > 0L }?.let { providerId ->
             parentalControlManager.retainUnlockedCategory(
@@ -384,6 +392,7 @@ class EpgViewModel @Inject constructor(
         favoritesOnly: Boolean?
     ) {
         categoryId?.let { requested ->
+            startupCategoryId.value = null
             selectedCategoryId.value = requested
         }
         anchorTime?.takeIf { it > 0L }?.let { requested ->
@@ -447,47 +456,65 @@ class EpgViewModel @Inject constructor(
     }
 
     private suspend fun observeSingleProviderGuide(provider: com.streamvault.domain.model.Provider) {
-        channelRepository.getCategories(provider.id)
-            .combine(preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE)) { providerCategories, hiddenCategoryIds ->
-                providerCategories to hiddenCategoryIds
-            }
-            .combine(preferencesRepository.getCategorySortMode(provider.id, ContentType.LIVE)) { (providerCategories, hiddenCategoryIds), sortMode ->
-                Triple(providerCategories, hiddenCategoryIds, sortMode)
-            }
+        combine(
+            channelRepository.getCategories(provider.id),
+            getCustomCategories(ContentType.LIVE),
+            preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE),
+            preferencesRepository.getCategorySortMode(provider.id, ContentType.LIVE)
+        ) { providerCategories, customCategories, hiddenCategoryIds, sortMode ->
+            GuideCategoryData(
+                providerCategories = providerCategories,
+                customCategories = customCategories,
+                hiddenCategoryIds = hiddenCategoryIds,
+                sortMode = sortMode
+            )
+        }
             .combine(
                 combine(
                     selectedCategoryId,
+                    startupCategoryId,
                     guideAnchorTime,
                     showFavoritesOnly,
                     refreshNonce
-                ) { requestedCategoryId, anchorTime, favoritesOnly, _ ->
-                    Triple(requestedCategoryId, anchorTime, favoritesOnly)
+                ) { requestedCategoryId, startupSelectionId, anchorTime, favoritesOnly, _ ->
+                    GuideSelectionSeed(
+                        requestedCategoryId = startupSelectionId ?: requestedCategoryId,
+                        anchorTime = anchorTime,
+                        favoritesOnly = favoritesOnly,
+                        isStartupSelection = startupSelectionId != null
+                    )
                 }.combine(preferencesRepository.parentalControlLevel) { selection, parentalControlLevel ->
                     selection to parentalControlLevel
                 }.combine(parentalControlManager.unlockedCategoriesForProvider(provider.id)) { (selection, parentalControlLevel), unlockedCategoryIds ->
                     GuideSelectionRequest(
-                        requestedCategoryId = selection.first,
-                        anchorTime = selection.second,
-                        favoritesOnly = selection.third,
+                        requestedCategoryId = selection.requestedCategoryId,
+                        anchorTime = selection.anchorTime,
+                        favoritesOnly = selection.favoritesOnly,
                         parentalControlLevel = parentalControlLevel,
-                        unlockedCategoryIds = unlockedCategoryIds
+                        unlockedCategoryIds = unlockedCategoryIds,
+                        isStartupSelection = selection.isStartupSelection
                     )
                 }
-            ) { (providerCategories, hiddenCategoryIds, sortMode), selection ->
+            ) { categoryData, selection ->
                 val visibleProviderCategories = applyProviderCategoryDisplayPreferences(
-                    categories = providerCategories.filter { it.id != ChannelRepository.ALL_CHANNELS_ID },
-                    hiddenCategoryIds = hiddenCategoryIds,
-                    sortMode = sortMode
+                    categories = categoryData.providerCategories.filter { it.id != ChannelRepository.ALL_CHANNELS_ID },
+                    hiddenCategoryIds = categoryData.hiddenCategoryIds,
+                    sortMode = categoryData.sortMode
+                )
+                val orderedCategories = buildGuideCategoryList(
+                    providerCategories = visibleProviderCategories,
+                    customCategories = categoryData.customCategories
                 )
                 val resolvedCategoryId = resolveGuideCategorySelection(
                     requestedCategoryId = selection.requestedCategoryId,
-                    categories = visibleProviderCategories,
+                    categories = orderedCategories,
                     parentalControlLevel = selection.parentalControlLevel,
-                    unlockedCategoryIds = selection.unlockedCategoryIds
+                    unlockedCategoryIds = selection.unlockedCategoryIds,
+                    fallbackFromEmptyFavorites = selection.isStartupSelection
                 )
                 GuideBaseRequest(
-                    categories = visibleProviderCategories,
-                    hiddenCategoryIds = hiddenCategoryIds,
+                    categories = orderedCategories,
+                    hiddenCategoryIds = categoryData.hiddenCategoryIds,
                     resolvedCategoryId = resolvedCategoryId,
                     parentalControlLevel = selection.parentalControlLevel,
                     anchorTime = selection.anchorTime,
@@ -496,10 +523,7 @@ class EpgViewModel @Inject constructor(
                     windowEnd = selection.anchorTime + LOOKAHEAD_MS
                 )
             }.collectLatest { request ->
-                val categories = buildList {
-                    add(Category(id = ChannelRepository.ALL_CHANNELS_ID, name = "All Channels"))
-                    addAll(request.categories)
-                }
+                val categories = request.categories
                 val hasVisibleGuide = _uiState.value.channels.isNotEmpty() || _uiState.value.programsByChannel.isNotEmpty()
                 _uiState.update {
                     it.copy(
@@ -522,18 +546,8 @@ class EpgViewModel @Inject constructor(
                     )
                 }
 
-                combine(
-                    channelRepository.getChannelsByNumber(provider.id, request.resolvedCategoryId),
-                    channelRepository.getChannelsWithoutErrors(provider.id, request.resolvedCategoryId),
-                    favoriteRepository.getFavorites(ContentType.LIVE)
-                ) { channelsByNumber, healthyChannels, favorites ->
+                combine(loadGuideChannelsForProvider(provider.id, request), favoriteRepository.getFavorites(ContentType.LIVE)) { preferredChannels, favorites ->
                     val favoriteIds = favorites.map { it.contentId }.toSet()
-                    val preferredChannels = if (request.favoritesOnly) {
-                        healthyChannels.filter { it.id in favoriteIds }
-                            .ifEmpty { channelsByNumber.filter { it.id in favoriteIds } }
-                    } else {
-                        healthyChannels.ifEmpty { channelsByNumber }
-                    }
                     GuideChannelSelection(
                         channels = preferredChannels.filterNot { channel -> channel.categoryId in request.hiddenCategoryIds },
                         favoriteChannelIds = favoriteIds
@@ -560,6 +574,7 @@ class EpgViewModel @Inject constructor(
                             windowEnd = request.windowEnd
                         )
                     )
+                    finalizeStartupCategory(request.resolvedCategoryId)
                 }
             }
     }
@@ -567,42 +582,48 @@ class EpgViewModel @Inject constructor(
     private suspend fun observeCombinedGuide(profileId: Long) {
         combine(
             combinedM3uRepository.getCombinedCategories(profileId),
+            getCustomCategories(ContentType.LIVE),
             combine(
                 selectedCategoryId,
+                startupCategoryId,
                 guideAnchorTime,
                 showFavoritesOnly,
                 refreshNonce
-            ) { requestedCategoryId, anchorTime, favoritesOnly, _ ->
-                Triple(requestedCategoryId, anchorTime, favoritesOnly)
+            ) { requestedCategoryId, startupSelectionId, anchorTime, favoritesOnly, _ ->
+                GuideSelectionSeed(
+                    requestedCategoryId = startupSelectionId ?: requestedCategoryId,
+                    anchorTime = anchorTime,
+                    favoritesOnly = favoritesOnly,
+                    isStartupSelection = startupSelectionId != null
+                )
             }.combine(preferencesRepository.parentalControlLevel) { selection, parentalControlLevel ->
                 selection to parentalControlLevel
             }
-        ) { combinedCategories, selection ->
+        ) { combinedCategories, customCategories, selection ->
             combinedCategoriesById = combinedCategories.associateBy { it.category.id }
-            val categories = buildList {
-                add(Category(id = ChannelRepository.ALL_CHANNELS_ID, name = "All Channels"))
-                addAll(combinedCategories.map { it.category })
-            }
-            val resolvedCategoryId = if (selection.first.first == ChannelRepository.ALL_CHANNELS_ID || combinedCategoriesById.containsKey(selection.first.first)) {
-                selection.first.first
-            } else {
-                categories.firstOrNull()?.id ?: ChannelRepository.ALL_CHANNELS_ID
-            }
+            val categories = buildGuideCategoryList(
+                providerCategories = combinedCategories.map { it.category },
+                customCategories = customCategories
+            )
+            val resolvedCategoryId = resolveGuideCategorySelection(
+                requestedCategoryId = selection.first.requestedCategoryId,
+                categories = categories,
+                parentalControlLevel = selection.second,
+                unlockedCategoryIds = emptySet(),
+                fallbackFromEmptyFavorites = selection.first.isStartupSelection
+            )
             GuideBaseRequest(
-                categories = categories.filter { it.id != ChannelRepository.ALL_CHANNELS_ID },
+                categories = categories,
                 hiddenCategoryIds = emptySet(),
                 resolvedCategoryId = resolvedCategoryId,
                 parentalControlLevel = selection.second,
-                anchorTime = selection.first.second,
-                favoritesOnly = selection.first.third,
-                windowStart = selection.first.second - LOOKBACK_MS,
-                windowEnd = selection.first.second + LOOKAHEAD_MS
+                anchorTime = selection.first.anchorTime,
+                favoritesOnly = selection.first.favoritesOnly,
+                windowStart = selection.first.anchorTime - LOOKBACK_MS,
+                windowEnd = selection.first.anchorTime + LOOKAHEAD_MS
             )
         }.collectLatest { request ->
-            val categories = buildList {
-                add(Category(id = ChannelRepository.ALL_CHANNELS_ID, name = "All Channels"))
-                addAll(request.categories)
-            }
+            val categories = request.categories
             val profile = combinedM3uRepository.getProfile(profileId)
             val profileName = profile?.name ?: "Combined M3U"
             val hasVisibleGuide = _uiState.value.channels.isNotEmpty() || _uiState.value.programsByChannel.isNotEmpty()
@@ -649,6 +670,7 @@ class EpgViewModel @Inject constructor(
                         windowEnd = request.windowEnd
                     )
                 )
+                finalizeStartupCategory(request.resolvedCategoryId)
             }
         }
     }
@@ -658,6 +680,14 @@ class EpgViewModel @Inject constructor(
             val flows = combinedCategoriesById.values.map { combinedM3uRepository.getCombinedChannels(profileId, it) }
             if (flows.isEmpty()) kotlinx.coroutines.flow.flowOf(emptyList())
             else combine(flows) { arrays -> arrays.toList().flatMap { it } }
+        } else if (categoryId == VirtualCategoryIds.FAVORITES) {
+            favoriteRepository.getFavorites(ContentType.LIVE)
+                .map { favorites -> favorites.sortedBy { it.position }.map { it.contentId } }
+                .flatMapLatest(::loadGuideChannelsByOrderedIds)
+        } else if (categoryId < 0L) {
+            favoriteRepository.getFavoritesByGroup(-categoryId)
+                .map { favorites -> favorites.sortedBy { it.position }.map { it.contentId } }
+                .flatMapLatest(::loadGuideChannelsByOrderedIds)
         } else {
             val combinedCategory = combinedCategoriesById[categoryId]
             if (combinedCategory == null) kotlinx.coroutines.flow.flowOf(emptyList())
@@ -818,6 +848,7 @@ class EpgViewModel @Inject constructor(
                         selectedChannelMode.value = mode
                     }
                 }
+            startupCategoryId.value = preferencesRepository.guideDefaultCategoryId.first() ?: VirtualCategoryIds.FAVORITES
             showFavoritesOnly.value = preferencesRepository.guideFavoritesOnly.first()
             showScheduledOnly.value = preferencesRepository.guideScheduledOnly.first()
             preferencesRepository.guideAnchorTime.first()
@@ -844,6 +875,88 @@ class EpgViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesRepository.setGuideAnchorTime(anchorTimeMs)
         }
+    }
+
+    private fun buildGuideCategoryList(
+        providerCategories: List<Category>,
+        customCategories: List<Category>
+    ): List<Category> {
+        val favoritesCategory = customCategories.find { it.id == VirtualCategoryIds.FAVORITES }
+        return buildList {
+            if (favoritesCategory != null) {
+                add(favoritesCategory)
+            }
+            addAll(customCategories.filter { it.id != VirtualCategoryIds.FAVORITES })
+            add(
+                Category(
+                    id = ChannelRepository.ALL_CHANNELS_ID,
+                    name = "All Channels",
+                    type = ContentType.LIVE,
+                    count = providerCategories.sumOf(Category::count)
+                )
+            )
+            addAll(providerCategories)
+        }
+    }
+
+    private fun loadGuideChannelsForProvider(
+        providerId: Long,
+        request: GuideBaseRequest
+    ) = when (request.resolvedCategoryId) {
+        ChannelRepository.ALL_CHANNELS_ID -> combine(
+            channelRepository.getChannelsByNumber(providerId, request.resolvedCategoryId),
+            channelRepository.getChannelsWithoutErrors(providerId, request.resolvedCategoryId),
+            favoriteRepository.getFavorites(ContentType.LIVE)
+        ) { channelsByNumber, healthyChannels, favorites ->
+            val favoriteIds = favorites.map { it.contentId }.toSet()
+            if (request.favoritesOnly) {
+                healthyChannels.filter { it.id in favoriteIds }
+                    .ifEmpty { channelsByNumber.filter { it.id in favoriteIds } }
+            } else {
+                healthyChannels.ifEmpty { channelsByNumber }
+            }
+        }
+
+        VirtualCategoryIds.FAVORITES -> favoriteRepository.getFavorites(ContentType.LIVE)
+            .map { favorites -> favorites.sortedBy { it.position }.map { it.contentId } }
+            .flatMapLatest { ids -> loadGuideChannelsByOrderedIds(ids, providerId) }
+
+        in Long.MIN_VALUE..<0L -> favoriteRepository.getFavoritesByGroup(-request.resolvedCategoryId)
+            .map { favorites -> favorites.sortedBy { it.position }.map { it.contentId } }
+            .flatMapLatest { ids -> loadGuideChannelsByOrderedIds(ids, providerId) }
+
+        else -> combine(
+            channelRepository.getChannelsByNumber(providerId, request.resolvedCategoryId),
+            channelRepository.getChannelsWithoutErrors(providerId, request.resolvedCategoryId),
+            favoriteRepository.getFavorites(ContentType.LIVE)
+        ) { channelsByNumber, healthyChannels, favorites ->
+            val favoriteIds = favorites.map { it.contentId }.toSet()
+            if (request.favoritesOnly) {
+                healthyChannels.filter { it.id in favoriteIds }
+                    .ifEmpty { channelsByNumber.filter { it.id in favoriteIds } }
+            } else {
+                healthyChannels.ifEmpty { channelsByNumber }
+            }
+        }
+    }
+
+    private fun loadGuideChannelsByOrderedIds(ids: List<Long>, providerId: Long? = null) =
+        if (ids.isEmpty()) {
+            kotlinx.coroutines.flow.flowOf(emptyList())
+        } else {
+            channelRepository.getChannelsByIds(ids).map { unsorted ->
+                val filtered = providerId?.let { requiredProviderId ->
+                    unsorted.filter { it.providerId == requiredProviderId }
+                } ?: unsorted
+                val channelsById = filtered.associateBy { it.id }
+                ids.mapNotNull { channelsById[it] }
+            }
+        }
+
+    private fun finalizeStartupCategory(resolvedCategoryId: Long) {
+        if (startupCategoryId.value == null) return
+        startupCategoryId.value = null
+        selectedCategoryId.value = resolvedCategoryId
     }
 
     private suspend fun loadGuidePrograms(
@@ -1065,7 +1178,8 @@ class EpgViewModel @Inject constructor(
         requestedCategoryId: Long,
         categories: List<Category>,
         parentalControlLevel: Int,
-        unlockedCategoryIds: Set<Long>
+        unlockedCategoryIds: Set<Long>,
+        fallbackFromEmptyFavorites: Boolean = false
     ): Long {
         val requestedExists = requestedCategoryId == ChannelRepository.ALL_CHANNELS_ID ||
             categories.any { it.id == requestedCategoryId }
@@ -1075,11 +1189,18 @@ class EpgViewModel @Inject constructor(
 
         val requestedCategory = categories.firstOrNull { it.id == requestedCategoryId }
         if (requestedCategory != null && isGuideCategoryAccessible(requestedCategory, parentalControlLevel, unlockedCategoryIds)) {
+            if (fallbackFromEmptyFavorites && requestedCategory.id == VirtualCategoryIds.FAVORITES && requestedCategory.count <= 0) {
+                return ChannelRepository.ALL_CHANNELS_ID
+            }
             return requestedCategory.id
         }
 
         return categories.firstOrNull { category ->
-            isGuideCategoryAccessible(category, parentalControlLevel, unlockedCategoryIds)
+            if (fallbackFromEmptyFavorites && category.id == VirtualCategoryIds.FAVORITES && category.count <= 0) {
+                false
+            } else {
+                isGuideCategoryAccessible(category, parentalControlLevel, unlockedCategoryIds)
+            }
         }?.id ?: ChannelRepository.ALL_CHANNELS_ID
     }
 
@@ -1101,4 +1222,18 @@ private data class GuidePresentationState(
     val scheduledOnly: Boolean,
     val channelMode: GuideChannelMode,
     val density: GuideDensity
+)
+
+private data class GuideSelectionSeed(
+    val requestedCategoryId: Long,
+    val anchorTime: Long,
+    val favoritesOnly: Boolean,
+    val isStartupSelection: Boolean
+)
+
+private data class GuideCategoryData(
+    val providerCategories: List<Category>,
+    val customCategories: List<Category>,
+    val hiddenCategoryIds: Set<Long>,
+    val sortMode: com.streamvault.domain.model.CategorySortMode
 )

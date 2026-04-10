@@ -52,6 +52,8 @@ internal fun SettingsScreenDialogs(
     onShowLiveChannelNumberingDialogChange: (Boolean) -> Unit,
     showVodViewModeDialog: Boolean,
     onShowVodViewModeDialogChange: (Boolean) -> Unit,
+    showGuideDefaultCategoryDialog: Boolean,
+    onShowGuideDefaultCategoryDialogChange: (Boolean) -> Unit,
     showPlaybackSpeedDialog: Boolean,
     onShowPlaybackSpeedDialogChange: (Boolean) -> Unit,
     showDecoderModeDialog: Boolean,
@@ -116,7 +118,11 @@ internal fun SettingsScreenDialogs(
     customSyncSelections: Set<ProviderSyncSelection>,
     onCustomSyncSelectionsChange: (Set<ProviderSyncSelection>) -> Unit
 ) {
-    SyncingOverlay(isSyncing = uiState.isSyncing)
+    SyncingOverlay(
+        isSyncing = uiState.isSyncing,
+        providerName = uiState.syncingProviderName,
+        progress = uiState.syncProgress
+    )
 
     if (showLiveTvModeDialog) {
         LiveTvChannelModeDialog(
@@ -160,6 +166,25 @@ internal fun SettingsScreenDialogs(
                 onShowVodViewModeDialogChange(false)
             }
         )
+    }
+
+    if (showGuideDefaultCategoryDialog) {
+        PremiumSelectionDialog(
+            title = stringResource(R.string.settings_select_guide_default_category),
+            onDismiss = { onShowGuideDefaultCategoryDialogChange(false) }
+        ) {
+            uiState.guideDefaultCategoryOptions.forEachIndexed { index, category ->
+                LevelOption(
+                    level = index,
+                    text = category.name,
+                    currentLevel = if (uiState.guideDefaultCategoryId == category.id) index else -1,
+                    onSelect = {
+                        viewModel.setGuideDefaultCategory(category.id)
+                        onShowGuideDefaultCategoryDialogChange(false)
+                    }
+                )
+            }
+        }
     }
 
     if (showPlaybackSpeedDialog) {
@@ -636,10 +661,7 @@ internal fun SettingsScreenDialogs(
             },
             onSelect = { selection ->
                 onShowProviderSyncDialogChange(false)
-                if (selection == ProviderSyncSelection.ALL) {
-                    viewModel.syncProviderSection(pendingSyncProvider.id, selection)
-                    onPendingSyncProviderIdChange(null)
-                } else if (selection == null) {
+                if (selection == null) {
                     onShowCustomProviderSyncDialogChange(true)
                 } else {
                     viewModel.syncProviderSection(pendingSyncProvider.id, selection)
@@ -675,7 +697,11 @@ internal fun SettingsScreenDialogs(
 }
 
 @Composable
-private fun SyncingOverlay(isSyncing: Boolean) {
+private fun SyncingOverlay(
+    isSyncing: Boolean,
+    providerName: String? = null,
+    progress: String? = null
+) {
     if (!isSyncing) return
 
     BackHandler(enabled = true) {}
@@ -704,10 +730,17 @@ private fun SyncingOverlay(isSyncing: Boolean) {
                 color = OnSurface
             )
             Text(
-                text = stringResource(R.string.settings_syncing_subtitle),
+                text = providerName ?: stringResource(R.string.settings_syncing_subtitle),
                 style = MaterialTheme.typography.bodySmall,
                 color = OnSurfaceDim
             )
+            progress?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim
+                )
+            }
         }
     }
 }

@@ -20,6 +20,7 @@ interface ProviderRepository {
         providerId: Long,
         force: Boolean = false,
         movieFastSyncOverride: Boolean? = null,
+        epgSyncModeOverride: ProviderEpgSyncMode? = null,
         onProgress: ((String) -> Unit)? = null
     ): Result<Unit>
     suspend fun getProgramsForLiveStream(

@@ -6,6 +6,9 @@ All notable product changes are recorded in this document.
 
 ### Changed
 - Updated VOD playback preparation to carry richer resolved stream metadata into the shared player path, improving compatibility with provider-resolved movie and episode streams.
+- Updated TV Guide category selection so Favorites and custom live groups appear in the guide category list, Favorites becomes the entry default when it has channels, and Settings now lets you choose the guide's default startup category.
+- Updated Settings navigation by splitting the crowded Playback tab into separate Playback and Browsing sections, moving guide, Live TV, VOD layout, and category browsing preferences into their own dedicated area.
+- Updated Settings provider sync so the default action now runs a lighter quick sync, provider switching only auto-refreshes stale providers, and the sync overlay shows the current provider and live progress text.
 
 ### Fixed
 - Fixed top navigation focus so switching between top-bar destinations no longer snaps focus back to the Home tab.

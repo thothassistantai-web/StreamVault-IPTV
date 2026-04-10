@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.streamvault.app.R
 import com.streamvault.app.BuildConfig
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
+import com.streamvault.app.ui.model.applyProviderCategoryDisplayPreferences
 import com.streamvault.app.ui.model.LiveTvChannelMode
 import com.streamvault.app.ui.model.LiveTvQuickFilterVisibilityMode
 import com.streamvault.app.ui.model.VodViewMode
@@ -35,6 +36,7 @@ import com.streamvault.domain.model.RecordingStorageConfig
 import com.streamvault.domain.model.RecordingStorageState
 import com.streamvault.domain.model.EpgResolutionSummary
 import com.streamvault.domain.model.Result
+import com.streamvault.domain.model.VirtualCategoryIds
 import com.streamvault.domain.usecase.ExportBackup
 import com.streamvault.domain.usecase.ExportBackupCommand
 import com.streamvault.domain.usecase.ExportBackupResult
@@ -46,7 +48,9 @@ import com.streamvault.domain.usecase.InspectBackupResult
 import com.streamvault.domain.repository.ProviderRepository
 import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.CategoryRepository
+import com.streamvault.domain.repository.ChannelRepository
 import com.streamvault.domain.repository.SyncMetadataRepository
+import com.streamvault.domain.usecase.GetCustomCategories
 import com.streamvault.domain.usecase.SyncProvider
 import com.streamvault.domain.usecase.SyncProviderCommand
 import com.streamvault.domain.usecase.SyncProviderResult
@@ -64,6 +68,7 @@ class SettingsViewModel @Inject constructor(
     private val providerRepository: ProviderRepository,
     private val combinedM3uRepository: CombinedM3uRepository,
     private val categoryRepository: CategoryRepository,
+    private val channelRepository: ChannelRepository,
     private val preferencesRepository: PreferencesRepository,
     private val internetSpeedTestRunner: InternetSpeedTestRunner,
     private val backupManager: BackupManager,
@@ -75,7 +80,8 @@ class SettingsViewModel @Inject constructor(
     private val syncProvider: SyncProvider,
     private val epgSourceRepository: com.streamvault.domain.repository.EpgSourceRepository,
     private val gitHubReleaseChecker: GitHubReleaseChecker,
-    private val appUpdateInstaller: AppUpdateInstaller
+    private val appUpdateInstaller: AppUpdateInstaller,
+    private val getCustomCategories: GetCustomCategories
 ) : ViewModel() {
     private val appContext = application
     private val exportBackup = ExportBackup(backupManager)
@@ -106,6 +112,8 @@ class SettingsViewModel @Inject constructor(
         combinedM3uRepository = combinedM3uRepository,
         preferencesRepository = preferencesRepository,
         syncProvider = syncProvider,
+        syncManager = syncManager,
+        syncMetadataRepository = syncMetadataRepository,
         tvInputChannelSyncManager = tvInputChannelSyncManager,
         uiState = _uiState
     )
@@ -114,7 +122,7 @@ class SettingsViewModel @Inject constructor(
         syncManager = syncManager,
         tvInputChannelSyncManager = tvInputChannelSyncManager,
         uiState = _uiState,
-        refreshProvider = { scope, providerId -> providerActions.refreshProvider(scope, providerId) }
+        refreshProvider = { scope, providerId, syncMode -> providerActions.refreshProvider(scope, providerId, syncMode) }
     )
     private val epgActions = SettingsEpgActions(
         epgSourceRepository = epgSourceRepository,
@@ -201,6 +209,12 @@ class SettingsViewModel @Inject constructor(
                         hiddenCategories = snapshot.hiddenCategories
                     )
                 }
+            }
+        }
+
+        viewModelScope.launch {
+            observeGuideDefaultCategoryOptions().collect { categories ->
+                _uiState.update { it.copy(guideDefaultCategoryOptions = categories) }
             }
         }
 
@@ -335,6 +349,12 @@ class SettingsViewModel @Inject constructor(
     fun setVodViewMode(mode: VodViewMode) {
         viewModelScope.launch {
             preferencesRepository.setVodViewMode(mode.storageValue)
+        }
+    }
+
+    fun setGuideDefaultCategory(categoryId: Long) {
+        viewModelScope.launch {
+            preferencesRepository.setGuideDefaultCategoryId(categoryId)
         }
     }
 
@@ -561,8 +581,11 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(userMessage = null) }
     }
 
-    fun refreshProvider(providerId: Long, movieFastSyncOverride: Boolean? = null) {
-        providerActions.refreshProvider(viewModelScope, providerId, movieFastSyncOverride)
+    fun refreshProvider(
+        providerId: Long,
+        syncMode: SettingsProviderSyncMode = SettingsProviderSyncMode.QUICK
+    ) {
+        providerActions.refreshProvider(viewModelScope, providerId, syncMode)
     }
 
     fun syncProviderSection(providerId: Long, selection: ProviderSyncSelection) {
@@ -730,5 +753,78 @@ class SettingsViewModel @Inject constructor(
 
     fun moveEpgSourceAssignmentDown(providerId: Long, epgSourceId: Long) {
         epgActions.moveEpgSourceAssignmentDown(viewModelScope, providerId, epgSourceId)
+    }
+
+    private fun observeGuideDefaultCategoryOptions(): Flow<List<Category>> {
+        return combinedM3uRepository.getActiveLiveSource().flatMapLatest { activeSource ->
+            when (activeSource) {
+                is ActiveLiveSource.CombinedM3uSource -> {
+                    combine(
+                        combinedM3uRepository.getCombinedCategories(activeSource.profileId),
+                        getCustomCategories(ContentType.LIVE)
+                    ) { combinedCategories, customCategories ->
+                        buildGuideDefaultCategoryOptions(
+                            physicalCategories = combinedCategories.map { it.category },
+                            customCategories = customCategories
+                        )
+                    }
+                }
+                is ActiveLiveSource.ProviderSource -> {
+                    combine(
+                        channelRepository.getCategories(activeSource.providerId),
+                        getCustomCategories(ContentType.LIVE),
+                        preferencesRepository.getHiddenCategoryIds(activeSource.providerId, ContentType.LIVE),
+                        preferencesRepository.getCategorySortMode(activeSource.providerId, ContentType.LIVE)
+                    ) { categories, customCategories, hiddenCategoryIds, sortMode ->
+                        val visibleProviderCategories = applyProviderCategoryDisplayPreferences(
+                            categories = categories.filter { it.id != ChannelRepository.ALL_CHANNELS_ID },
+                            hiddenCategoryIds = hiddenCategoryIds,
+                            sortMode = sortMode
+                        )
+                        buildGuideDefaultCategoryOptions(
+                            physicalCategories = visibleProviderCategories,
+                            customCategories = customCategories
+                        )
+                    }
+                }
+                null -> flowOf(
+                    listOf(
+                        Category(
+                            id = VirtualCategoryIds.FAVORITES,
+                            name = "Favorites",
+                            type = ContentType.LIVE,
+                            isVirtual = true
+                        ),
+                        Category(
+                            id = ChannelRepository.ALL_CHANNELS_ID,
+                            name = "All Channels",
+                            type = ContentType.LIVE
+                        )
+                    )
+                )
+            }
+        }
+    }
+
+    private fun buildGuideDefaultCategoryOptions(
+        physicalCategories: List<Category>,
+        customCategories: List<Category>
+    ): List<Category> {
+        val favorites = customCategories.find { it.id == VirtualCategoryIds.FAVORITES }
+        return buildList {
+            if (favorites != null) {
+                add(favorites)
+            }
+            addAll(customCategories.filter { it.id != VirtualCategoryIds.FAVORITES })
+            add(
+                Category(
+                    id = ChannelRepository.ALL_CHANNELS_ID,
+                    name = "All Channels",
+                    type = ContentType.LIVE,
+                    count = physicalCategories.sumOf(Category::count)
+                )
+            )
+            addAll(physicalCategories)
+        }
     }
 }

@@ -183,6 +183,16 @@ fun SettingsScreen(
             else -> context.getString(R.string.settings_level_unknown)
         }
     }
+    val guideDefaultCategoryLabel = remember(
+        uiState.guideDefaultCategoryId,
+        uiState.guideDefaultCategoryOptions,
+        context
+    ) {
+        uiState.guideDefaultCategoryOptions
+            .firstOrNull { it.id == uiState.guideDefaultCategoryId }
+            ?.name
+            ?: context.getString(R.string.settings_guide_default_category_fallback)
+    }
 
     // Parental Control State
     var showPinDialog by rememberSaveable { mutableStateOf(false) }
@@ -192,6 +202,7 @@ fun SettingsScreen(
     var showLiveTvQuickFilterVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     var showLiveChannelNumberingDialog by rememberSaveable { mutableStateOf(false) }
     var showVodViewModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showGuideDefaultCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var showPlaybackSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showDecoderModeDialog by rememberSaveable { mutableStateOf(false) }
     var showControlsTimeoutDialog by rememberSaveable { mutableStateOf(false) }
@@ -313,48 +324,57 @@ fun SettingsScreen(
                     }
                     item {
                         SettingsNavItem(
-                            stringResource(R.string.settings_privacy),
-                            "L",
-                            Color(0xFFFFB74D),
+                            stringResource(R.string.settings_browsing),
+                            "#",
+                            Color(0xFF26A69A),
                             selectedCategory == 2,
                             modifier = if (selectedCategory == 2) Modifier.focusRequester(settingsNavFocusRequester) else Modifier
                         ) { selectedCategory = 2 }
                     }
                     item {
                         SettingsNavItem(
-                            stringResource(R.string.settings_recording_title),
-                            "R",
-                            Color(0xFFEF5350),
+                            stringResource(R.string.settings_privacy),
+                            "L",
+                            Color(0xFFFFB74D),
                             selectedCategory == 3,
                             modifier = if (selectedCategory == 3) Modifier.focusRequester(settingsNavFocusRequester) else Modifier
                         ) { selectedCategory = 3 }
                     }
                     item {
                         SettingsNavItem(
-                            stringResource(R.string.settings_backup_restore),
-                            "B",
-                            Color(0xFF42A5F5),
+                            stringResource(R.string.settings_recording_title),
+                            "R",
+                            Color(0xFFEF5350),
                             selectedCategory == 4,
                             modifier = if (selectedCategory == 4) Modifier.focusRequester(settingsNavFocusRequester) else Modifier
                         ) { selectedCategory = 4 }
                     }
                     item {
                         SettingsNavItem(
+                            stringResource(R.string.settings_backup_restore),
+                            "B",
+                            Color(0xFF42A5F5),
+                            selectedCategory == 5,
+                            modifier = if (selectedCategory == 5) Modifier.focusRequester(settingsNavFocusRequester) else Modifier
+                        ) { selectedCategory = 5 }
+                    }
+                    item {
+                        SettingsNavItem(
                             "EPG Sources",
                             "E",
                             Color(0xFF66BB6A),
-                            selectedCategory == 5,
-                            modifier = if (selectedCategory == 5) Modifier.focusRequester(settingsNavFocusRequester) else Modifier
-                        ) { selectedCategory = 5; viewModel.loadEpgSources() }
+                            selectedCategory == 6,
+                            modifier = if (selectedCategory == 6) Modifier.focusRequester(settingsNavFocusRequester) else Modifier
+                        ) { selectedCategory = 6 }
                     }
                     item {
                         SettingsNavItem(
                             stringResource(R.string.settings_about),
                             "i",
                             Color(0xFF78909C),
-                            selectedCategory == 6,
-                            modifier = if (selectedCategory == 6) Modifier.focusRequester(settingsNavFocusRequester) else Modifier
-                        ) { selectedCategory = 6 }
+                            selectedCategory == 7,
+                            modifier = if (selectedCategory == 7) Modifier.focusRequester(settingsNavFocusRequester) else Modifier
+                        ) { selectedCategory = 7 }
                     }
                 }
 
@@ -449,90 +469,6 @@ fun SettingsScreen(
                             )
                             HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
                             ClickableSettingsRow(
-                                label = stringResource(R.string.settings_live_tv_channel_mode),
-                                value = stringResource(uiState.liveTvChannelMode.labelResId()),
-                                onClick = { showLiveTvModeDialog = true }
-                            )
-                            TvClickableSurface(
-                                onClick = { viewModel.setShowLiveSourceSwitcher(!uiState.showLiveSourceSwitcher) },
-                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-                                colors = ClickableSurfaceDefaults.colors(
-                                    containerColor = Color.Transparent,
-                                    focusedContainerColor = Primary.copy(alpha = 0.15f)
-                                ),
-                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(text = stringResource(R.string.settings_show_live_source_switcher), style = MaterialTheme.typography.bodyMedium, color = OnSurface)
-                                        Text(text = stringResource(R.string.settings_show_live_source_switcher_subtitle), style = MaterialTheme.typography.bodySmall, color = OnBackground.copy(alpha = 0.6f))
-                                    }
-                                    Switch(checked = uiState.showLiveSourceSwitcher, onCheckedChange = { viewModel.setShowLiveSourceSwitcher(it) })
-                                }
-                            }
-                            ClickableSettingsRow(
-                                label = stringResource(R.string.settings_live_tv_quick_filters),
-                                value = formatLiveTvQuickFiltersValue(uiState.liveTvCategoryFilters, context),
-                                onClick = { showLiveTvFiltersDialog = true }
-                            )
-                            ClickableSettingsRow(
-                                label = stringResource(R.string.settings_live_tv_quick_filter_visibility),
-                                value = stringResource(uiState.liveTvQuickFilterVisibilityMode.labelResId()),
-                                onClick = { showLiveTvQuickFilterVisibilityDialog = true }
-                            )
-                            ClickableSettingsRow(
-                                label = stringResource(R.string.settings_live_channel_numbering_mode),
-                                value = stringResource(uiState.liveChannelNumberingMode.labelResId()),
-                                onClick = { showLiveChannelNumberingDialog = true }
-                            )
-                            ClickableSettingsRow(
-                                label = stringResource(R.string.settings_vod_view_mode),
-                                value = stringResource(uiState.vodViewMode.labelResId()),
-                                onClick = { showVodViewModeDialog = true }
-                            )
-                            HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
-                            ClickableSettingsRow(
-                                label = stringResource(R.string.settings_category_sort_live),
-                                value = formatCategorySortModeLabel(uiState.categorySortModes[ContentType.LIVE] ?: CategorySortMode.DEFAULT, context),
-                                onClick = { categorySortDialogType = ContentType.LIVE.name }
-                            )
-                            ClickableSettingsRow(
-                                label = stringResource(R.string.settings_category_sort_movies),
-                                value = formatCategorySortModeLabel(uiState.categorySortModes[ContentType.MOVIE] ?: CategorySortMode.DEFAULT, context),
-                                onClick = { categorySortDialogType = ContentType.MOVIE.name }
-                            )
-                            ClickableSettingsRow(
-                                label = stringResource(R.string.settings_category_sort_series),
-                                value = formatCategorySortModeLabel(uiState.categorySortModes[ContentType.SERIES] ?: CategorySortMode.DEFAULT, context),
-                                onClick = { categorySortDialogType = ContentType.SERIES.name }
-                            )
-                            HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
-                            TvClickableSurface(
-                                onClick = { showLanguageDialog = true },
-                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-                                colors = ClickableSurfaceDefaults.colors(
-                                    containerColor = Color.Transparent,
-                                    focusedContainerColor = Primary.copy(alpha = 0.15f)
-                                ),
-                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = stringResource(R.string.settings_app_language), style = MaterialTheme.typography.bodyMedium, color = OnSurface)
-                                    Text(text = appLanguageLabel, style = MaterialTheme.typography.bodyMedium, color = Primary)
-                                }
-                            }
-                            HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
-                            ClickableSettingsRow(
                                 label = stringResource(R.string.settings_default_playback_speed),
                                 value = playbackSpeedLabel,
                                 onClick = { showPlaybackSpeedDialog = true }
@@ -605,6 +541,99 @@ fun SettingsScreen(
 
                     // ג”€ג”€ 2: Privacy & Parental ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
                     else if (selectedCategory == 2) {
+                        item {
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_live_tv_channel_mode),
+                                value = stringResource(uiState.liveTvChannelMode.labelResId()),
+                                onClick = { showLiveTvModeDialog = true }
+                            )
+                            TvClickableSurface(
+                                onClick = { viewModel.setShowLiveSourceSwitcher(!uiState.showLiveSourceSwitcher) },
+                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                                colors = ClickableSurfaceDefaults.colors(
+                                    containerColor = Color.Transparent,
+                                    focusedContainerColor = Primary.copy(alpha = 0.15f)
+                                ),
+                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = stringResource(R.string.settings_show_live_source_switcher), style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                                        Text(text = stringResource(R.string.settings_show_live_source_switcher_subtitle), style = MaterialTheme.typography.bodySmall, color = OnBackground.copy(alpha = 0.6f))
+                                    }
+                                    Switch(checked = uiState.showLiveSourceSwitcher, onCheckedChange = { viewModel.setShowLiveSourceSwitcher(it) })
+                                }
+                            }
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_live_tv_quick_filters),
+                                value = formatLiveTvQuickFiltersValue(uiState.liveTvCategoryFilters, context),
+                                onClick = { showLiveTvFiltersDialog = true }
+                            )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_live_tv_quick_filter_visibility),
+                                value = stringResource(uiState.liveTvQuickFilterVisibilityMode.labelResId()),
+                                onClick = { showLiveTvQuickFilterVisibilityDialog = true }
+                            )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_live_channel_numbering_mode),
+                                value = stringResource(uiState.liveChannelNumberingMode.labelResId()),
+                                onClick = { showLiveChannelNumberingDialog = true }
+                            )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_guide_default_category),
+                                value = guideDefaultCategoryLabel,
+                                onClick = { showGuideDefaultCategoryDialog = true }
+                            )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_vod_view_mode),
+                                value = stringResource(uiState.vodViewMode.labelResId()),
+                                onClick = { showVodViewModeDialog = true }
+                            )
+                            HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_category_sort_live),
+                                value = formatCategorySortModeLabel(uiState.categorySortModes[ContentType.LIVE] ?: CategorySortMode.DEFAULT, context),
+                                onClick = { categorySortDialogType = ContentType.LIVE.name }
+                            )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_category_sort_movies),
+                                value = formatCategorySortModeLabel(uiState.categorySortModes[ContentType.MOVIE] ?: CategorySortMode.DEFAULT, context),
+                                onClick = { categorySortDialogType = ContentType.MOVIE.name }
+                            )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_category_sort_series),
+                                value = formatCategorySortModeLabel(uiState.categorySortModes[ContentType.SERIES] ?: CategorySortMode.DEFAULT, context),
+                                onClick = { categorySortDialogType = ContentType.SERIES.name }
+                            )
+                            HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
+                            TvClickableSurface(
+                                onClick = { showLanguageDialog = true },
+                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                                colors = ClickableSurfaceDefaults.colors(
+                                    containerColor = Color.Transparent,
+                                    focusedContainerColor = Primary.copy(alpha = 0.15f)
+                                ),
+                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = stringResource(R.string.settings_app_language), style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                                    Text(text = appLanguageLabel, style = MaterialTheme.typography.bodyMedium, color = Primary)
+                                }
+                            }
+                        }
+                    }
+
+                    else if (selectedCategory == 3) {
                         item {
                             ParentalControlCard(
                                 level = uiState.parentalControlLevel,
@@ -704,7 +733,7 @@ fun SettingsScreen(
     }
 
                     // ג”€ג”€ 3: Recordings ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
-                    else if (selectedCategory == 3) {
+                    else if (selectedCategory == 4) {
                         item {
                             RecordingOverviewCard(
                                 treeLabel = uiState.recordingStorageState.displayName,
@@ -771,7 +800,7 @@ fun SettingsScreen(
                     }
 
                     // ג”€ג”€ 4: Backup ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
-                    else if (selectedCategory == 4) {
+                    else if (selectedCategory == 5) {
                         item {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -822,7 +851,7 @@ fun SettingsScreen(
                     }
 
                     // ג”€ג”€ 5: EPG Sources ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
-                    else if (selectedCategory == 5) {
+                    else if (selectedCategory == 6) {
                         epgSourcesSection(
                             uiState = uiState,
                             viewModel = viewModel
@@ -830,7 +859,7 @@ fun SettingsScreen(
                     }
 
                     // ג”€ג”€ 6: About ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
-                    else {
+                    else if (selectedCategory == 7) {
                         item {
                             SettingsSectionHeader(
                                 title = stringResource(R.string.settings_updates_title),
@@ -935,6 +964,8 @@ fun SettingsScreen(
         onShowLiveChannelNumberingDialogChange = { showLiveChannelNumberingDialog = it },
         showVodViewModeDialog = showVodViewModeDialog,
         onShowVodViewModeDialogChange = { showVodViewModeDialog = it },
+        showGuideDefaultCategoryDialog = showGuideDefaultCategoryDialog,
+        onShowGuideDefaultCategoryDialogChange = { showGuideDefaultCategoryDialog = it },
         showPlaybackSpeedDialog = showPlaybackSpeedDialog,
         onShowPlaybackSpeedDialogChange = { showPlaybackSpeedDialog = it },
         showDecoderModeDialog = showDecoderModeDialog,

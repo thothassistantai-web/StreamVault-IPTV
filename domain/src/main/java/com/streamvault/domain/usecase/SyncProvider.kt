@@ -2,6 +2,7 @@ package com.streamvault.domain.usecase
 
 import com.streamvault.domain.manager.ProviderSyncStateReader
 import com.streamvault.domain.model.Provider
+import com.streamvault.domain.model.ProviderEpgSyncMode
 import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.SyncState
@@ -11,7 +12,8 @@ import javax.inject.Inject
 data class SyncProviderCommand(
     val providerId: Long,
     val force: Boolean = true,
-    val movieFastSyncOverride: Boolean? = null
+    val movieFastSyncOverride: Boolean? = null,
+    val epgSyncModeOverride: ProviderEpgSyncMode? = null
 )
 
 sealed class SyncProviderResult {
@@ -43,6 +45,7 @@ class SyncProvider @Inject constructor(
                 providerId = command.providerId,
                 force = command.force,
                 movieFastSyncOverride = command.movieFastSyncOverride,
+                epgSyncModeOverride = command.epgSyncModeOverride,
                 onProgress = onProgress
             )
         ) {

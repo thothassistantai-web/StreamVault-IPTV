@@ -16,12 +16,13 @@ internal class SettingsSyncActions(
     private val syncManager: SyncManager,
     private val tvInputChannelSyncManager: TvInputChannelSyncManager,
     private val uiState: MutableStateFlow<SettingsUiState>,
-    private val refreshProvider: (CoroutineScope, Long) -> Unit
+    private val refreshProvider: (CoroutineScope, Long, SettingsProviderSyncMode) -> Unit
 ) {
     fun syncProviderSection(scope: CoroutineScope, providerId: Long, selection: ProviderSyncSelection) {
         scope.launch {
             when (selection) {
-                ProviderSyncSelection.ALL, ProviderSyncSelection.FAST -> refreshProvider(scope, providerId)
+                ProviderSyncSelection.ALL -> refreshProvider(scope, providerId, SettingsProviderSyncMode.FULL)
+                ProviderSyncSelection.FAST -> refreshProvider(scope, providerId, SettingsProviderSyncMode.QUICK)
                 else -> runSectionSync(providerId, listOf(selection))
             }
         }
@@ -47,17 +48,28 @@ internal class SettingsSyncActions(
 
     fun retryWarningAction(scope: CoroutineScope, providerId: Long, action: ProviderWarningAction) {
         scope.launch {
-            uiState.update { it.copy(isSyncing = true) }
+            val providerName = uiState.value.providers.firstOrNull { it.id == providerId }?.name
+            uiState.update {
+                it.copy(
+                    isSyncing = true,
+                    syncProgress = appContext.getString(R.string.settings_syncing_preparing),
+                    syncingProviderName = providerName
+                )
+            }
             val section = when (action) {
                 ProviderWarningAction.EPG -> SyncRepairSection.EPG
                 ProviderWarningAction.MOVIES -> SyncRepairSection.MOVIES
                 ProviderWarningAction.SERIES -> SyncRepairSection.SERIES
             }
-            val result = syncManager.retrySection(providerId, section)
+            val result = syncManager.retrySection(providerId, section) { progress ->
+                uiState.update { state -> state.copy(syncProgress = progress, syncingProviderName = providerName) }
+            }
             uiState.update { state ->
                 if (result is Result.Error) {
                     state.copy(
                         isSyncing = false,
+                        syncProgress = null,
+                        syncingProviderName = null,
                         userMessage = "Retry failed: ${result.message}"
                     )
                 } else {
@@ -71,6 +83,8 @@ internal class SettingsSyncActions(
                     }
                     state.copy(
                         isSyncing = false,
+                        syncProgress = null,
+                        syncingProviderName = null,
                         userMessage = if (updatedWarnings.isEmpty()) {
                             "Section retry succeeded. All current warnings cleared."
                         } else {
@@ -91,7 +105,14 @@ internal class SettingsSyncActions(
         providerId: Long,
         selections: List<ProviderSyncSelection>
     ) {
-        uiState.update { it.copy(isSyncing = true) }
+        val providerName = uiState.value.providers.firstOrNull { it.id == providerId }?.name
+        uiState.update {
+            it.copy(
+                isSyncing = true,
+                syncProgress = appContext.getString(R.string.settings_syncing_preparing),
+                syncingProviderName = providerName
+            )
+        }
         try {
             val failures = mutableListOf<String>()
             val completed = mutableListOf<String>()
@@ -105,7 +126,19 @@ internal class SettingsSyncActions(
                     ProviderSyncSelection.ALL, ProviderSyncSelection.FAST -> null
                 } ?: return@forEach
 
-                when (val result = syncManager.retrySection(providerId, section)) {
+                uiState.update { state ->
+                    state.copy(
+                        syncProgress = appContext.getString(
+                            R.string.settings_syncing_section,
+                            selection.label(appContext)
+                        ),
+                        syncingProviderName = providerName
+                    )
+                }
+
+                when (val result = syncManager.retrySection(providerId, section) { progress ->
+                    uiState.update { state -> state.copy(syncProgress = progress, syncingProviderName = providerName) }
+                }) {
                     is Result.Error -> failures += "${selection.label(appContext)}: ${result.message}"
                     else -> completed += selection.label(appContext)
                 }
@@ -122,6 +155,8 @@ internal class SettingsSyncActions(
             uiState.update { state ->
                 state.copy(
                     isSyncing = false,
+                    syncProgress = null,
+                    syncingProviderName = null,
                     userMessage = when {
                         failures.isEmpty() -> appContext.getString(
                             R.string.settings_sync_sections_success,
@@ -140,7 +175,14 @@ internal class SettingsSyncActions(
                 )
             }
         } catch (e: Exception) {
-            uiState.update { it.copy(isSyncing = false, userMessage = "Sync failed: ${e.message}") }
+            uiState.update {
+                it.copy(
+                    isSyncing = false,
+                    syncProgress = null,
+                    syncingProviderName = null,
+                    userMessage = "Sync failed: ${e.message}"
+                )
+            }
         }
     }
 }

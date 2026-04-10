@@ -2,34 +2,56 @@ package com.streamvault.app.ui.screens.settings
 
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.domain.model.ActiveLiveSource
+import com.streamvault.domain.model.ProviderEpgSyncMode
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.Result
+import com.streamvault.domain.model.SyncMetadata
 import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.ProviderRepository
 import com.streamvault.domain.repository.SyncMetadataRepository
 import com.streamvault.domain.usecase.SyncProvider
 import com.streamvault.domain.usecase.SyncProviderCommand
 import com.streamvault.domain.usecase.SyncProviderResult
+import com.streamvault.data.sync.SyncManager
 import com.streamvault.data.preferences.PreferencesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.hours
 
 internal class SettingsProviderActions(
     private val providerRepository: ProviderRepository,
     private val combinedM3uRepository: CombinedM3uRepository,
     private val preferencesRepository: PreferencesRepository,
     private val syncProvider: SyncProvider,
+    private val syncManager: SyncManager,
+    private val syncMetadataRepository: SyncMetadataRepository,
     private val tvInputChannelSyncManager: TvInputChannelSyncManager,
     private val uiState: MutableStateFlow<SettingsUiState>
 ) {
+    private companion object {
+        val AUTO_SWITCH_SYNC_STALE_AFTER_MS = 24.hours.inWholeMilliseconds
+    }
+
     fun setActiveProvider(scope: CoroutineScope, providerId: Long) {
         scope.launch {
             preferencesRepository.setLastActiveProviderId(providerId)
             combinedM3uRepository.setActiveLiveSource(ActiveLiveSource.ProviderSource(providerId))
             providerRepository.setActiveProvider(providerId)
-            refreshProvider(scope, providerId)
+            val provider = providerRepository.getProvider(providerId)
+            val shouldAutoSync = provider?.let { currentProvider ->
+                val lastSyncedAt = currentProvider.lastSyncedAt
+                lastSyncedAt <= 0L || System.currentTimeMillis() - lastSyncedAt >= AUTO_SWITCH_SYNC_STALE_AFTER_MS
+            } ?: false
+            if (shouldAutoSync) {
+                refreshProvider(
+                    scope = scope,
+                    providerId = providerId,
+                    syncMode = SettingsProviderSyncMode.QUICK,
+                    progressPrefix = "Refreshing ${provider?.name ?: "provider"}..."
+                )
+            }
         }
     }
 
@@ -144,41 +166,161 @@ internal class SettingsProviderActions(
         }
     }
 
-    fun refreshProvider(scope: CoroutineScope, providerId: Long, movieFastSyncOverride: Boolean? = null) {
+    fun refreshProvider(
+        scope: CoroutineScope,
+        providerId: Long,
+        syncMode: SettingsProviderSyncMode = SettingsProviderSyncMode.QUICK,
+        progressPrefix: String? = null
+    ) {
         scope.launch {
-            uiState.update { it.copy(isSyncing = true) }
-            try {
-                val result = syncProvider(
-                    SyncProviderCommand(
-                        providerId = providerId,
-                        force = true,
-                        movieFastSyncOverride = movieFastSyncOverride
-                    )
+            val providerName = providerRepository.getProvider(providerId)?.name
+            uiState.update {
+                it.copy(
+                    isSyncing = true,
+                    syncingProviderName = providerName,
+                    syncProgress = progressPrefix ?: "Preparing sync..."
                 )
-                if (result !is SyncProviderResult.Error) {
-                    tvInputChannelSyncManager.refreshTvInputCatalog()
-                }
-                uiState.update { state ->
-                    val partialWarnings = (result as? SyncProviderResult.Success)?.warnings.orEmpty()
-                    val warningsMessage = partialWarnings.take(3).joinToString(separator = ", ").ifBlank { "Some sections are incomplete." }
-                    state.copy(
-                        isSyncing = false,
-                        userMessage = when {
-                            result is SyncProviderResult.Error -> "Refresh failed: ${result.message}"
-                            (result as? SyncProviderResult.Success)?.isPartial == true -> "Refresh completed with warnings: $warningsMessage"
-                            else -> "Provider refreshed successfully"
-                        },
-                        syncWarningsByProvider = when {
-                            result is SyncProviderResult.Error -> state.syncWarningsByProvider - providerId
-                            (result as? SyncProviderResult.Success)?.isPartial == true -> state.syncWarningsByProvider + (providerId to partialWarnings)
-                            else -> state.syncWarningsByProvider - providerId
-                        }
-                    )
+            }
+            try {
+                when (syncMode) {
+                    SettingsProviderSyncMode.QUICK -> runQuickSync(providerId, providerName)
+                    SettingsProviderSyncMode.FULL -> runFullSync(providerId, providerName)
                 }
             } catch (e: Exception) {
-                uiState.update { it.copy(isSyncing = false, userMessage = "Sync failed: ${e.message}") }
+                uiState.update {
+                    it.copy(
+                        isSyncing = false,
+                        syncProgress = null,
+                        syncingProviderName = null,
+                        userMessage = "Sync failed: ${e.message}"
+                    )
+                }
             }
         }
+    }
+
+    private suspend fun runQuickSync(providerId: Long, providerName: String?) {
+        val beforeMetadata = syncMetadataRepository.getMetadata(providerId) ?: SyncMetadata(providerId)
+        val result = syncProvider(
+            SyncProviderCommand(
+                providerId = providerId,
+                force = false,
+                movieFastSyncOverride = true,
+                epgSyncModeOverride = ProviderEpgSyncMode.BACKGROUND
+            ),
+            onProgress = { message ->
+                uiState.update { state ->
+                    state.copy(
+                        syncProgress = mapQuickSyncProgress(message),
+                        syncingProviderName = providerName
+                    )
+                }
+            }
+        )
+
+        if (result !is SyncProviderResult.Error) {
+            val afterMetadata = syncMetadataRepository.getMetadata(providerId) ?: beforeMetadata
+            val liveRefreshed = afterMetadata.lastLiveSync > beforeMetadata.lastLiveSync ||
+                afterMetadata.liveCount != beforeMetadata.liveCount
+            val catalogRefreshed = liveRefreshed ||
+                afterMetadata.lastMovieSync > beforeMetadata.lastMovieSync ||
+                afterMetadata.lastSeriesSync > beforeMetadata.lastSeriesSync
+
+            if (liveRefreshed) {
+                uiState.update { state ->
+                    state.copy(
+                        syncProgress = "Updating TV integration...",
+                        syncingProviderName = providerName
+                    )
+                }
+                tvInputChannelSyncManager.refreshTvInputCatalog()
+            } else if (!catalogRefreshed) {
+                uiState.update { state ->
+                    state.copy(
+                        syncProgress = "Library already up to date.",
+                        syncingProviderName = providerName
+                    )
+                }
+            }
+
+            uiState.update { state ->
+                state.copy(
+                    syncProgress = "Scheduling EPG refresh...",
+                    syncingProviderName = providerName
+                )
+            }
+            syncManager.scheduleBackgroundEpgSync(providerId)
+        }
+
+        uiState.update { state ->
+            val partialWarnings = (result as? SyncProviderResult.Success)?.warnings.orEmpty()
+            val warningsMessage = partialWarnings.take(3).joinToString(separator = ", ").ifBlank { "Some sections are incomplete." }
+            val afterMetadata = syncMetadataRepository.getMetadata(providerId) ?: beforeMetadata
+            val catalogRefreshed = afterMetadata.lastLiveSync > beforeMetadata.lastLiveSync ||
+                afterMetadata.lastMovieSync > beforeMetadata.lastMovieSync ||
+                afterMetadata.lastSeriesSync > beforeMetadata.lastSeriesSync ||
+                afterMetadata.liveCount != beforeMetadata.liveCount
+            state.copy(
+                isSyncing = false,
+                syncProgress = null,
+                syncingProviderName = null,
+                userMessage = when {
+                    result is SyncProviderResult.Error -> "Quick sync failed: ${result.message}"
+                    (result as? SyncProviderResult.Success)?.isPartial == true -> "Quick sync completed with warnings: $warningsMessage"
+                    !catalogRefreshed -> "Library already up to date"
+                    else -> "Quick sync completed"
+                },
+                syncWarningsByProvider = when {
+                    result is SyncProviderResult.Error -> state.syncWarningsByProvider - providerId
+                    (result as? SyncProviderResult.Success)?.isPartial == true -> state.syncWarningsByProvider + (providerId to partialWarnings)
+                    else -> state.syncWarningsByProvider - providerId
+                }
+            )
+        }
+    }
+
+    private suspend fun runFullSync(providerId: Long, providerName: String?) {
+        val result = syncProvider(
+            SyncProviderCommand(
+                providerId = providerId,
+                force = true,
+                movieFastSyncOverride = null,
+                epgSyncModeOverride = null
+            ),
+            onProgress = { message ->
+                uiState.update { state ->
+                    state.copy(syncProgress = message, syncingProviderName = providerName)
+                }
+            }
+        )
+        if (result !is SyncProviderResult.Error) {
+            tvInputChannelSyncManager.refreshTvInputCatalog()
+        }
+        uiState.update { state ->
+            val partialWarnings = (result as? SyncProviderResult.Success)?.warnings.orEmpty()
+            val warningsMessage = partialWarnings.take(3).joinToString(separator = ", ").ifBlank { "Some sections are incomplete." }
+            state.copy(
+                isSyncing = false,
+                syncProgress = null,
+                syncingProviderName = null,
+                userMessage = when {
+                    result is SyncProviderResult.Error -> "Refresh failed: ${result.message}"
+                    (result as? SyncProviderResult.Success)?.isPartial == true -> "Refresh completed with warnings: $warningsMessage"
+                    else -> "Provider refreshed successfully"
+                },
+                syncWarningsByProvider = when {
+                    result is SyncProviderResult.Error -> state.syncWarningsByProvider - providerId
+                    (result as? SyncProviderResult.Success)?.isPartial == true -> state.syncWarningsByProvider + (providerId to partialWarnings)
+                    else -> state.syncWarningsByProvider - providerId
+                }
+            )
+        }
+    }
+
+    private fun mapQuickSyncProgress(message: String): String = when (message) {
+        "Downloading Movies..." -> "Checking Movies..."
+        "Downloading Series..." -> "Checking Series..."
+        else -> message
     }
 
     fun deleteProvider(scope: CoroutineScope, providerId: Long) {
@@ -186,4 +328,9 @@ internal class SettingsProviderActions(
             providerRepository.deleteProvider(providerId)
         }
     }
+}
+
+enum class SettingsProviderSyncMode {
+    QUICK,
+    FULL
 }

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">StreamVault</string>
     <string name="nav_home">Главная</string>
@@ -146,7 +146,7 @@
     <string name="add_group_add_btn">Добавить</string>
     <string name="add_group_create_new_btn">Создать новую группу</string>
     <string name="card_locked_channel">Канал заблокирован</string>
-    <string name="card_live_badge">BYTEd0–BYTEd0˜BYTEd0¢BYTEd0¬</string>
+    <string name="card_live_badge">ЖИТЬ</string>
     <string name="card_locked">Заблокировано</string>
     <string name="category_see_all">Показать все</string>
     <string name="continue_watching_title">Продолжить просмотр</string>
@@ -277,6 +277,7 @@
     <string name="settings_category_type_movies_description">Сортируйте и скрывайте категории фильмов от провайдера, не затрагивая Favorites, Resume и пользовательские полки.</string>
     <string name="settings_category_type_series_description">Сортируйте и скрывайте категории сериалов от провайдера, не затрагивая Favorites, Continue Watching и пользовательские полки.</string>
     <string name="settings_playback">Воспроизведение</string>
+    <string name="settings_browsing">Просмотр</string>
     <string name="settings_playback_subtitle">Настройте декодер и буферизацию для более плавного воспроизведения.</string>
     <string name="settings_live_tv_channel_mode">Режим каналов Live TV</string>
     <string name="settings_live_tv_channel_mode_subtitle">Выберите, как браузер Live TV будет показывать каналы и нужно ли предварительное воспроизведение перед запуском.</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">Выберите, что обновить для этого поставщика.</string>
     <string name="settings_sync_option_all">Синхронизировать все</string>
     <string name="settings_sync_option_fast">Быстрая синхронизация</string>
+    <string name="settings_syncing_preparing">Подготовка синхронизации...</string>
+    <string name="settings_syncing_section">Синхронизация %1$s...</string>
     <string name="settings_sync_option_tv">Синхронизировать ТВ</string>
     <string name="settings_sync_option_movies">Синхронизировать фильмы</string>
     <string name="settings_sync_option_series">Синхронизация серии</string>
@@ -546,7 +549,7 @@
     <string name="settings_recording_status_completed">Завершено</string>
     <string name="settings_recording_status_failed">Ошибка</string>
     <string name="settings_recording_status_cancelled">Отменено</string>
-    <string name="settings_recording_time_window">%1$s BYTEe2†’ %2$s</string>
+    <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_recurrence_none">Одноразовая запись</string>
     <string name="settings_recording_recurrence_daily">Повторяется ежедневно</string>
     <string name="settings_recording_recurrence_weekly">Повторяется еженедельно</string>
@@ -774,7 +777,7 @@
     <string name="player_live_channel">Канал %1$d</string>
     <string name="player_rewind">Перемотка назад</string>
     <string name="player_forward">Перемотка вперед</string>
-    <string name="player_next">BYTEd0¡BYTEd0›BYTEd0•BYTEd0”BYTEd0£BYTEd0®BYTEd0©BYTEd0˜BYTEd0™</string>
+    <string name="player_next">СЛЕДУЮЩИЙ</string>
     <string name="player_restart">Перезапустить</string>
     <string name="player_archive">Архив</string>
     <string name="player_record">Запись</string>
@@ -908,7 +911,7 @@
     <string name="epg_jump_prime_time">Прайм-тайм</string>
     <string name="epg_jump_tomorrow">Завтра</string>
     <string name="epg_next_day">След. день</string>
-    <string name="epg_day_yesterday">BYTEd0’BYTEd1‡BYTEd0µBYTEd1€BYTEd0°</string>
+    <string name="epg_day_yesterday">Вчера</string>
     <string name="epg_day_today">Сегодня</string>
     <string name="epg_day_tomorrow">Завтра</string>
     <string name="epg_mode_label">Режим гида</string>
@@ -1107,10 +1110,10 @@
     <string name="label_reordering">Изменение порядка %1$s</string>
     <string name="label_slots_count">%1$d/4 слотов</string>
     <string name="label_rating">★ %1$s/10</string>
-    <string name="label_episode">BYTEd0•%1$d</string>
+    <string name="label_episode">Е%1$d</string>
     <string name="label_episode_full">Эпизод %1$d</string>
     <string name="label_duration_min">%1$d мин</string>
-    <string name="label_tv">BYTEd0¢BYTEd0’</string>
+    <string name="label_tv">ТВ</string>
     <string name="badge_saved">СОХРАНЕНО</string>
     <string name="badge_catch_up">ДОГНАТЬ</string>
     <string name="badge_moving">ПЕРЕМЕЩЕНИЕ</string>
@@ -1146,11 +1149,11 @@
     <string name="favorites_pinned_home">Закреплено %1$s на главном экране.</string>
     <string name="favorites_merged_group">Объединено %1$s в выбранную группу.</string>
     <string name="favorites_status_pill_format">%1$s %2$d</string>
-    <string name="time_range_format">%1$s BYTEe2€“ %2$s</string>
+    <string name="time_range_format">%1$s – %2$s</string>
     <string name="channel_number_name_format">%1$d. %2$s</string>
     <string name="label_colon_value_format">%1$s: %2$s</string>
     <string name="split_count_format">%1$s %2$d/4</string>
-    <string name="program_date_time_range">%1$s | %2$s BYTEe2€“ %3$s</string>
+    <string name="program_date_time_range">%1$s | %2$s – %3$s</string>
     <string name="diagnostics_summary_format">%1$s | %2$s</string>
     <string name="home_added_to_favorites">Добавлено %1$s в Избранное</string>
     <string name="home_removed_from_favorites">Удалено из избранного: %1$s</string>
@@ -1174,4 +1177,3 @@
     <string name="tv_input_setup_retry_scan">Повторить автоматическое сканирование</string>
     <string name="tv_input_setup_success_hint">Android TV Live TV теперь может открывать ваши каналы StreamVault.</string>
 </resources>
-

@@ -370,6 +370,33 @@ class SyncManagerTest {
     }
 
     @Test
+    fun `retrySection_movies_fast_sync_succeeds_with_categories_only`() = runTest {
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
+        xtreamBackend.respond(
+            action = "get_vod_categories",
+            body = """
+                [
+                  {"category_id":"42","category_name":"Action"}
+                ]
+            """.trimIndent()
+        )
+
+        val result = mgr.retrySection(
+            providerId = 1L,
+            section = SyncRepairSection.MOVIES,
+            movieFastSyncOverride = true
+        )
+        advanceUntilIdle()
+
+        assertThat(result.isSuccess).isTrue()
+        val metadata = syncMetadataRepo.getMetadata(1L)
+        assertThat(metadata?.lastMovieSync ?: 0L).isGreaterThan(0L)
+        assertThat(metadata?.movieSyncMode).isEqualTo(com.streamvault.domain.model.VodSyncMode.LAZY_BY_CATEGORY)
+        assertThat(xtreamBackend.requestedActions).contains("get_vod_categories")
+        assertThat(xtreamBackend.requestedActions).doesNotContain("get_vod_streams")
+    }
+
+    @Test
     fun `sync_xtream_movie_failure_does_not_block_series_sync`() = runTest {
         val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
         val now = System.currentTimeMillis()

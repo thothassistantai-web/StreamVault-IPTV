@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">StreamVault</string>
     <string name="nav_home">Головна</string>
@@ -277,6 +277,7 @@
     <string name="settings_category_type_movies_description">Сортуйте та приховуйте категорії фільмів провайдера, не впливаючи на Обране, Продовжити перегляд або власні розділи.</string>
     <string name="settings_category_type_series_description">Сортуйте та приховуйте категорії серіалів провайдера, не впливаючи на Обране, Продовжити перегляд або власні розділи.</string>
     <string name="settings_playback">Відтворення</string>
+    <string name="settings_browsing">Перегляд</string>
     <string name="settings_playback_subtitle">Налаштуйте декодер і буферизацію для плавнішого відтворення.</string>
     <string name="settings_live_tv_channel_mode">Режим каналів Live TV</string>
     <string name="settings_live_tv_channel_mode_subtitle">Виберіть, як браузер Live TV має показувати канали та чи має він попередньо переглядати їх перед відтворенням.</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">Виберіть, що оновити для цього постачальника.</string>
     <string name="settings_sync_option_all">Синхронізувати все</string>
     <string name="settings_sync_option_fast">Швидка синхронізація</string>
+    <string name="settings_syncing_preparing">Підготовка синхронізації...</string>
+    <string name="settings_syncing_section">Синхронізація %1$s...</string>
     <string name="settings_sync_option_tv">Синхронізувати телевізор</string>
     <string name="settings_sync_option_movies">Синхронізація фільмів</string>
     <string name="settings_sync_option_series">Синхронізувати серіали</string>
@@ -546,7 +549,7 @@
     <string name="settings_recording_status_completed">Завершено</string>
     <string name="settings_recording_status_failed">Не вдалося</string>
     <string name="settings_recording_status_cancelled">Скасовано</string>
-    <string name="settings_recording_time_window">%1$s BYTEe2†’ %2$s</string>
+    <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_recurrence_none">Одноразовий запис</string>
     <string name="settings_recording_recurrence_daily">Повторюється щодня</string>
     <string name="settings_recording_recurrence_weekly">Повторюється щотижня</string>
@@ -819,7 +822,7 @@
     <string name="player_type_channel_number">Введіть номер каналу</string>
     <string name="player_selected">Вибрано</string>
     <string name="player_channel_list_title">Канали (%1$d)</string>
-    <string name="player_channel_selected">BYTEd0—BYTEd0°BYTEd1€BYTEd0°BYTEd0·</string>
+    <string name="player_channel_selected">Зараз</string>
     <string name="player_recent_channels">Нещодавні</string>
     <string name="player_last_group_label">Остання: %1$s</string>
     <string name="player_categories_label">Категорії</string>
@@ -901,7 +904,7 @@
     <string name="epg_page_back">Стор. -</string>
     <string name="epg_jump_back_half_hour">-30хв</string>
     <string name="epg_jump_back">-3год</string>
-    <string name="epg_jump_now">BYTEd0—BYTEd0°BYTEd1€BYTEd0°BYTEd0·</string>
+    <string name="epg_jump_now">Зараз</string>
     <string name="epg_jump_forward_half_hour">+30хв</string>
     <string name="epg_jump_forward">+3 год</string>
     <string name="epg_page_forward">Сторінка +</string>
@@ -945,7 +948,7 @@
     <string name="epg_schedule_summary_short">%1$d/%2$d з гідом</string>
     <string name="epg_window_label">%1$s - %2$s</string>
     <string name="epg_timeline_label">Шкала часу</string>
-    <string name="epg_now_marker">BYTEd0—BYTEd0°BYTEd1€BYTEd0°BYTEd0· %1$s</string>
+    <string name="epg_now_marker">Зараз %1$s</string>
     <string name="epg_outside_window">Зараз поза завантаженим вікном</string>
     <string name="epg_timeline_range_label">Вікно %1$s</string>
     <string name="epg_stale_warning">Дані гіда для цього вибору виглядають неповними або застарілими.</string>
@@ -1146,11 +1149,11 @@
     <string name="favorites_pinned_home">Закріплено %1$s на Головній.</string>
     <string name="favorites_merged_group">Об’єднано %1$s з вибраною групою.</string>
     <string name="favorites_status_pill_format">%1$s %2$d</string>
-    <string name="time_range_format">%1$s BYTEe2€“ %2$s</string>
+    <string name="time_range_format">%1$s – %2$s</string>
     <string name="channel_number_name_format">%1$d. %2$s</string>
     <string name="label_colon_value_format">%1$s: %2$s</string>
     <string name="split_count_format">%1$s %2$d/4</string>
-    <string name="program_date_time_range">%1$s | %2$s BYTEe2€“ %3$s</string>
+    <string name="program_date_time_range">%1$s | %2$s – %3$s</string>
     <string name="diagnostics_summary_format">%1$s | %2$s</string>
     <string name="home_added_to_favorites">Додано %1$s до обраного</string>
     <string name="home_removed_from_favorites">Вилучено %1$s з обраного</string>
@@ -1174,4 +1177,3 @@
     <string name="tv_input_setup_retry_scan">Повторіть автоматичне сканування</string>
     <string name="tv_input_setup_success_hint">Android TV Live TV тепер може відкривати ваші канали StreamVault.</string>
 </resources>
-

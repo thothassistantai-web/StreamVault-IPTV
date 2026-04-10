@@ -15,6 +15,7 @@ import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderType
+import com.streamvault.domain.model.VirtualCategoryIds
 import com.streamvault.domain.model.VodSyncMode
 import com.streamvault.domain.repository.CategoryRepository
 import com.streamvault.domain.repository.ProviderRepository
@@ -72,6 +73,8 @@ internal fun observeSettingsPreferenceSnapshot(
             liveTvQuickFilterVisibilityMode = LiveTvQuickFilterVisibilityMode.ALWAYS_VISIBLE,
             liveChannelNumberingMode = ChannelNumberingMode.GROUP,
             vodViewMode = VodViewMode.MODERN,
+            guideDefaultCategoryId = VirtualCategoryIds.FAVORITES,
+            guideDefaultCategoryOptions = emptyList(),
             preventStandbyDuringPlayback = true,
             autoCheckAppUpdates = true,
             lastAppUpdateCheckAt = null,
@@ -138,6 +141,8 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(liveChannelNumberingMode = liveChannelNumberingMode)
     }.combine(preferencesRepository.vodViewMode) { snapshot, vodViewMode ->
         snapshot.copy(vodViewMode = VodViewMode.fromStorage(vodViewMode))
+    }.combine(preferencesRepository.guideDefaultCategoryId) { snapshot, guideDefaultCategoryId ->
+        snapshot.copy(guideDefaultCategoryId = guideDefaultCategoryId ?: VirtualCategoryIds.FAVORITES)
     }.combine(preferencesRepository.preventStandbyDuringPlayback) { snapshot, preventStandby ->
         snapshot.copy(preventStandbyDuringPlayback = preventStandby)
     }.combine(preferencesRepository.autoCheckAppUpdates) { snapshot, autoCheckAppUpdates ->
@@ -197,6 +202,8 @@ internal fun SettingsUiState.applyPreferenceSnapshot(snapshot: SettingsPreferenc
         liveTvQuickFilterVisibilityMode = snapshot.liveTvQuickFilterVisibilityMode,
         liveChannelNumberingMode = snapshot.liveChannelNumberingMode,
         vodViewMode = snapshot.vodViewMode,
+        guideDefaultCategoryId = snapshot.guideDefaultCategoryId,
+        guideDefaultCategoryOptions = guideDefaultCategoryOptions,
         preventStandbyDuringPlayback = snapshot.preventStandbyDuringPlayback,
         autoCheckAppUpdates = snapshot.autoCheckAppUpdates,
         appUpdate = cachedAppUpdate.copy(

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">StreamVault</string>
     <string name="nav_home">Thuis</string>
@@ -20,10 +20,10 @@
     <string name="welcome_feature_player">Uniforme speler-overlays, gidstoegang en opgeslagen inhoud</string>
     <string name="welcome_manage_hint">Wissel van provider, vernieuw metadata of voeg een nieuwe bron toe.</string>
     <string name="home_incorrect_pin">Onjuiste pincode</string>
-    <string name="home_loading_categories">CategorieBYTEc3«n laden...</string>
+    <string name="home_loading_categories">Categorieën laden...</string>
     <string name="home_loading_channels">Kanalen laden...</string>
-    <string name="home_categories_title">CategorieBYTEc3«n</string>
-    <string name="home_search_categories">CategorieBYTEc3«n zoeken...</string>
+    <string name="home_categories_title">Categorieën</string>
+    <string name="home_search_categories">Categorieën zoeken...</string>
     <string name="home_quick_filters_title">Snelfilters</string>
     <string name="home_quick_filters_button">Snelfilters</string>
     <string name="home_quick_filters_show">Toon</string>
@@ -51,8 +51,8 @@
     <string name="home_add_favorites_hint">Voeg kanalen toe aan favorieten om ze hier te bekijken</string>
     <string name="home_recent_channels_hint">Bekijk hier een paar livekanalen om een recente lijst samen te stellen</string>
     <string name="home_locked_short">GESLOTEN</string>
-    <string name="live_shell_subtitle">Scan live categorieBYTEc3«n snel, houd de navigatie deterministisch en laat alleen de planningsgegevens zien die er toe doen op het scherm.</string>
-    <string name="live_shell_context">%1$d categorieBYTEc3«n BYTEe2€¢ %2$d kanalen</string>
+    <string name="live_shell_subtitle">Scan live categorieën snel, houd de navigatie deterministisch en laat alleen de planningsgegevens zien die er toe doen op het scherm.</string>
+    <string name="live_shell_context">%1$d categorieën • %2$d kanalen</string>
     <string name="live_shell_provider">Aanbieder</string>
     <string name="live_shell_last_group">Laatste groep</string>
     <string name="live_shell_split">Multiview</string>
@@ -134,7 +134,7 @@
     <string name="add_group_close_cd">Sluiten</string>
     <string name="add_group_name_hint">Groepsnaam</string>
     <string name="add_group_cancel">Annuleer</string>
-    <string name="add_group_create">CreBYTEc3«er</string>
+    <string name="add_group_create">Creëer</string>
     <string name="add_group_rename">Hernoemen</string>
     <string name="add_group_remove_favorites">Verwijderen uit Favorieten</string>
     <string name="add_group_add_favorites">Toevoegen aan Favorieten</string>
@@ -148,7 +148,7 @@
     <string name="card_locked_channel">Vergrendeld kanaal</string>
     <string name="card_live_badge">LEEF</string>
     <string name="card_locked">Vergrendeld</string>
-    <string name="category_see_all">Zie alles BYTEe2†’</string>
+    <string name="category_see_all">Zie alles →</string>
     <string name="continue_watching_title">Ga door met kijken</string>
     <string name="continue_watching_season_episode">S%1$d E%2$d</string>
     <string name="playlist_no_provider">Geen aanbieder</string>
@@ -163,9 +163,9 @@
     <string name="movies_loading">Films laden...</string>
     <string name="movies_no_found">Geen films gevonden</string>
     <string name="movies_no_found_subtitle">Probeer een andere categorie of ga terug naar de volledige bibliotheekplanken om meer titels te zien.</string>
-    <string name="movies_categories_title">CategorieBYTEc3«n</string>
+    <string name="movies_categories_title">Categorieën</string>
     <string name="movies_shell_subtitle">Beheerde planken, opgeslagen groepen en bladeren door de volledige bibliotheek zonder de huidige providercontext te verlaten.</string>
-    <string name="movies_all_categories">Alle categorieBYTEc3«n</string>
+    <string name="movies_all_categories">Alle categorieën</string>
     <string name="movies_search_placeholder">Films zoeken...</string>
     <string name="movies_search_launch_title">Zoek in de filmbibliotheek</string>
     <string name="movies_search_launch_subtitle">Spring naar het speciale zoekoppervlak zonder uw huidige browsestatus te verliezen.</string>
@@ -186,9 +186,9 @@
     <string name="series_loading">Serie laden...</string>
     <string name="series_no_found">Geen serie gevonden</string>
     <string name="series_no_found_subtitle">Probeer een andere categorie of ga terug naar de volledige bibliotheek om meer seriesplanken te zien.</string>
-    <string name="series_categories_title">CategorieBYTEc3«n</string>
+    <string name="series_categories_title">Categorieën</string>
     <string name="series_shell_subtitle">Redactionele planken, opgeslagen groepen en bladeren door paginareeksen afgestemd op grote providerbibliotheken.</string>
-    <string name="series_all_categories">Alle categorieBYTEc3«n</string>
+    <string name="series_all_categories">Alle categorieën</string>
     <string name="series_search_placeholder">Zoek serie...</string>
     <string name="series_search_launch_title">Zoek in de seriebibliotheek</string>
     <string name="series_search_launch_subtitle">Open de opdrachtzoekweergave om titels, afleveringen of opgeslagen groepen sneller te vinden.</string>
@@ -213,10 +213,10 @@
     <string name="library_saved_primary_hint">Keer terug naar de volledige bibliotheek</string>
     <string name="library_saved_manage_hint">Houd een opgeslagen groep vast voor opties</string>
     <string name="library_browse_all">Blader door alles</string>
-    <string name="vod_category_picker_title">Blader door categorieBYTEc3«n</string>
+    <string name="vod_category_picker_title">Blader door categorieën</string>
     <string name="vod_category_picker_subtitle">Zoek op categorienaam en open vervolgens de bijpassende plank.</string>
     <string name="vod_category_picker_search_placeholder">Categorieën zoeken…</string>
-    <string name="vod_category_picker_empty">Geen overeenkomende categorieBYTEc3«n gevonden.</string>
+    <string name="vod_category_picker_empty">Geen overeenkomende categorieën gevonden.</string>
     <string name="library_lens_title">Bibliotheeklens</string>
     <string name="library_lens_favorites">Opgeslagen favorieten</string>
     <string name="library_lens_continue">Ga door met kijken</string>
@@ -243,7 +243,7 @@
     <string name="settings_parental_control">Ouderlijk toezicht</string>
     <string name="settings_parental_subtitle">Bescherm inhoud voor volwassenen of gevoelige inhoud met tv-vriendelijke bedieningselementen.</string>
     <string name="settings_parental_groups_title">Beschermde groepen</string>
-    <string name="settings_parental_groups_hint">CategorieBYTEc3«n voor de actieve provider vergrendelen of ontgrendelen.</string>
+    <string name="settings_parental_groups_hint">Categorieën voor de actieve provider vergrendelen of ontgrendelen.</string>
     <string name="settings_parental_groups_action">Beheer</string>
     <string name="settings_provider_category_controls_action">Categoriebeheer</string>
     <string name="settings_provider_category_controls_title">Categoriebeheer</string>
@@ -277,6 +277,7 @@
     <string name="settings_category_type_movies_description">Sorteer en verberg filtcategorieën van de provider zonder Favorieten, Hervatten of aangepaste rijen te beïnvloeden.</string>
     <string name="settings_category_type_series_description">Sorteer en verberg seriecategorieën van de provider zonder Favorieten, Verder kijken of aangepaste rijen te beïnvloeden.</string>
     <string name="settings_playback">Afspelen</string>
+    <string name="settings_browsing">Bladeren</string>
     <string name="settings_playback_subtitle">Stem het decoder- en buffergedrag af voor vloeiender afspelen.</string>
     <string name="settings_live_tv_channel_mode">Live tv-kanaalmodus</string>
     <string name="settings_live_tv_channel_mode_subtitle">Kies hoe de Live TV-browser kanalen moet presenteren en of er een voorbeeld moet worden bekeken voordat ze worden afgespeeld.</string>
@@ -366,9 +367,9 @@
     <string name="settings_select_wifi_quality_cap">Selecteer Voorkeur Wi-Fi-kwaliteit</string>
     <string name="settings_select_ethernet_quality_cap">Selecteer Ethernet-kwaliteitsvoorkeur</string>
     <string name="settings_live_tv_mode_comfortable">Comfortabel</string>
-    <string name="settings_live_tv_mode_comfortable_desc">Grotere rijen met directe weergave met BYTEc3©BYTEc3©n klik.</string>
+    <string name="settings_live_tv_mode_comfortable_desc">Grotere rijen met directe weergave met één klik.</string>
     <string name="settings_live_tv_mode_compact">Compact</string>
-    <string name="settings_live_tv_mode_compact_desc">Dichtere zenderlijst met directe weergave met BYTEc3©BYTEc3©n klik.</string>
+    <string name="settings_live_tv_mode_compact_desc">Dichtere zenderlijst met directe weergave met één klik.</string>
     <string name="settings_live_tv_mode_pro">Pro</string>
     <string name="settings_live_tv_mode_pro_desc">Dichte zenderlijst plus ingesloten preview en EPG. Eerste klik previews, tweede klik speelt.</string>
     <string name="settings_live_channel_numbering_group">Per groep</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">Kies wat u wilt vernieuwen voor deze provider.</string>
     <string name="settings_sync_option_all">Alles synchroniseren</string>
     <string name="settings_sync_option_fast">Snelle synchronisatie</string>
+    <string name="settings_syncing_preparing">Synchronisatie voorbereiden...</string>
+    <string name="settings_syncing_section">%1$s synchroniseren...</string>
     <string name="settings_sync_option_tv">Synchroniseer televisie</string>
     <string name="settings_sync_option_movies">Synchroniseer films</string>
     <string name="settings_sync_option_series">Sync-serie</string>
@@ -523,7 +526,7 @@
     <string name="settings_status_disabled">Uitgeschakeld</string>
     <string name="settings_status_unknown">Onbekend</string>
     <string name="settings_overview_title">Controlecentrum</string>
-    <string name="settings_overview_subtitle">Bekijk in BYTEc3©BYTEc3©n oogopslag uw provider, bescherming en afspeelinstellingen.</string>
+    <string name="settings_overview_subtitle">Bekijk in één oogopslag uw provider, bescherming en afspeelinstellingen.</string>
     <string name="settings_overview_provider_label">Aanbieder</string>
     <string name="settings_overview_count_label">Bronnen</string>
     <string name="settings_overview_protection_label">Bescherming</string>
@@ -546,7 +549,7 @@
     <string name="settings_recording_status_completed">Voltooid</string>
     <string name="settings_recording_status_failed">Mislukt</string>
     <string name="settings_recording_status_cancelled">Geannuleerd</string>
-    <string name="settings_recording_time_window">%1$s BYTEe2†’ %2$s</string>
+    <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_recurrence_none">Eenmalige opname</string>
     <string name="settings_recording_recurrence_daily">Wordt dagelijks herhaald</string>
     <string name="settings_recording_recurrence_weekly">Wordt wekelijks herhaald</string>
@@ -607,7 +610,7 @@
     <string name="favorites_continue_title">Ga door met kijken</string>
     <string name="favorites_continue_subtitle">Haal onvoltooide films en series op uit de opgeslagen hub.</string>
     <string name="favorites_recent_live_title">Recent live</string>
-    <string name="favorites_recent_live_subtitle">Met BYTEc3©BYTEc3©n klik kunt u teruggaan naar onlangs bekeken livekanalen.</string>
+    <string name="favorites_recent_live_subtitle">Met één klik kunt u teruggaan naar onlangs bekeken livekanalen.</string>
     <string name="favorites_continue_short">Hervatten</string>
     <string name="favorites_recent_short">Recent</string>
     <string name="favorites_filters_title">Blader op type</string>
@@ -638,7 +641,7 @@
     <string name="saved_group_manage_title">Beheer aangepaste groepen</string>
     <string name="saved_group_manage_subtitle">Open een groep of houd deze vast voor acties voor samenvoegen, verwijderen, opnieuw ordenen en Thuisprioriteit.</string>
     <string name="saved_group_manage_count">%1$d artikelen</string>
-    <string name="saved_group_manage_promoted">Vastgemaakt aan Home BYTEe2€¢ %1$d items</string>
+    <string name="saved_group_manage_promoted">Vastgemaakt aan Home • %1$d items</string>
     <string name="saved_group_promote_home">Vastzetten op huis</string>
     <string name="saved_group_demote_home">Verwijderen uit huis</string>
     <string name="saved_group_merge">Samenvoegen in een andere groep</string>
@@ -657,8 +660,8 @@
     <string name="favorites_sort_title_hint">Alfabetisch bladeren door secties</string>
     <string name="favorites_jump_title">Ga naar een sectie</string>
     <string name="favorites_jump_subtitle">Snelkoppeling rechtstreeks naar de opgeslagen groep of systeemsectie die u nodig heeft.</string>
-    <string name="saved_shell_subtitle">Vastgezette favorieten, aangepaste groepen en recente voortgang in BYTEc3©BYTEc3©n premium hub.</string>
-    <string name="guide_shell_subtitle">Gidsfilters, planningsdichtheid en gerichte programmadetails op BYTEc3©BYTEc3©n extern oppervlak.</string>
+    <string name="saved_shell_subtitle">Vastgezette favorieten, aangepaste groepen en recente voortgang in één premium hub.</string>
+    <string name="guide_shell_subtitle">Gidsfilters, planningsdichtheid en gerichte programmadetails op één extern oppervlak.</string>
     <string name="favorites_reordering">Opnieuw ordenen</string>
     <string name="favorites_reorder_mode">Modus voor opnieuw ordenen</string>
     <string name="favorites_move_up">Omhoog of links: beweeg eerder</string>
@@ -822,7 +825,7 @@
     <string name="player_channel_selected">Nu</string>
     <string name="player_recent_channels">Recent</string>
     <string name="player_last_group_label">Laatste: %1$s</string>
-    <string name="player_categories_label">CategorieBYTEc3«n</string>
+    <string name="player_categories_label">Categorieën</string>
     <string name="player_last_group_hint">Ga terug naar de laatste livegroep waar je doorheen bladerde.</string>
     <string name="player_archive_badge">Archief</string>
     <string name="player_catchup_badge">Inhalen</string>
@@ -982,7 +985,7 @@
     <string name="epg_program_replay_ready">Klaar voor archiveren</string>
     <string name="epg_program_replay_partial">Alleen inhaalslag door de aanbieder</string>
     <string name="epg_program_replay_unavailable">Niet beschikbaar</string>
-    <string name="epg_program_progress_value">%1$d%% compleet BYTEe2€¢ %2$s</string>
+    <string name="epg_program_progress_value">%1$d%% compleet • %2$s</string>
     <string name="epg_provider_troubleshooting_title">Problemen met leveranciers oplossen</string>
     <string name="epg_provider_troubleshooting_no_archive">Dit kanaal is door de provider niet gemarkeerd als gereed voor archief.</string>
     <string name="epg_provider_troubleshooting_missing_template">Opnieuw afspelen kan mislukken omdat de aanbieder inhaalondersteuning heeft aangeboden zonder een bruikbaar herhalingssjabloon.</string>
@@ -990,7 +993,7 @@
     <string name="epg_provider_troubleshooting_ready">Replay-metagegevens zijn aanwezig, maar de provider kan dit specifieke programmavenster nog steeds weigeren.</string>
     <string name="epg_provider_troubleshooting_stale">De versheid van de gids is laag, dus de toewijzing van herhalingen kan nog steeds onvolledig zijn totdat de gids wordt vernieuwd.</string>
     <string name="parental_group_title">Beschermde groepen</string>
-    <string name="parental_group_search">CategorieBYTEc3«n zoeken...</string>
+    <string name="parental_group_search">Categorieën zoeken...</string>
     <string name="parental_group_auto_protected">Categorie volwassenen (automatisch beveiligd)</string>
     <string name="parental_group_back">Terug</string>
     <string name="settings_category_mode_protection">Vergrendelen / Ontgrendelen</string>
@@ -1063,14 +1066,14 @@
     <string name="multiview_replace_title">Vervang de gefocuste sleuf</string>
     <string name="multiview_replace_empty">Gebruik eerst Live TV-favorieten of recente kanalen, zodat hier vervangingskeuzes verschijnen.</string>
     <string name="multiview_slot_label">Sleuf %1$d</string>
-    <string name="multiview_policy_summary">%1$s niveau BYTEe2€¢ %2$d actieve slot(s)</string>
+    <string name="multiview_policy_summary">%1$s niveau • %2$d actieve slot(s)</string>
     <string name="multiview_policy_auto">Automatisch</string>
     <string name="multiview_policy_conservative">Conservatief</string>
     <string name="multiview_policy_balanced">Evenwichtig</string>
     <string name="multiview_policy_maximum">Maximaal</string>
     <string name="multiview_policy_blocked">Stand-by-sleuf</string>
-    <string name="multiview_telemetry_snapshot">%1$d actief BYTEe2€¢ %2$d stand-by BYTEe2€¢ %3$d buffering BYTEe2€¢ %4$d fouten</string>
-    <string name="multiview_telemetry_detail">%1$d gedaald totaal BYTEe2€¢ +%2$d recent BYTEe2€¢ belasting %3$d BYTEe2€¢ %4$s thermisch</string>
+    <string name="multiview_telemetry_snapshot">%1$d actief • %2$d stand-by • %3$d buffering • %4$d fouten</string>
+    <string name="multiview_telemetry_detail">%1$d gedaald totaal • +%2$d recent • belasting %3$d • %4$s thermisch</string>
     <string name="multiview_thermal_unknown">Onbekend</string>
     <string name="multiview_thermal_normal">Normaal</string>
     <string name="multiview_thermal_light">Licht</string>
@@ -1081,7 +1084,7 @@
     <string name="settings_privacy">Privacy</string>
     <string name="settings_privacy_subtitle">Beheer de kijkgeschiedenis en de incognitomodus.</string>
     <string name="settings_incognito_mode">Incognitomodus</string>
-    <string name="settings_incognito_mode_subtitle">Bewaar de kijkgeschiedenis of onlangs bezochte categorieBYTEc3«n niet terwijl deze actief zijn.</string>
+    <string name="settings_incognito_mode_subtitle">Bewaar de kijkgeschiedenis of onlangs bezochte categorieën niet terwijl deze actief zijn.</string>
     <string name="settings_clear_history">Kijkgeschiedenis wissen</string>
     <string name="settings_clear_history_subtitle">Wis alle kijkvoortgangen en recente gegevens voor alle providers.</string>
     <string name="settings_clear_history_confirm">Geschiedenis wissen</string>
@@ -1090,7 +1093,7 @@
     <string name="settings_prevent_standby">Scherm aan houden tijdens afspelen</string>
     <string name="settings_prevent_standby_subtitle">Voorkomt dat de tv een standby-waarschuwing toont terwijl een kanaal of video wordt afgespeeld</string>
     <string name="settings_clear_history_dialog_title">Kijkgeschiedenis wissen?</string>
-    <string name="settings_clear_history_dialog_body">Hierdoor wordt de hele kijkgeschiedenis permanent verwijderd, kun je de voortgang blijven bekijken en de laatst bezochte categorieBYTEc3«n bij alle providers.</string>
+    <string name="settings_clear_history_dialog_body">Hierdoor wordt de hele kijkgeschiedenis permanent verwijderd, kun je de voortgang blijven bekijken en de laatst bezochte categorieën bij alle providers.</string>
     <string name="action_save">Opslaan</string>
     <string name="action_cancel">Annuleer</string>
     <string name="action_save_order">Bestelling opslaan</string>
@@ -1102,7 +1105,7 @@
     <string name="action_split">SPLIT</string>
     <string name="label_provider">AANBIEDER</string>
     <string name="label_selected">Geselecteerd</string>
-    <string name="label_categories">CategorieBYTEc3«n</string>
+    <string name="label_categories">Categorieën</string>
     <string name="label_no_schedule">Geen schema-informatie</string>
     <string name="label_reordering">Herordenen %1$s</string>
     <string name="label_slots_count">%1$d/4 slots</string>
@@ -1133,7 +1136,7 @@
     <string name="dashboard_open_series">Open serie</string>
     <string name="dashboard_library_ready">Uw IPTV-bibliotheek is klaar</string>
     <string name="dashboard_open_live_tv">Live-tv openen</string>
-    <string name="dashboard_pinned_channels_format">Vastgezette BYTEc2· %1$d kanalen</string>
+    <string name="dashboard_pinned_channels_format">Vastgezette · %1$d kanalen</string>
     <string name="dashboard_channels_format">%1$d kanalen</string>
     <string name="favorites_all_favorites">Alle favorieten</string>
     <string name="favorites_saved_items_format">%1$d opgeslagen items</string>
@@ -1146,11 +1149,11 @@
     <string name="favorites_pinned_home">%1$s vastgezet op Home.</string>
     <string name="favorites_merged_group">%1$s is samengevoegd met de geselecteerde groep.</string>
     <string name="favorites_status_pill_format">%1$s %2$d</string>
-    <string name="time_range_format">%1$s BYTEe2€“ %2$s</string>
+    <string name="time_range_format">%1$s – %2$s</string>
     <string name="channel_number_name_format">%1$d. %2$s</string>
     <string name="label_colon_value_format">%1$s: %2$s</string>
     <string name="split_count_format">%1$s %2$d/4</string>
-    <string name="program_date_time_range">%1$s | %2$s BYTEe2€“ %3$s</string>
+    <string name="program_date_time_range">%1$s | %2$s – %3$s</string>
     <string name="diagnostics_summary_format">%1$s | %2$s</string>
     <string name="home_added_to_favorites">%1$s toegevoegd aan Favorieten</string>
     <string name="home_removed_from_favorites">%1$s verwijderd uit Favorieten</string>
@@ -1174,4 +1177,3 @@
     <string name="tv_input_setup_retry_scan">Probeer de automatische scan opnieuw</string>
     <string name="tv_input_setup_success_hint">Android TV Live TV kan nu uw StreamVault-kanalen openen.</string>
 </resources>
-

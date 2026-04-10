@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">StreamVault</string>
     <string name="nav_home">Casa</string>
@@ -52,7 +52,7 @@
     <string name="home_recent_channels_hint">Guarda alcuni canali in diretta per creare un elenco recente qui</string>
     <string name="home_locked_short">BLOCCATO</string>
     <string name="live_shell_subtitle">Esplora rapidamente le categorie live, mantieni una navigazione deterministica e mostra solo i dati della guida che contano sullo schermo.</string>
-    <string name="live_shell_context">%1$d categorie BYTEe2€¢ %2$d canali</string>
+    <string name="live_shell_context">%1$d categorie • %2$d canali</string>
     <string name="live_shell_provider">Fornitore</string>
     <string name="live_shell_last_group">Ultimo gruppo</string>
     <string name="live_shell_split">Visualizzazione multipla</string>
@@ -60,7 +60,7 @@
     <string name="live_channel_results">%1$d canali visualizzati</string>
     <string name="live_preview_title">Anteprima del canale</string>
     <string name="live_preview_placeholder_title">Seleziona un canale per l\'anteprima</string>
-    <string name="live_preview_placeholder_subtitle">In modalitBYTEc3  Pro, il primo clic visualizza l\'anteprima dello streaming e il secondo clic apre la riproduzione completa.</string>
+    <string name="live_preview_placeholder_subtitle">In modalità Pro, il primo clic visualizza l\'anteprima dello streaming e il secondo clic apre la riproduzione completa.</string>
     <string name="live_preview_no_epg">Nessuna informazione sul programma</string>
     <string name="live_preview_open_hint">Premere nuovamente OK per aprire questo canale</string>
     <string name="live_preview_loading">Caricamento anteprima...</string>
@@ -79,7 +79,7 @@
     <string name="home_group_renamed">Gruppo rinominato in %1$s</string>
     <string name="home_group_deleted">Gruppo "%1$s" eliminato</string>
     <string name="home_group_name_reserved">Impossibile creare il gruppo denominato "Preferiti"</string>
-    <string name="home_group_name_duplicate">Il gruppo "%1$s" esiste giBYTEc3</string>
+    <string name="home_group_name_duplicate">Il gruppo "%1$s" esiste giֳ</string>
     <string name="home_group_name_invalid">Inserisci il nome del gruppo</string>
     <string name="dashboard_title">La tua libreria, pronta</string>
     <string name="dashboard_subtitle">%1$s è attivo. Torna alla diretta, riprendi la visione o sfoglia le nuove aggiunte.</string>
@@ -148,7 +148,7 @@
     <string name="card_locked_channel">Canale bloccato</string>
     <string name="card_live_badge">VIVI</string>
     <string name="card_locked">Bloccato</string>
-    <string name="category_see_all">Vedi tutto BYTEe2†’</string>
+    <string name="category_see_all">Vedi tutto →</string>
     <string name="continue_watching_title">Continua a guardare</string>
     <string name="continue_watching_season_episode">S%1$d E%2$d</string>
     <string name="playlist_no_provider">Nessun fornitore</string>
@@ -174,7 +174,7 @@
     <string name="movies_group_deleted">Gruppo eliminato %1$s</string>
     <string name="movies_group_name_invalid">Inserisci il nome del gruppo</string>
     <string name="movies_group_name_reserved">I preferiti sono riservati</string>
-    <string name="movies_group_name_duplicate">Esiste giBYTEc3  un gruppo di film con questo nome</string>
+    <string name="movies_group_name_duplicate">Esiste già un gruppo di film con questo nome</string>
     <string name="movies_saved_empty_hint">Aggiungi un film ai preferiti o aggiungilo a un gruppo personalizzato per vederlo qui.</string>
     <string name="movies_filter_subtitle">Perfeziona la categoria di film selezionata senza ricostruire l\'intera libreria.</string>
     <string name="movies_library_lens_subtitle">Mostra preferiti, in corso, più votati e film nuovi in tutta la libreria.</string>
@@ -197,7 +197,7 @@
     <string name="series_group_deleted">Gruppo eliminato %1$s</string>
     <string name="series_group_name_invalid">Inserisci il nome del gruppo</string>
     <string name="series_group_name_reserved">I preferiti sono riservati</string>
-    <string name="series_group_name_duplicate">Esiste giBYTEc3  un gruppo di serie con questo nome</string>
+    <string name="series_group_name_duplicate">Esiste già un gruppo di serie con questo nome</string>
     <string name="series_saved_empty_hint">Aggiungi una serie ai preferiti o aggiungila a un gruppo personalizzato per vederla qui.</string>
     <string name="series_filter_subtitle">Scegli tra le serie salvate, in corso, aggiornate e con valutazioni elevate.</string>
     <string name="series_library_lens_subtitle">Mostra preferiti, in corso, più votate e serie nuove in tutta la libreria.</string>
@@ -277,8 +277,9 @@
     <string name="settings_category_type_movies_description">Ordina e nascondi le categorie film del provider senza influire su Preferiti, Riprendi o sugli scaffali personalizzati.</string>
     <string name="settings_category_type_series_description">Ordina e nascondi le categorie serie del provider senza influire su Preferiti, Continua a guardare o sugli scaffali personalizzati.</string>
     <string name="settings_playback">Riproduzione</string>
+    <string name="settings_browsing">Navigazione</string>
     <string name="settings_playback_subtitle">Regola il decoder e il buffering per una riproduzione più fluida.</string>
-    <string name="settings_live_tv_channel_mode">ModalitBYTEc3  canale TV in diretta</string>
+    <string name="settings_live_tv_channel_mode">Modalità canale TV in diretta</string>
     <string name="settings_live_tv_channel_mode_subtitle">Scegli come il browser della TV in diretta deve presentare i canali e se deve visualizzare l\'anteprima prima della riproduzione.</string>
     <string name="settings_live_tv_quick_filters">Filtri rapidi Live TV</string>
     <string name="settings_live_tv_quick_filters_none">Nessuno</string>
@@ -303,7 +304,7 @@
     <string name="settings_live_tv_quick_filter_removed">%1$s rimosso dai filtri rapidi di Live TV.</string>
     <string name="settings_live_channel_numbering_mode">Numerazione canali Live TV</string>
     <string name="settings_live_channel_numbering_mode_subtitle">Scegli se i canali live usano la posizione nel gruppo corrente o mantengono i numeri originali del provider.</string>
-    <string name="settings_default_playback_speed">VelocitBYTEc3  di riproduzione predefinita</string>
+    <string name="settings_default_playback_speed">Velocità di riproduzione predefinita</string>
     <string name="settings_media_session">Sessione multimediale di sistema</string>
     <string name="settings_media_session_subtitle">Espone la riproduzione ai controlli multimediali di sistema Android. Disattivalo se la riproduzione si blocca su un dispositivo specifico quando apri il player.</string>
     <string name="settings_player_controls_timeout">Auto-nascondi controlli VOD</string>
@@ -323,30 +324,30 @@
     <string name="settings_subtitle_size">Dimensione sottotitoli</string>
     <string name="settings_subtitle_text_color">Colore del testo dei sottotitoli</string>
     <string name="settings_subtitle_background">Sfondo dei sottotitoli</string>
-    <string name="settings_wifi_quality_cap">Preferenza qualitBYTEc3  Wi-Fi</string>
-    <string name="settings_ethernet_quality_cap">Preferenza qualitBYTEc3  Ethernet</string>
+    <string name="settings_wifi_quality_cap">Preferenza qualità Wi-Fi</string>
+    <string name="settings_ethernet_quality_cap">Preferenza qualità Ethernet</string>
     <string name="settings_quality_cap_auto">Automatico</string>
-    <string name="settings_speed_test_title">Prova di velocitBYTEc3  di Internet</string>
+    <string name="settings_speed_test_title">Prova di velocità di Internet</string>
     <string name="settings_speed_test_not_run">Non ancora testato</string>
-    <string name="settings_speed_test_summary_default">Esegui un rapido test di download e utilizza il risultato per scegliere limiti di qualitBYTEc3  di riproduzione stabili.</string>
+    <string name="settings_speed_test_summary_default">Esegui un rapido test di download e utilizza il risultato per scegliere limiti di qualità di riproduzione stabili.</string>
     <string name="settings_speed_test_summary_measured">Misurato il %1$s a %2$s.</string>
-    <string name="settings_speed_test_summary_estimated">Stimato su %1$s a %2$s perchBYTEc3© la rete attiva non ha completato la sonda di download.</string>
-    <string name="settings_speed_test_recommendation">Limite di qualitBYTEc3  consigliato: %1$s</string>
+    <string name="settings_speed_test_summary_estimated">Stimato su %1$s a %2$s perché la rete attiva non ha completato la sonda di download.</string>
+    <string name="settings_speed_test_recommendation">Limite di qualità consigliato: %1$s</string>
     <string name="settings_speed_test_run_action">Esegui prova</string>
     <string name="settings_speed_test_running_action">Test in corso…</string>
     <string name="settings_speed_test_apply_wifi">Applicare al Wi-Fi</string>
     <string name="settings_speed_test_apply_ethernet">Applicare a Ethernet</string>
-    <string name="settings_speed_test_complete">Test di velocitBYTEc3  completato.</string>
+    <string name="settings_speed_test_complete">Test di velocità completato.</string>
     <string name="settings_speed_test_estimate_complete">Stima della rete salvata.</string>
-    <string name="settings_speed_test_failed">Test di velocitBYTEc3  non riuscito: %1$s</string>
-    <string name="settings_speed_test_wifi_applied">BYTEc3ˆ stato applicato il limite di qualitBYTEc3  Wi-Fi consigliato.</string>
-    <string name="settings_speed_test_ethernet_applied">BYTEc3ˆ stato applicato il limite di qualitBYTEc3  Ethernet consigliato.</string>
+    <string name="settings_speed_test_failed">Test di velocità non riuscito: %1$s</string>
+    <string name="settings_speed_test_wifi_applied">È stato applicato il limite di qualità Wi-Fi consigliato.</string>
+    <string name="settings_speed_test_ethernet_applied">È stato applicato il limite di qualità Ethernet consigliato.</string>
     <string name="settings_speed_test_transport_wifi">Wi-Fi</string>
     <string name="settings_speed_test_transport_ethernet">Ethernet</string>
     <string name="settings_speed_test_transport_cellular">Cellulare</string>
     <string name="settings_speed_test_transport_other">Altra rete</string>
     <string name="settings_speed_test_transport_unknown">Rete sconosciuta</string>
-    <string name="settings_select_playback_speed">Seleziona la velocitBYTEc3  di riproduzione predefinita</string>
+    <string name="settings_select_playback_speed">Seleziona la velocità di riproduzione predefinita</string>
     <string name="settings_select_audio_language">Seleziona la lingua audio preferita</string>
     <string name="settings_select_subtitle_size">Seleziona la dimensione dei sottotitoli</string>
     <string name="settings_select_subtitle_text_color">Seleziona Colore testo sottotitoli</string>
@@ -363,8 +364,8 @@
     <string name="settings_subtitle_background_dim">Nero tenue</string>
     <string name="settings_subtitle_background_black">Nero solido</string>
     <string name="settings_subtitle_background_blue">Blu profondo</string>
-    <string name="settings_select_wifi_quality_cap">Seleziona Preferenza qualitBYTEc3  Wi-Fi</string>
-    <string name="settings_select_ethernet_quality_cap">Selezionare Preferenza qualitBYTEc3  Ethernet</string>
+    <string name="settings_select_wifi_quality_cap">Seleziona Preferenza qualità Wi-Fi</string>
+    <string name="settings_select_ethernet_quality_cap">Selezionare Preferenza qualità Ethernet</string>
     <string name="settings_live_tv_mode_comfortable">Confortevole</string>
     <string name="settings_live_tv_mode_comfortable_desc">Righe più grandi con riproduzione diretta con un solo clic.</string>
     <string name="settings_live_tv_mode_compact">Compatto</string>
@@ -388,7 +389,7 @@
     <string name="vod_classic_recently_added">Aggiunti di recente</string>
     <string name="vod_classic_results_count">%1$d elementi</string>
     <string name="vod_classic_empty_category">Nessun titolo trovato in questa sezione.</string>
-    <string name="settings_decoder_mode">ModalitBYTEc3  decodificatore</string>
+    <string name="settings_decoder_mode">Modalità decodificatore</string>
     <string name="settings_decoder_auto">Automatico (preferibilmente hardware)</string>
     <string name="settings_decoder_hardware">Solo hardware</string>
     <string name="settings_decoder_software">Preferisci estensioni software</string>
@@ -464,6 +465,8 @@
     <string name="settings_sync_dialog_subtitle">Scegli cosa aggiornare per questo fornitore.</string>
     <string name="settings_sync_option_all">Sincronizza tutto</string>
     <string name="settings_sync_option_fast">Sincronizzazione veloce</string>
+    <string name="settings_syncing_preparing">Preparazione sincronizzazione...</string>
+    <string name="settings_syncing_section">Sincronizzazione di %1$s...</string>
     <string name="settings_sync_option_tv">Sincronizza la TV</string>
     <string name="settings_sync_option_movies">Sincronizza filmati</string>
     <string name="settings_sync_option_series">Sincronizza serie</string>
@@ -546,7 +549,7 @@
     <string name="settings_recording_status_completed">Completato</string>
     <string name="settings_recording_status_failed">Fallito</string>
     <string name="settings_recording_status_cancelled">Annullato</string>
-    <string name="settings_recording_time_window">%1$s BYTEe2†’ %2$s</string>
+    <string name="settings_recording_time_window">%1$s → %2$s</string>
     <string name="settings_recording_recurrence_none">Registrazione una tantum</string>
     <string name="settings_recording_recurrence_daily">Si ripete ogni giorno</string>
     <string name="settings_recording_recurrence_weekly">Si ripete settimanalmente</string>
@@ -615,7 +618,7 @@
     <string name="saved_preset_title">Visualizzazioni salvate</string>
     <string name="saved_preset_subtitle">Passa dalla visualizzazione guarda dopo, al richiamo dal vivo, incentrata sul tipo e con gruppo personalizzato.</string>
     <string name="saved_scope_title">Ambito del fornitore</string>
-    <string name="saved_scope_subtitle">Filtra l\'hub salvato su %1$s o amplialo a tutti i provider giBYTEc3  caricati nell\'app.</string>
+    <string name="saved_scope_subtitle">Filtra l\'hub salvato su %1$s o amplialo a tutti i provider già caricati nell\'app.</string>
     <string name="saved_scope_current_provider">Fornitore attuale</string>
     <string name="saved_scope_current_provider_hint">Mantieni il salvataggio concentrato sul fornitore attivo</string>
     <string name="saved_scope_all_providers">Tutti i fornitori</string>
@@ -636,9 +639,9 @@
     <string name="saved_preset_live_recall">Richiamo dal vivo</string>
     <string name="saved_preset_custom_groups">Gruppi personalizzati</string>
     <string name="saved_group_manage_title">Gestisci gruppi personalizzati</string>
-    <string name="saved_group_manage_subtitle">Apri un gruppo o tienilo premuto per unire, eliminare, riordinare e azioni con prioritBYTEc3  Home.</string>
+    <string name="saved_group_manage_subtitle">Apri un gruppo o tienilo premuto per unire, eliminare, riordinare e azioni con priorità Home.</string>
     <string name="saved_group_manage_count">%1$d elementi</string>
-    <string name="saved_group_manage_promoted">Elementi fissati su Home BYTEe2€¢ %1$d.</string>
+    <string name="saved_group_manage_promoted">Elementi fissati su Home • %1$d.</string>
     <string name="saved_group_promote_home">Aggiungi a Home</string>
     <string name="saved_group_demote_home">Rimuovi da casa</string>
     <string name="saved_group_merge">Unisci in un altro gruppo</string>
@@ -648,7 +651,7 @@
     <string name="saved_item_remove_group">Rimuovi da questo gruppo</string>
     <string name="saved_item_move_to">Sposta in %1$s</string>
     <string name="favorites_sort_title">Ordina la libreria salvata</string>
-    <string name="favorites_sort_subtitle">Passa dall\'ordine manuale, all\'attivitBYTEc3  recente e alla navigazione dei titoli.</string>
+    <string name="favorites_sort_subtitle">Passa dall\'ordine manuale, all\'attività recente e alla navigazione dei titoli.</string>
     <string name="favorites_sort_default">Manuale</string>
     <string name="favorites_sort_default_hint">Utilizza l\'ordine salvato e quello di gruppo</string>
     <string name="favorites_sort_recent">Recente</string>
@@ -658,9 +661,9 @@
     <string name="favorites_jump_title">Passa a una sezione</string>
     <string name="favorites_jump_subtitle">Collegamento diretto al gruppo salvato o alla sezione di sistema di cui hai bisogno.</string>
     <string name="saved_shell_subtitle">Preferiti aggiunti, gruppi personalizzati e progressi recenti in un unico hub premium.</string>
-    <string name="guide_shell_subtitle">Filtri guida, densitBYTEc3  di pianificazione e dettagli mirati del programma in un\'unica superficie remota.</string>
+    <string name="guide_shell_subtitle">Filtri guida, densità di pianificazione e dettagli mirati del programma in un\'unica superficie remota.</string>
     <string name="favorites_reordering">Riordino</string>
-    <string name="favorites_reorder_mode">ModalitBYTEc3  riordino</string>
+    <string name="favorites_reorder_mode">Modalità riordino</string>
     <string name="favorites_move_up">Su o Sinistra: spostati prima</string>
     <string name="favorites_move_down">Sposta più tardi</string>
     <string name="favorites_confirm">Centro: salva l\'ordine</string>
@@ -752,7 +755,7 @@
     <string name="player_error_title">Errore di riproduzione</string>
     <string name="player_error_network">Streaming non disponibile: controlla la tua connessione Internet</string>
     <string name="player_error_source">Stream non trovato o accesso negato</string>
-    <string name="player_error_decoder">Impossibile riprodurre questo formato: prova a cambiare la modalitBYTEc3  del decoder in Impostazioni</string>
+    <string name="player_error_decoder">Impossibile riprodurre questo formato: prova a cambiare la modalità del decoder in Impostazioni</string>
     <string name="player_error_drm">La licenza DRM o i requisiti di sicurezza del dispositivo hanno impedito la riproduzione</string>
     <string name="player_error_unknown">Errore di riproduzione sconosciuto</string>
     <string name="player_retry">Riprova</string>
@@ -791,7 +794,7 @@
     <string name="player_action_mute">Muto</string>
     <string name="player_action_cast">Trasmetti</string>
     <string name="player_action_pip">PiP</string>
-    <string name="player_action_quality">QualitBYTEc3</string>
+    <string name="player_action_quality">Qualitֳ</string>
     <string name="player_mute">Muto</string>
     <string name="player_muted_badge">Disattivato</string>
     <string name="player_cast">Trasmetti</string>
@@ -801,18 +804,18 @@
     <string name="player_pip_short">PiP</string>
     <string name="player_epg_short">EPG</string>
     <string name="player_multiview_short">Visualizzazione multipla</string>
-    <string name="player_quality_short">QualitBYTEc3</string>
+    <string name="player_quality_short">Qualitֳ</string>
     <string name="player_episodes">Episodi</string>
     <string name="player_resume_title">Riprendi la riproduzione</string>
     <string name="player_resume_desc">Vuoi riprendere %1$s da dove eri rimasto?</string>
     <string name="player_resume_start_over">Ricominciare daccapo</string>
     <string name="player_resume">Riprendi</string>
-    <string name="player_playback_speed_title">VelocitBYTEc3  di riproduzione</string>
-    <string name="player_playback_speed_value">VelocitBYTEc3  %1$s</string>
+    <string name="player_playback_speed_title">Velocità di riproduzione</string>
+    <string name="player_playback_speed_value">Velocità %1$s</string>
     <string name="player_track_audio">Seleziona Traccia audio</string>
     <string name="player_track_subs">Seleziona Sottotitoli</string>
     <string name="player_track_off">Spento</string>
-    <string name="player_video_quality">QualitBYTEc3  video</string>
+    <string name="player_video_quality">Qualità video</string>
     <string name="player_aspect_ratio_label">Aspetto %1$s</string>
     <string name="player_resolution_auto_label">Automatico: %1$s</string>
     <string name="player_channel_not_found">Canale non trovato</string>
@@ -911,7 +914,7 @@
     <string name="epg_day_yesterday">Ieri</string>
     <string name="epg_day_today">Oggi</string>
     <string name="epg_day_tomorrow">Domani</string>
-    <string name="epg_mode_label">ModalitBYTEc3  guida</string>
+    <string name="epg_mode_label">Modalità guida</string>
     <string name="epg_mode_subtitle">Passa dalla navigazione ampia, alla navigazione in tempo di ancoraggio e alle righe ottimizzate per l\'archivio.</string>
     <string name="epg_favorites_filter_title">Fonte guida</string>
     <string name="epg_favorites_filter_subtitle">Mantieni la guida su tutti i canali o solo sui tuoi preferiti live.</string>
@@ -926,7 +929,7 @@
     <string name="epg_mode_archive">Archivio pronto</string>
     <string name="epg_mode_archive_hint">Canali con voci di recupero o di archivio</string>
     <string name="epg_density_label">Disposizione della guida</string>
-    <string name="epg_density_subtitle">Scegli la quantitBYTEc3  di dettagli della guida da visualizzare sullo schermo.</string>
+    <string name="epg_density_subtitle">Scegli la quantità di dettagli della guida da visualizzare sullo schermo.</string>
     <string name="epg_density_compact">Compatto</string>
     <string name="epg_density_compact_hint">Mostra più canali sullo schermo</string>
     <string name="epg_density_comfortable">Confortevole</string>
@@ -965,7 +968,7 @@
     <string name="epg_archive_ready_hint">Per questo programma dovrebbe essere disponibile la riproduzione di archivio o di recupero.</string>
     <string name="epg_archive_provider_hint">Questo provider supporta il catch-up per il canale, ma questo programma non è contrassegnato come pronto per l\'archivio nella finestra guida الحالية.</string>
     <string name="epg_archive_unavailable_hint">La riproduzione dall\'archivio non è disponibile per questo canale.</string>
-    <string name="epg_archive_stale_hint">I dati della guida sembrano obsoleti, pertanto la disponibilitBYTEc3  della riproduzione potrebbe essere incompleta finchBYTEc3© la guida non viene aggiornata.</string>
+    <string name="epg_archive_stale_hint">I dati della guida sembrano obsoleti, pertanto la disponibilità della riproduzione potrebbe essere incompleta finché la guida non viene aggiornata.</string>
     <string name="epg_refresh_guide">Aggiorna Guida</string>
     <string name="epg_upcoming_schedule">Prossimo programma</string>
     <string name="epg_minutes_remaining">%1$d minuti rimasti</string>
@@ -982,11 +985,11 @@
     <string name="epg_program_replay_ready">Pronto per l\'archiviazione</string>
     <string name="epg_program_replay_partial">Solo recupero del fornitore</string>
     <string name="epg_program_replay_unavailable">Non disponibile</string>
-    <string name="epg_program_progress_value">%1$d%% completato BYTEe2€¢ %2$s</string>
+    <string name="epg_program_progress_value">%1$d%% completato • %2$s</string>
     <string name="epg_provider_troubleshooting_title">Risoluzione dei problemi del fornitore</string>
     <string name="epg_provider_troubleshooting_no_archive">Questo canale non è contrassegnato come pronto per l\'archivio dal provider.</string>
-    <string name="epg_provider_troubleshooting_missing_template">La riproduzione potrebbe non riuscire perchBYTEc3© il provider ha esposto il supporto di recupero senza un modello di riproduzione utilizzabile.</string>
-    <string name="epg_provider_troubleshooting_missing_stream_id">La riproduzione potrebbe non riuscire perchBYTEc3© il provider non ha esposto un identificatore del flusso di riproduzione.</string>
+    <string name="epg_provider_troubleshooting_missing_template">La riproduzione potrebbe non riuscire perché il provider ha esposto il supporto di recupero senza un modello di riproduzione utilizzabile.</string>
+    <string name="epg_provider_troubleshooting_missing_stream_id">La riproduzione potrebbe non riuscire perché il provider non ha esposto un identificatore del flusso di riproduzione.</string>
     <string name="epg_provider_troubleshooting_ready">I metadati della riproduzione sono presenti, ma il provider potrebbe comunque rifiutare questa specifica finestra del programma.</string>
     <string name="epg_provider_troubleshooting_stale">L\'aggiornamento della guida è basso, quindi la mappatura della riproduzione potrebbe essere ancora incompleta finché la guida non si aggiorna.</string>
     <string name="parental_group_title">Gruppi protetti</string>
@@ -1063,14 +1066,14 @@
     <string name="multiview_replace_title">Sostituisci lo slot focalizzato</string>
     <string name="multiview_replace_empty">Utilizzare prima i preferiti della TV in diretta o i canali recenti in modo che le scelte sostitutive vengano visualizzate qui.</string>
     <string name="multiview_slot_label">Slot %1$d</string>
-    <string name="multiview_policy_summary">Livello %1$s BYTEe2€¢ %2$d slot/i attivi</string>
+    <string name="multiview_policy_summary">Livello %1$s • %2$d slot/i attivi</string>
     <string name="multiview_policy_auto">Automatico</string>
     <string name="multiview_policy_conservative">Conservatore</string>
     <string name="multiview_policy_balanced">Equilibrato</string>
     <string name="multiview_policy_maximum">Massimo</string>
     <string name="multiview_policy_blocked">Slot di attesa</string>
-    <string name="multiview_telemetry_snapshot">%1$d attivo BYTEe2€¢ %2$d standby BYTEe2€¢ %3$d buffering BYTEe2€¢ %4$d errori</string>
-    <string name="multiview_telemetry_detail">%1$d cadute totali BYTEe2€¢ +%2$d recenti BYTEe2€¢ carico %3$d BYTEe2€¢ %4$s termico</string>
+    <string name="multiview_telemetry_snapshot">%1$d attivo • %2$d standby • %3$d buffering • %4$d errori</string>
+    <string name="multiview_telemetry_detail">%1$d cadute totali • +%2$d recenti • carico %3$d • %4$s termico</string>
     <string name="multiview_thermal_unknown">Sconosciuto</string>
     <string name="multiview_thermal_normal">Normale</string>
     <string name="multiview_thermal_light">Luce</string>
@@ -1079,8 +1082,8 @@
     <string name="multiview_thermal_critical">Critico</string>
     <string name="multiview_low_memory_warning">La memoria è quasi esaurita. Gli slot extra restano in standby finché la riproduzione non si stabilizza.</string>
     <string name="settings_privacy">Privacy</string>
-    <string name="settings_privacy_subtitle">Gestisci la cronologia visualizzazioni e la modalitBYTEc3  di navigazione in incognito.</string>
-    <string name="settings_incognito_mode">ModalitBYTEc3  di navigazione in incognito</string>
+    <string name="settings_privacy_subtitle">Gestisci la cronologia visualizzazioni e la modalità di navigazione in incognito.</string>
+    <string name="settings_incognito_mode">Modalità di navigazione in incognito</string>
     <string name="settings_incognito_mode_subtitle">Non salvare la cronologia visualizzazioni o le categorie visitate di recente mentre sono attive.</string>
     <string name="settings_clear_history">Cancella cronologia visualizzazioni</string>
     <string name="settings_clear_history_subtitle">Cancella tutti i progressi e i recenti dell\'orologio per tutti i fornitori.</string>
@@ -1133,7 +1136,7 @@
     <string name="dashboard_open_series">Serie aperta</string>
     <string name="dashboard_library_ready">La tua libreria IPTV è pronta</string>
     <string name="dashboard_open_live_tv">Apri TV in diretta</string>
-    <string name="dashboard_pinned_channels_format">Canali BYTEc2· %1$d bloccati</string>
+    <string name="dashboard_pinned_channels_format">Canali · %1$d bloccati</string>
     <string name="dashboard_channels_format">%1$d canali</string>
     <string name="favorites_all_favorites">Tutti i preferiti</string>
     <string name="favorites_saved_items_format">%1$d elementi salvati</string>
@@ -1142,15 +1145,15 @@
     <string name="favorites_content_type_episode_format">Episodio S%1$d E%2$d</string>
     <string name="favorites_content_type_episode">Episodio</string>
     <string name="favorites_content_type_live">Vivi</string>
-    <string name="favorites_removed_home_priority">Rimosso %1$s dalla prioritBYTEc3  Home.</string>
+    <string name="favorites_removed_home_priority">Rimosso %1$s dalla priorità Home.</string>
     <string name="favorites_pinned_home">Appuntato %1$s sulla Home.</string>
     <string name="favorites_merged_group">Unito %1$s al gruppo selezionato.</string>
     <string name="favorites_status_pill_format">%1$s %2$d</string>
-    <string name="time_range_format">%1$s BYTEe2€“ %2$s</string>
+    <string name="time_range_format">%1$s – %2$s</string>
     <string name="channel_number_name_format">%1$d. %2$s</string>
     <string name="label_colon_value_format">%1$s: %2$s</string>
     <string name="split_count_format">%1$s %2$d/4</string>
-    <string name="program_date_time_range">%1$s | %2$s BYTEe2€“ %3$s</string>
+    <string name="program_date_time_range">%1$s | %2$s – %3$s</string>
     <string name="diagnostics_summary_format">%1$s | %2$s</string>
     <string name="home_added_to_favorites">Aggiunto %1$s ai Preferiti</string>
     <string name="home_removed_from_favorites">Rimosso %1$s dai Preferiti</string>
@@ -1174,4 +1177,3 @@
     <string name="tv_input_setup_retry_scan">Riprovare la scansione automatica</string>
     <string name="tv_input_setup_success_hint">Android TV Live TV ora può aprire i tuoi canali StreamVault.</string>
 </resources>
-
