@@ -80,15 +80,23 @@ abstract class StreamVaultDatabase : RoomDatabase() {
     abstract fun recordingStorageDao(): RecordingStorageDao
 
     companion object {
-        private fun validateForeignKeys(database: SupportSQLiteDatabase) {
-            database.query("PRAGMA foreign_key_check").use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val table = if (!cursor.isNull(0)) cursor.getString(0) else "<unknown>"
-                    val rowId = if (!cursor.isNull(1)) cursor.getLong(1) else -1L
-                    val parent = if (!cursor.isNull(2)) cursor.getString(2) else "<unknown>"
-                    throw IllegalStateException(
-                        "Foreign key violation after migration: table=$table rowId=$rowId parent=$parent"
-                    )
+        /**
+         * Checks FK integrity for the specified tables only.
+         * Always pass the tables the migration actually wrote to — never call with no arguments,
+         * as that would check the entire database and can crash on pre-existing violations in
+         * unrelated tables that the migration didn't touch.
+         */
+        private fun validateForeignKeys(database: SupportSQLiteDatabase, vararg tableNames: String) {
+            for (table in tableNames) {
+                database.query("PRAGMA foreign_key_check($table)").use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val tbl = if (!cursor.isNull(0)) cursor.getString(0) else "<unknown>"
+                        val rowId = if (!cursor.isNull(1)) cursor.getLong(1) else -1L
+                        val parent = if (!cursor.isNull(2)) cursor.getString(2) else "<unknown>"
+                        throw IllegalStateException(
+                            "Foreign key violation after migration: table=$tbl rowId=$rowId parent=$parent"
+                        )
+                    }
                 }
             }
         }
@@ -546,7 +554,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                 database.execSQL("CREATE INDEX IF NOT EXISTS index_episodes_provider_id ON episodes(provider_id)")
                 database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_episodes_provider_id_episode_id ON episodes(provider_id, episode_id)")
                 database.execSQL("DROP TABLE episode_id_map")
-                validateForeignKeys(database)
+                validateForeignKeys(database, "episodes")
             }
         }
 
@@ -906,7 +914,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                 database.execSQL("CREATE UNIQUE INDEX index_favorites_content_id_content_type_group_id ON favorites(content_id, content_type, group_id)")
                 database.execSQL("CREATE INDEX index_favorites_content_type_group_id ON favorites(content_type, group_id)")
                 database.execSQL("CREATE INDEX index_favorites_group_id_position ON favorites(group_id, position)")
-                validateForeignKeys(database)
+                validateForeignKeys(database, "favorites")
             }
         }
         /**
@@ -1347,7 +1355,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                validateForeignKeys(database)
+                validateForeignKeys(database, "recording_schedules", "recording_runs")
             }
         }
 
@@ -1564,7 +1572,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
 
                 database.execSQL("DROP TABLE favorites_legacy")
                 database.execSQL("DROP TABLE virtual_groups_legacy")
-                validateForeignKeys(database)
+                validateForeignKeys(database, "virtual_groups", "favorites")
             }
         }
 
@@ -1604,7 +1612,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                 database.execSQL(
                     "CREATE INDEX IF NOT EXISTS index_programs_provider_id_end_time_channel_id ON programs(provider_id, end_time, channel_id)"
                 )
-                validateForeignKeys(database)
+                // No FK-bearing rows added; only column additions and indexes.
             }
         }
 
@@ -1634,7 +1642,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                 database.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS index_search_history_query_content_scope_provider_id ON search_history(query, content_scope, provider_id)"
                 )
-                validateForeignKeys(database)
+                // search_history has no FK columns; no FK check needed.
             }
         }
 
@@ -1674,7 +1682,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                 database.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS index_program_reminders_provider_id_channel_id_program_title_program_start_time ON program_reminders(provider_id, channel_id, program_title, program_start_time)"
                 )
-                validateForeignKeys(database)
+                validateForeignKeys(database, "program_reminders")
             }
         }
 
@@ -1807,7 +1815,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                     GROUP BY tmdb_id
                     """.trimIndent()
                 )
-                validateForeignKeys(database)
+                validateForeignKeys(database, "tmdb_identity")
             }
         }
 

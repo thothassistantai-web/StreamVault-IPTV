@@ -1,6 +1,14 @@
 ﻿# Changelog
 
 All notable product changes are recorded in this document.
+## [1.0.6] - 2026-04-19
+
+### Fixed
+
+- Fixed crash on upgrade from 1.0.4 to 1.0.5. The database migration FK integrity check (`PRAGMA foreign_key_check`) was running against the entire database instead of only the tables each migration modified. Users with any pre-existing orphaned rows (deleted provider history, stale EPG mappings, etc.) would hit an `IllegalStateException` and the app would crash on launch. Fresh installs were unaffected. The check is now scoped to the specific tables each migration writes to.
+
+---
+
 ## [1.0.5] - 2026-04-16
 
 ### Added
