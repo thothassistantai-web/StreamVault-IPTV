@@ -13,10 +13,14 @@ import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.domain.manager.ParentalControlManager
 import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.ContentType
+import com.streamvault.domain.model.GroupedChannelLabelMode
+import com.streamvault.domain.model.LiveChannelGroupingMode
+import com.streamvault.domain.model.LiveVariantPreferenceMode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
@@ -33,6 +37,17 @@ class ChannelRepositoryImplTest {
     private val preferencesRepository: PreferencesRepository = mock()
     private val parentalControlManager: ParentalControlManager = mock()
     private val xtreamStreamUrlResolver: XtreamStreamUrlResolver = mock()
+
+    @Before
+    fun setUpDefaults() {
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
+        whenever(preferencesRepository.liveChannelNumberingMode).thenReturn(flowOf(ChannelNumberingMode.PROVIDER))
+        whenever(preferencesRepository.liveChannelGroupingMode).thenReturn(flowOf(LiveChannelGroupingMode.GROUPED))
+        whenever(preferencesRepository.groupedChannelLabelMode).thenReturn(flowOf(GroupedChannelLabelMode.HYBRID))
+        whenever(preferencesRepository.liveVariantPreferenceMode).thenReturn(flowOf(LiveVariantPreferenceMode.BALANCED))
+        whenever(preferencesRepository.liveVariantSelections).thenReturn(flowOf(emptyMap()))
+        whenever(preferencesRepository.liveVariantObservations).thenReturn(flowOf(emptyMap()))
+    }
 
     @Test
     fun `getCategories uses grouped counts without loading all channels`() = runTest {
@@ -52,7 +67,6 @@ class ChannelRepositoryImplTest {
                 )
             )
         )
-        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
         whenever(parentalControlManager.unlockedCategoriesForProvider(7L)).thenReturn(flowOf(emptySet()))
 
         val repository = createRepository()
@@ -119,7 +133,6 @@ class ChannelRepositoryImplTest {
                 )
             )
         )
-        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
         whenever(parentalControlManager.unlockedCategoriesForProvider(7L)).thenReturn(flowOf(emptySet()))
         whenever(preferencesRepository.liveChannelNumberingMode).thenReturn(flowOf(ChannelNumberingMode.HIDDEN))
 
@@ -136,7 +149,6 @@ class ChannelRepositoryImplTest {
         whenever(channelDao.search(eq(7L), any(), any())).thenReturn(
             flow { throw SQLiteException("malformed MATCH expression") }
         )
-        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
         whenever(preferencesRepository.liveChannelNumberingMode).thenReturn(flowOf(ChannelNumberingMode.PROVIDER))
         whenever(parentalControlManager.unlockedCategoriesForProvider(7L)).thenReturn(flowOf(emptySet()))
         whenever(favoriteDao.getAllByType(7L, ContentType.LIVE.name)).thenReturn(flowOf(emptyList()))
