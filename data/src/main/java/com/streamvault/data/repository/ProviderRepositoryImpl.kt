@@ -5,6 +5,8 @@ import com.streamvault.data.local.dao.*
 import com.streamvault.data.local.entity.ProviderEntity
 import com.streamvault.data.mapper.*
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.data.remote.stalker.StalkerApiService
+import com.streamvault.data.remote.stalker.StalkerProvider
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.XtreamProvider
 import com.streamvault.data.security.CredentialCrypto
@@ -35,6 +37,7 @@ class ProviderRepositoryImpl @Inject constructor(
     private val providerDao: ProviderDao,
     private val channelDao: ChannelDao,
     private val programDao: ProgramDao,
+    private val stalkerApiService: StalkerApiService,
     private val xtreamApiService: XtreamApiService,
     private val credentialCrypto: CredentialCrypto,
     private val preferencesRepository: PreferencesRepository,
@@ -42,6 +45,10 @@ class ProviderRepositoryImpl @Inject constructor(
     private val syncMetadataRepository: SyncMetadataRepository,
     private val transactionRunner: DatabaseTransactionRunner
 ) : ProviderRepository {
+    private companion object {
+        const val XTREAM_GUIDE_BATCH_CONCURRENCY = 4
+    }
+
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun getProviders(): Flow<List<Provider>> =
@@ -253,6 +260,115 @@ class ProviderRepositoryImpl @Inject constructor(
         Result.error("Failed to add M3U provider: ${e.message}", e)
     }
 
+    override suspend fun loginStalker(
+        portalUrl: String,
+        macAddress: String,
+        name: String,
+        deviceProfile: String,
+        timezone: String,
+        locale: String,
+        epgSyncMode: ProviderEpgSyncMode,
+        onProgress: ((String) -> Unit)?,
+        id: Long?
+    ): Result<Provider> {
+        val normalizedPortalUrl = ProviderInputSanitizer.normalizeUrl(portalUrl)
+        val normalizedMacAddress = ProviderInputSanitizer.normalizeMacAddress(macAddress)
+        val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
+        val normalizedDeviceProfile = ProviderInputSanitizer.normalizeDeviceProfile(deviceProfile)
+        val normalizedTimezone = ProviderInputSanitizer.normalizeTimezone(timezone)
+        val normalizedLocale = ProviderInputSanitizer.normalizeLocale(locale)
+
+        ProviderInputSanitizer.validateUrl(normalizedPortalUrl)?.let { message ->
+            return Result.error(message)
+        }
+        UrlSecurityPolicy.validateStalkerPortalUrl(normalizedPortalUrl)?.let { message ->
+            return Result.error(message)
+        }
+        ProviderInputSanitizer.validateMacAddress(normalizedMacAddress)?.let { message ->
+            return Result.error(message)
+        }
+
+        onProgress?.invoke("Authenticating...")
+        val existingProvider = if (id != null) {
+            providerDao.getById(id)
+        } else {
+            providerDao.getByUrlAndUser(normalizedPortalUrl, "", normalizedMacAddress)
+        }
+
+        val provider = createStalkerProvider(
+            providerId = 0L,
+            portalUrl = normalizedPortalUrl,
+            macAddress = normalizedMacAddress,
+            deviceProfile = normalizedDeviceProfile,
+            timezone = normalizedTimezone,
+            locale = normalizedLocale
+        )
+
+        return when (val authResult = provider.authenticate()) {
+            is Result.Success -> {
+                val providerData = if (existingProvider != null) {
+                    onProgress?.invoke("Updating existing provider...")
+                    val updated = authResult.data.copy(
+                        id = existingProvider.id,
+                        name = normalizedName.ifBlank { existingProvider.name },
+                        serverUrl = normalizedPortalUrl,
+                        stalkerMacAddress = normalizedMacAddress,
+                        stalkerDeviceProfile = normalizedDeviceProfile,
+                        stalkerDeviceTimezone = normalizedTimezone,
+                        stalkerDeviceLocale = normalizedLocale,
+                        epgUrl = existingProvider.epgUrl,
+                        epgSyncMode = epgSyncMode,
+                        xtreamFastSyncEnabled = false,
+                        m3uVodClassificationEnabled = false,
+                        isActive = true,
+                        lastSyncedAt = 0L,
+                        createdAt = existingProvider.createdAt
+                    )
+                    providerDao.update(updated.toSecureEntity())
+                    updated.copy(password = "")
+                } else {
+                    val newData = authResult.data.copy(
+                        name = normalizedName.ifBlank { authResult.data.name },
+                        serverUrl = normalizedPortalUrl,
+                        stalkerMacAddress = normalizedMacAddress,
+                        stalkerDeviceProfile = normalizedDeviceProfile,
+                        stalkerDeviceTimezone = normalizedTimezone,
+                        stalkerDeviceLocale = normalizedLocale,
+                        epgSyncMode = epgSyncMode,
+                        xtreamFastSyncEnabled = false,
+                        m3uVodClassificationEnabled = false
+                    )
+                    val newId = providerDao.insert(newData.toSecureEntity())
+                    newData.copy(id = newId).copy(password = "")
+                }
+
+                providerDao.setActive(providerData.id)
+                when (val syncResult = syncManager.sync(providerData.id, force = false, onProgress = onProgress)) {
+                    is Result.Success -> {
+                        val finalStatus = if (syncManager.currentSyncState(providerData.id) is SyncState.Partial) {
+                            ProviderStatus.PARTIAL
+                        } else {
+                            ProviderStatus.ACTIVE
+                        }
+                        updateProviderSyncStatus(providerData.id, finalStatus, System.currentTimeMillis())
+                        maybeScheduleBackgroundEpgSync(providerData.id)
+                        Result.success(providerData.copy(status = finalStatus))
+                    }
+                    is Result.Error -> {
+                        updateProviderSyncStatus(providerData.id, ProviderStatus.ERROR)
+                        Result.error(
+                            "Provider login succeeded, but initial sync failed. The provider was saved and can be retried from Settings: ${syncResult.message}",
+                            syncResult.exception
+                        )
+                    }
+                    is Result.Loading -> Result.error("Unexpected loading state")
+                }
+            }
+            is Result.Error -> Result.error(authResult.message, authResult.exception)
+            is Result.Loading -> Result.error("Unexpected loading state")
+        }
+    }
+
     /**
      * Delegates to [SyncManager] — the single source of truth for the full sync pipeline.
      */
@@ -296,16 +412,43 @@ class ProviderRepositoryImpl @Inject constructor(
         epgChannelId: String?,
         limit: Int
     ): Result<List<Program>> {
-        return when (val providerContextResult = createXtreamLiveProgramProviderContext(providerId)) {
-            is Result.Success -> fetchXtreamProgramsForLiveStream(
-                providerId = providerId,
-                streamId = streamId,
-                epgChannelId = epgChannelId,
-                limit = limit,
-                xtreamProvider = providerContextResult.data
-            )
-            is Result.Error -> Result.error(providerContextResult.message, providerContextResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
+        val providerEntity = providerDao.getById(providerId)
+            ?: return Result.error("Provider $providerId not found")
+        return when (providerEntity.type) {
+            ProviderType.XTREAM_CODES -> when (val providerContextResult = createXtreamLiveProgramProviderContext(providerId)) {
+                is Result.Success -> {
+                    val result = fetchXtreamProgramsForLiveStream(
+                        providerId = providerId,
+                        streamId = streamId,
+                        epgChannelId = epgChannelId,
+                        limit = limit,
+                        xtreamProvider = providerContextResult.data
+                    )
+                    if (result is Result.Success && result.data.isNotEmpty()) {
+                        cacheProgramsForChannel(providerId, result.data)
+                        refreshCachedEpgMetadata(providerId)
+                    }
+                    result
+                }
+                is Result.Error -> Result.error(providerContextResult.message, providerContextResult.exception)
+                is Result.Loading -> Result.error("Unexpected loading state")
+            }
+            ProviderType.STALKER_PORTAL -> {
+                val stalkerProvider = createStalkerProviderFromEntity(providerEntity)
+                val channelKey = epgChannelId?.takeIf { it.isNotBlank() } ?: streamId.toString()
+                when (val result = stalkerProvider.getShortEpg(channelKey, limit)) {
+                    is Result.Success -> {
+                        if (result.data.isNotEmpty()) {
+                            cacheProgramsForChannel(providerId, result.data)
+                            refreshCachedEpgMetadata(providerId)
+                        }
+                        result
+                    }
+                    is Result.Error -> Result.error(result.message, result.exception)
+                    is Result.Loading -> Result.error("Unexpected loading state")
+                }
+            }
+            ProviderType.M3U -> Result.error("On-demand guide lookup is unavailable for this provider.")
         }
     }
 
@@ -321,28 +464,63 @@ class ProviderRepositoryImpl @Inject constructor(
             return emptyMap()
         }
 
-        return when (val providerContextResult = createXtreamLiveProgramProviderContext(providerId)) {
-            is Result.Success -> coroutineScope {
-                normalizedRequests
-                    .map { request ->
-                        async {
-                            request to fetchXtreamProgramsForLiveStream(
-                                providerId = providerId,
-                                streamId = request.streamId,
-                                epgChannelId = request.epgChannelId,
-                                limit = limit,
-                                xtreamProvider = providerContextResult.data
-                            )
+        val providerEntity = providerDao.getById(providerId)
+            ?: return normalizedRequests.associateWith { Result.error("Provider $providerId not found") }
+
+        return when (providerEntity.type) {
+            ProviderType.XTREAM_CODES -> when (val providerContextResult = createXtreamLiveProgramProviderContext(providerId)) {
+                is Result.Success -> coroutineScope {
+                    val requestDispatcher = Dispatchers.IO.limitedParallelism(XTREAM_GUIDE_BATCH_CONCURRENCY)
+                    normalizedRequests
+                        .map { request ->
+                            async(requestDispatcher) {
+                                request to fetchXtreamProgramsForLiveStream(
+                                    providerId = providerId,
+                                    streamId = request.streamId,
+                                    epgChannelId = request.epgChannelId,
+                                    limit = limit,
+                                    xtreamProvider = providerContextResult.data
+                                )
+                            }
                         }
-                    }
-                    .awaitAll()
-                    .toMap()
+                        .awaitAll()
+                        .also { results ->
+                            val cachedPrograms = results
+                                .mapNotNull { (_, result) -> (result as? Result.Success)?.data }
+                                .flatten()
+                            if (cachedPrograms.isNotEmpty()) {
+                                cacheProgramsForChannels(providerId, cachedPrograms)
+                                refreshCachedEpgMetadata(providerId)
+                            }
+                        }
+                        .toMap()
+                }
+                is Result.Error -> normalizedRequests.associateWith {
+                    Result.error(providerContextResult.message, providerContextResult.exception)
+                }
+                is Result.Loading -> normalizedRequests.associateWith {
+                    Result.error("Unexpected loading state")
+                }
             }
-            is Result.Error -> normalizedRequests.associateWith { request ->
-                Result.error(providerContextResult.message, providerContextResult.exception)
+            ProviderType.STALKER_PORTAL -> {
+                val stalkerProvider = createStalkerProviderFromEntity(providerEntity)
+                val results = normalizedRequests.associateWith { request ->
+                    stalkerProvider.getShortEpg(
+                        request.epgChannelId?.takeIf { it.isNotBlank() } ?: request.streamId.toString(),
+                        limit
+                    )
+                }
+                val cachedPrograms = results.values
+                    .mapNotNull { (it as? Result.Success)?.data }
+                    .flatten()
+                if (cachedPrograms.isNotEmpty()) {
+                    cacheProgramsForChannels(providerId, cachedPrograms)
+                    refreshCachedEpgMetadata(providerId)
+                }
+                results
             }
-            is Result.Loading -> normalizedRequests.associateWith {
-                Result.error("Unexpected loading state")
+            ProviderType.M3U -> normalizedRequests.associateWith {
+                Result.error("On-demand guide lookup is unavailable for this provider.")
             }
         }
     }
@@ -357,19 +535,19 @@ class ProviderRepositoryImpl @Inject constructor(
         val providerPassword = credentialCrypto.decryptIfNeeded(providerEntity.password)
         val channel = channelDao.getById(streamId)
         val resolvedStreamId = channel?.streamId?.takeIf { it > 0 } ?: streamId
-        return if (provider.type == ProviderType.XTREAM_CODES) {
-            createXtreamProvider(
+        return when (provider.type) {
+            ProviderType.XTREAM_CODES -> createXtreamProvider(
                 providerId = providerId,
                 serverUrl = provider.serverUrl,
                 username = provider.username,
                 password = providerPassword,
                 allowedOutputFormats = provider.allowedOutputFormats
-            )
-                .buildCatchUpUrls(resolvedStreamId, start, end)
-        } else {
-            // M3U catch-up
-            val source = channel?.catchUpSource ?: return emptyList()
-            buildM3uCatchUpUrls(source, start, end)
+            ).buildCatchUpUrls(resolvedStreamId, start, end)
+            ProviderType.M3U -> {
+                val source = channel?.catchUpSource ?: return emptyList()
+                buildM3uCatchUpUrls(source, start, end)
+            }
+            ProviderType.STALKER_PORTAL -> emptyList()
         }
     }
 
@@ -389,6 +567,36 @@ class ProviderRepositoryImpl @Inject constructor(
             password = password,
             allowedOutputFormats = allowedOutputFormats,
             enableBase64TextCompatibility = enableBase64TextCompatibility
+        )
+    }
+
+    private fun createStalkerProvider(
+        providerId: Long,
+        portalUrl: String,
+        macAddress: String,
+        deviceProfile: String,
+        timezone: String,
+        locale: String
+    ): StalkerProvider {
+        return StalkerProvider(
+            providerId = providerId,
+            api = stalkerApiService,
+            portalUrl = portalUrl,
+            macAddress = macAddress,
+            deviceProfile = deviceProfile,
+            timezone = timezone,
+            locale = locale
+        )
+    }
+
+    private fun createStalkerProviderFromEntity(entity: ProviderEntity): StalkerProvider {
+        return createStalkerProvider(
+            providerId = entity.id,
+            portalUrl = entity.serverUrl,
+            macAddress = entity.stalkerMacAddress,
+            deviceProfile = entity.stalkerDeviceProfile,
+            timezone = entity.stalkerDeviceTimezone,
+            locale = entity.stalkerDeviceLocale
         )
     }
 
@@ -444,14 +652,13 @@ class ProviderRepositoryImpl @Inject constructor(
             ?.sortedBy { it.startTime }
             .orEmpty()
         if (shortPrograms.isNotEmpty()) {
-            val normalizedPrograms = normalizeXtreamPrograms(
-                providerId = providerId,
-                channelId = epgChannelId ?: streamId.toString(),
-                programs = shortPrograms
+            return Result.success(
+                normalizeXtreamPrograms(
+                    providerId = providerId,
+                    channelId = epgChannelId ?: streamId.toString(),
+                    programs = shortPrograms
+                )
             )
-            cacheProgramsForChannel(providerId, normalizedPrograms)
-            refreshCachedEpgMetadata(providerId)
-            return Result.success(normalizedPrograms)
         }
 
         return when (val fullProgramsResult = xtreamProvider.getEpg(streamId.toString())) {
@@ -461,8 +668,6 @@ class ProviderRepositoryImpl @Inject constructor(
                     channelId = epgChannelId ?: streamId.toString(),
                     programs = fullProgramsResult.data.sortedBy { it.startTime }
                 )
-                cacheProgramsForChannel(providerId, normalizedPrograms)
-                refreshCachedEpgMetadata(providerId)
                 Result.success(normalizedPrograms)
             }
             is Result.Error -> {
@@ -526,6 +731,17 @@ class ProviderRepositoryImpl @Inject constructor(
         transactionRunner.inTransaction {
             programDao.deleteForChannel(providerId, channelId)
             programDao.insertAll(programs.map { it.toEntity().copy(providerId = providerId) })
+        }
+    }
+
+    private suspend fun cacheProgramsForChannels(providerId: Long, programs: List<Program>) {
+        if (programs.isEmpty()) return
+        val programsByChannel = programs.groupBy { it.channelId }
+        transactionRunner.inTransaction {
+            programsByChannel.forEach { (channelId, channelPrograms) ->
+                programDao.deleteForChannel(providerId, channelId)
+                programDao.insertAll(channelPrograms.map { it.toEntity().copy(providerId = providerId) })
+            }
         }
     }
 

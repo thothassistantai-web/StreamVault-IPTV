@@ -122,6 +122,7 @@ private class FakeChannelRepository(
     override fun getChannelsByCategoryPage(providerId: Long, categoryId: Long, limit: Int): Flow<List<Channel>> = unsupported()
     override fun getChannelsByNumber(providerId: Long, categoryId: Long): Flow<List<Channel>> = unsupported()
     override fun getChannelsWithoutErrors(providerId: Long, categoryId: Long): Flow<List<Channel>> = unsupported()
+    override fun getChannelsWithoutErrorsPage(providerId: Long, categoryId: Long, limit: Int): Flow<List<Channel>> = unsupported()
     override fun searchChannelsByCategory(providerId: Long, categoryId: Long, query: String): Flow<List<Channel>> = unsupported()
     override fun searchChannelsByCategoryPaged(providerId: Long, categoryId: Long, query: String, limit: Int): Flow<List<Channel>> = unsupported()
     override fun getCategories(providerId: Long): Flow<List<Category>> = unsupported()

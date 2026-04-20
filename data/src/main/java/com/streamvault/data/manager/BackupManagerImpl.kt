@@ -11,6 +11,7 @@ import com.streamvault.data.local.dao.MovieDao
 import com.streamvault.data.local.dao.PlaybackHistoryDao
 import com.streamvault.data.local.dao.ProviderDao
 import com.streamvault.data.local.dao.VirtualGroupDao
+import com.streamvault.data.local.entity.ProviderEntity
 import com.streamvault.data.mapper.toDomain
 import com.streamvault.data.mapper.toEntity
 import com.streamvault.data.preferences.ParentalPinBackupData
@@ -138,6 +139,7 @@ class BackupManagerImpl @Inject constructor(
                         ProtectedCategoryBackup(
                             providerServerUrl = provider.serverUrl,
                             providerUsername = provider.username,
+                            providerStalkerMacAddress = provider.stalkerMacAddress.takeIf { it.isNotBlank() },
                             categoryId = category.id,
                             categoryName = category.name,
                             type = category.type
@@ -151,6 +153,7 @@ class BackupManagerImpl @Inject constructor(
                     ScheduledRecordingBackup(
                         providerServerUrl = provider.serverUrl,
                         providerUsername = provider.username,
+                        providerStalkerMacAddress = provider.stalkerMacAddress.takeIf { it.isNotBlank() },
                         channelId = item.channelId,
                         channelName = item.channelName,
                         streamUrl = item.streamUrl,
@@ -162,7 +165,7 @@ class BackupManagerImpl @Inject constructor(
                 }
 
             val backupData = BackupData(
-                version = 4,
+                version = 5,
                 preferences = prefs,
                 providers = providers,
                 favorites = allFavorites,
@@ -193,7 +196,7 @@ class BackupManagerImpl @Inject constructor(
         try {
             val backupData = readBackupData(uriString)
                 ?: return@withContext Result.error("Failed to open input stream")
-            if (backupData.version > 4) {
+            if (backupData.version > 5) {
                 return@withContext Result.error("Unsupported backup version")
             }
             if (!verifyChecksum(backupData)) {
@@ -226,7 +229,11 @@ class BackupManagerImpl @Inject constructor(
                 .filter { it.status == RecordingStatus.SCHEDULED }
 
             val providerConflicts = backupData.providers.orEmpty().count { incoming ->
-                existingProviders.any { it.serverUrl == incoming.serverUrl && it.username == incoming.username }
+                existingProviders.findMatchingProvider(
+                    serverUrl = incoming.serverUrl,
+                    username = incoming.username,
+                    stalkerMacAddress = incoming.stalkerMacAddress
+                ) != null
             }
             val groupConflicts = backupData.virtualGroups.orEmpty().count { incoming ->
                 existingGroups.any { it.name.equals(incoming.name, ignoreCase = true) && it.contentType == incoming.contentType }
@@ -246,17 +253,23 @@ class BackupManagerImpl @Inject constructor(
                 }
             }
             val protectedCategoryConflicts = backupData.protectedCategories.orEmpty().count { incoming ->
-                existingProtectedCategories.any { (provider, categoryName, type) ->
-                    provider.serverUrl == incoming.providerServerUrl &&
-                        provider.username == incoming.providerUsername &&
+                val provider = existingProviders.findMatchingProvider(
+                    serverUrl = incoming.providerServerUrl,
+                    username = incoming.providerUsername,
+                    stalkerMacAddress = incoming.providerStalkerMacAddress
+                ) ?: return@count false
+                existingProtectedCategories.any { (existingProvider, categoryName, type) ->
+                    existingProvider.id == provider.id &&
                         categoryName == incoming.categoryName.lowercase() &&
                         type == incoming.type
                 }
             }
             val recordingConflicts = backupData.scheduledRecordings.orEmpty().count { incoming ->
-                val provider = existingProviders.firstOrNull {
-                    it.serverUrl == incoming.providerServerUrl && it.username == incoming.providerUsername
-                } ?: return@count false
+                val provider = existingProviders.findMatchingProvider(
+                    serverUrl = incoming.providerServerUrl,
+                    username = incoming.providerUsername,
+                    stalkerMacAddress = incoming.providerStalkerMacAddress
+                ) ?: return@count false
                 existingScheduledRecordings.any {
                     it.providerId == provider.id &&
                         it.scheduledStartMs == incoming.scheduledStartMs &&
@@ -296,12 +309,14 @@ class BackupManagerImpl @Inject constructor(
             val backupData = readBackupData(uriString)
                 ?: return@withContext com.streamvault.domain.model.Result.error("Failed to open input stream")
 
-            if (backupData.version > 4) {
+            if (backupData.version > 5) {
                 return@withContext com.streamvault.domain.model.Result.error("Unsupported backup version")
             }
             if (!verifyChecksum(backupData)) {
                 return@withContext com.streamvault.domain.model.Result.error("Backup file is corrupted (checksum mismatch)")
             }
+
+            var storedProviders = providerDao.getAllSync()
 
             val importedSections = mutableListOf<String>()
             val skippedSections = mutableListOf<String>()
@@ -359,7 +374,11 @@ class BackupManagerImpl @Inject constructor(
             if (plan.importProviders) {
                 backupData.providers?.let { providers ->
                 providers.forEach { provider ->
-                    val existing = providerDao.getByUrlAndUser(provider.serverUrl, provider.username)
+                    val existing = storedProviders.findMatchingProvider(
+                        serverUrl = provider.serverUrl,
+                        username = provider.username,
+                        stalkerMacAddress = provider.stalkerMacAddress
+                    )
                     if (existing != null && plan.conflictStrategy == BackupConflictStrategy.KEEP_EXISTING) {
                         return@forEach
                     }
@@ -368,8 +387,13 @@ class BackupManagerImpl @Inject constructor(
                     ).toSecureEntityForBackup(credentialCrypto)
                     providerDao.insert(entity)
                 }
+                storedProviders = providerDao.getAllSync()
                 val providerIdMap = backupData.providers.orEmpty().mapNotNull { provider ->
-                    providerDao.getByUrlAndUser(provider.serverUrl, provider.username)?.let { stored ->
+                    storedProviders.findMatchingProvider(
+                        serverUrl = provider.serverUrl,
+                        username = provider.username,
+                        stalkerMacAddress = provider.stalkerMacAddress
+                    )?.let { stored ->
                         provider.id to stored.id
                     }
                 }.toMap()
@@ -391,7 +415,11 @@ class BackupManagerImpl @Inject constructor(
             // 3. Restore Virtual Groups
             if (plan.importSavedLibrary) {
                 val providerIdMap = backupData.providers.orEmpty().mapNotNull { provider ->
-                    providerDao.getByUrlAndUser(provider.serverUrl, provider.username)?.let { stored ->
+                    storedProviders.findMatchingProvider(
+                        serverUrl = provider.serverUrl,
+                        username = provider.username,
+                        stalkerMacAddress = provider.stalkerMacAddress
+                    )?.let { stored ->
                         provider.id to stored.id
                     }
                 }.toMap()
@@ -447,9 +475,10 @@ class BackupManagerImpl @Inject constructor(
                 }
                 val categoriesByProviderId = mutableMapOf<Long, List<com.streamvault.domain.model.Category>>()
                 backupData.protectedCategories?.forEach { protectedCategory ->
-                    val provider = providerDao.getByUrlAndUser(
-                        protectedCategory.providerServerUrl,
-                        protectedCategory.providerUsername
+                    val provider = storedProviders.findMatchingProvider(
+                        serverUrl = protectedCategory.providerServerUrl,
+                        username = protectedCategory.providerUsername,
+                        stalkerMacAddress = protectedCategory.providerStalkerMacAddress
                     ) ?: return@forEach
                     val categories = categoriesByProviderId.getOrPut(provider.id) {
                         categoryRepository.getCategories(provider.id).first()
@@ -481,7 +510,11 @@ class BackupManagerImpl @Inject constructor(
             if (plan.importPlaybackHistory) {
                 backupData.playbackHistory?.let { history ->
                 val providerIdMap = backupData.providers.orEmpty().mapNotNull { provider ->
-                    providerDao.getByUrlAndUser(provider.serverUrl, provider.username)?.let { stored ->
+                    storedProviders.findMatchingProvider(
+                        serverUrl = provider.serverUrl,
+                        username = provider.username,
+                        stalkerMacAddress = provider.stalkerMacAddress
+                    )?.let { stored ->
                         provider.id to stored.id
                     }
                 }.toMap()
@@ -528,9 +561,10 @@ class BackupManagerImpl @Inject constructor(
                         if (scheduled.scheduledEndMs <= System.currentTimeMillis()) {
                             return@forEach
                         }
-                        val provider = providerDao.getByUrlAndUser(
-                            scheduled.providerServerUrl,
-                            scheduled.providerUsername
+                        val provider = storedProviders.findMatchingProvider(
+                            serverUrl = scheduled.providerServerUrl,
+                            username = scheduled.providerUsername,
+                            stalkerMacAddress = scheduled.providerStalkerMacAddress
                         ) ?: return@forEach
                         val conflict = existingSchedules.firstOrNull {
                             it.providerId == provider.id &&
@@ -666,6 +700,28 @@ class BackupManagerImpl @Inject constructor(
 private fun com.streamvault.domain.model.Provider.toSecureEntityForBackup(
     credentialCrypto: CredentialCrypto
 ) = copy(password = credentialCrypto.encryptIfNeeded(password)).toEntity()
+
+private fun Iterable<ProviderEntity>.findMatchingProvider(
+    serverUrl: String,
+    username: String,
+    stalkerMacAddress: String?
+): ProviderEntity? {
+    val candidates = filter {
+        it.serverUrl == serverUrl &&
+            it.username == username
+    }
+    val normalizedMacAddress = stalkerMacAddress
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.uppercase()
+
+    if (normalizedMacAddress != null) {
+        return candidates.firstOrNull { it.stalkerMacAddress.equals(normalizedMacAddress, ignoreCase = true) }
+    }
+
+    return candidates.singleOrNull { it.stalkerMacAddress.isBlank() }
+        ?: candidates.singleOrNull()
+}
 
 private const val SHA256_PREFIX = "sha256:"
 private val MAP_STRING_STRING_TYPE: Type = object : TypeToken<Map<String, String>>() {}.type

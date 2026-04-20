@@ -45,7 +45,7 @@ import com.streamvault.data.local.entity.*
         ProgramReminderEntity::class,
         RecordingStorageEntity::class
     ],
-    version = 38,
+    version = 39,
     exportSchema = true   // ← was false; schema JSON now tracked in version control
 )
 @TypeConverters(RoomEnumConverters::class)
@@ -1409,6 +1409,15 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                     if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
                 }
 
+                // FK enforcement was never enabled at runtime (setForeignKeyConstraintsEnabled was
+                // never called), so ON DELETE CASCADE never fired when a provider was deleted.
+                // Purge orphaned content rows now so the provider_id inference below can only
+                // ever produce valid FK values. Favorites pointing to purged content will resolve
+                // to NULL and be silently dropped via the `continue` below.
+                database.execSQL("DELETE FROM channels WHERE provider_id NOT IN (SELECT id FROM providers)")
+                database.execSQL("DELETE FROM movies WHERE provider_id NOT IN (SELECT id FROM providers)")
+                database.execSQL("DELETE FROM series WHERE provider_id NOT IN (SELECT id FROM providers)")
+
                 val defaultProviderId = firstLong(
                     "SELECT id FROM providers WHERE is_active = 1 ORDER BY id LIMIT 1"
                 ) ?: firstLong(
@@ -1823,6 +1832,23 @@ abstract class StreamVaultDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE epg_sources ADD COLUMN etag TEXT DEFAULT NULL")
                 database.execSQL("ALTER TABLE epg_sources ADD COLUMN last_modified_header TEXT DEFAULT NULL")
+            }
+        }
+
+        val MIGRATION_38_39 = object : Migration(38, 39) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE providers ADD COLUMN stalker_mac_address TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE providers ADD COLUMN stalker_device_profile TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE providers ADD COLUMN stalker_device_timezone TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE providers ADD COLUMN stalker_device_locale TEXT NOT NULL DEFAULT ''")
+                database.execSQL("DROP INDEX IF EXISTS index_providers_server_url_username")
+                database.execSQL("DROP INDEX IF EXISTS index_providers_server_url_username_stalker_mac_address")
+                database.execSQL(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS index_providers_server_url_username_stalker_mac_address
+                    ON providers(server_url, username, stalker_mac_address)
+                    """.trimIndent()
+                )
             }
         }
     }

@@ -24,8 +24,12 @@ abstract class ProviderDao {
     @Query("SELECT * FROM providers WHERE is_active = 1 LIMIT 1")
     abstract fun getActive(): Flow<ProviderEntity?>
 
-    @Query("SELECT * FROM providers WHERE server_url = :serverUrl AND username = :username")
-    abstract suspend fun getByUrlAndUser(serverUrl: String, username: String): ProviderEntity?
+    @Query("SELECT * FROM providers WHERE server_url = :serverUrl AND username = :username AND stalker_mac_address = :stalkerMacAddress")
+    abstract suspend fun getByUrlAndUser(
+        serverUrl: String,
+        username: String,
+        stalkerMacAddress: String = ""
+    ): ProviderEntity?
 
     @Query("SELECT * FROM providers WHERE id = :id")
     abstract suspend fun getById(id: Long): ProviderEntity?
@@ -94,6 +98,19 @@ abstract class ChannelDao {
                epg_channel_id, number, catch_up_supported, catch_up_days, catchUpSource,
                provider_id, is_adult, is_user_protected, logical_group_id, error_count
         FROM channels
+        WHERE provider_id = :providerId AND error_count = 0
+        ORDER BY number ASC
+        LIMIT :limit
+        """
+    )
+    abstract fun getByProviderWithoutErrorsBrowsePage(providerId: Long, limit: Int): Flow<List<ChannelBrowseEntity>>
+
+    @Query(
+        """
+        SELECT id, stream_id, name, logo_url, group_title, category_id, category_name, stream_url,
+               epg_channel_id, number, catch_up_supported, catch_up_days, catchUpSource,
+               provider_id, is_adult, is_user_protected, logical_group_id, error_count
+        FROM channels
         WHERE provider_id = :providerId
         ORDER BY number ASC
         LIMIT :limit
@@ -141,6 +158,23 @@ abstract class ChannelDao {
     )
     abstract fun getByCategoryWithoutErrors(providerId: Long, categoryId: Long): Flow<List<ChannelBrowseEntity>>
 
+    @Query(
+        """
+        SELECT id, stream_id, name, logo_url, group_title, category_id, category_name, stream_url,
+               epg_channel_id, number, catch_up_supported, catch_up_days, catchUpSource,
+               provider_id, is_adult, is_user_protected, logical_group_id, error_count
+        FROM channels
+        WHERE provider_id = :providerId AND category_id = :categoryId AND error_count = 0
+        ORDER BY number ASC
+        LIMIT :limit
+        """
+    )
+    abstract fun getByCategoryWithoutErrorsBrowsePage(
+        providerId: Long,
+        categoryId: Long,
+        limit: Int
+    ): Flow<List<ChannelBrowseEntity>>
+
     @Query("SELECT * FROM channels WHERE provider_id = :providerId AND category_id = :categoryId ORDER BY number ASC LIMIT :limit OFFSET :offset")
     abstract fun getByCategoryPage(providerId: Long, categoryId: Long, limit: Int, offset: Int): Flow<List<ChannelEntity>>
 
@@ -177,6 +211,15 @@ abstract class ChannelDao {
 
     @Query("SELECT * FROM channels WHERE id = :id")
     abstract suspend fun getById(id: Long): ChannelEntity?
+
+    @Query(
+        """
+        SELECT id, stream_id, epg_channel_id
+        FROM channels
+        WHERE id IN (:ids)
+        """
+    )
+    abstract suspend fun getGuideLookupsByIds(ids: List<Long>): List<ChannelGuideLookupEntity>
 
     @Query("SELECT * FROM channels WHERE provider_id = :providerId")
     abstract suspend fun getByProviderSync(providerId: Long): List<ChannelEntity>

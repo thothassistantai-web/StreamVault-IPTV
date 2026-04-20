@@ -15,6 +15,8 @@ import com.streamvault.data.local.entity.MovieCategoryHydrationEntity
 import com.streamvault.data.mapper.toEntity
 import com.streamvault.data.mapper.toDomain
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.data.remote.stalker.StalkerApiService
+import com.streamvault.data.remote.stalker.StalkerProvider
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.data.remote.xtream.XtreamProvider
@@ -64,6 +66,7 @@ class MovieRepositoryImpl @Inject constructor(
     private val movieDao: MovieDao,
     private val categoryDao: CategoryDao,
     private val providerDao: ProviderDao,
+    private val stalkerApiService: StalkerApiService,
     private val xtreamApiService: XtreamApiService,
     private val credentialCrypto: CredentialCrypto,
     private val preferencesRepository: PreferencesRepository,
@@ -336,17 +339,17 @@ class MovieRepositoryImpl @Inject constructor(
         val provider = providerDao.getById(providerId)
             ?: return Result.error("Provider not found")
 
-        if (provider.type != ProviderType.XTREAM_CODES) {
-            return Result.success(movieEntity.toDomain())
-        }
-
-        val xtreamProvider = try {
-            getOrCreateXtreamProvider(providerId, provider)
+        val remoteMovieResult = try {
+            when (provider.type) {
+                ProviderType.XTREAM_CODES -> getOrCreateXtreamProvider(providerId, provider).getVodInfo(movieEntity.streamId)
+                ProviderType.STALKER_PORTAL -> createStalkerProvider(providerId, provider).getVodInfo(movieEntity.streamId)
+                ProviderType.M3U -> return Result.success(movieEntity.toDomain())
+            }
         } catch (e: Exception) {
             return Result.success(movieEntity.toDomain())
         }
 
-        return when (val remoteResult = xtreamProvider.getVodInfo(movieEntity.streamId)) {
+        return when (val remoteResult = remoteMovieResult) {
             is Result.Success -> {
                 val remoteMovie = remoteResult.data
                 val updatedMovie = movieEntity.copy(
@@ -1137,6 +1140,18 @@ class MovieRepositoryImpl @Inject constructor(
                 )
             }
         }!!.provider
+    }
+
+    private fun createStalkerProvider(providerId: Long, provider: ProviderEntity): StalkerProvider {
+        return StalkerProvider(
+            providerId = providerId,
+            api = stalkerApiService,
+            portalUrl = provider.serverUrl,
+            macAddress = provider.stalkerMacAddress,
+            deviceProfile = provider.stalkerDeviceProfile,
+            timezone = provider.stalkerDeviceTimezone,
+            locale = provider.stalkerDeviceLocale
+        )
     }
 
     private fun moviePlaybackComplete(progressMs: Long, totalDurationMs: Long): Boolean {

@@ -3,7 +3,20 @@ package com.streamvault.data.remote.xtream
 import com.google.common.truth.Truth.assertThat
 import com.streamvault.data.local.dao.ProviderDao
 import com.streamvault.data.local.entity.ProviderEntity
+import com.streamvault.data.remote.stalker.StalkerApiService
+import com.streamvault.data.remote.stalker.StalkerCategoryRecord
+import com.streamvault.data.remote.stalker.StalkerDeviceProfile
+import com.streamvault.data.remote.stalker.StalkerEpisodeRecord
+import com.streamvault.data.remote.stalker.StalkerItemRecord
+import com.streamvault.data.remote.stalker.StalkerProgramRecord
+import com.streamvault.data.remote.stalker.StalkerProviderProfile
+import com.streamvault.data.remote.stalker.StalkerSeasonRecord
+import com.streamvault.data.remote.stalker.StalkerSeriesDetails
+import com.streamvault.data.remote.stalker.StalkerSession
+import com.streamvault.data.remote.stalker.StalkerStreamKind
+import com.streamvault.data.remote.stalker.StalkerUrlFactory
 import com.streamvault.data.security.CredentialCrypto
+import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.ProviderType
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -14,6 +27,8 @@ class XtreamStreamUrlResolverTest {
         override fun encryptIfNeeded(value: String): String = value
         override fun decryptIfNeeded(value: String): String = value
     }
+
+    private val stalkerApiService = FakeStalkerApiService()
 
 
     @Test
@@ -58,7 +73,8 @@ class XtreamStreamUrlResolverTest {
                     password = "secret"
                 )
             ),
-            credentialCrypto = credentialCrypto
+            credentialCrypto = credentialCrypto,
+            stalkerApiService = stalkerApiService
         )
         val url = XtreamUrlFactory.buildInternalStreamUrl(
             providerId = 9,
@@ -87,7 +103,8 @@ class XtreamStreamUrlResolverTest {
                     password = "secret"
                 )
             ),
-            credentialCrypto = credentialCrypto
+            credentialCrypto = credentialCrypto,
+            stalkerApiService = stalkerApiService
         )
         val url = XtreamUrlFactory.buildInternalStreamUrl(
             providerId = 9,
@@ -129,13 +146,50 @@ class XtreamStreamUrlResolverTest {
         assertThat(expirationTime).isNull()
     }
 
+    @Test
+    fun resolveWithMetadata_resolves_stalker_internal_url_via_cached_provider() = runBlocking {
+        val fakeStalkerApiService = FakeStalkerApiService()
+        val resolver = XtreamStreamUrlResolver(
+            providerDao = FakeProviderDao(
+                ProviderEntity(
+                    id = 14,
+                    name = "Stalker",
+                    type = ProviderType.STALKER_PORTAL,
+                    serverUrl = "https://portal.example.com",
+                    stalkerMacAddress = "00:1A:79:12:34:56",
+                    stalkerDeviceProfile = "MAG250",
+                    stalkerDeviceTimezone = "UTC",
+                    stalkerDeviceLocale = "en"
+                )
+            ),
+            credentialCrypto = credentialCrypto,
+            stalkerApiService = fakeStalkerApiService
+        )
+        val internalUrl = StalkerUrlFactory.buildInternalStreamUrl(
+            providerId = 14,
+            kind = StalkerStreamKind.LIVE,
+            itemId = 77,
+            cmd = "ffrt http://edge.example.com/live/77.m3u8",
+            containerExtension = "m3u8"
+        )
+
+        val firstResolved = resolver.resolveWithMetadata(internalUrl)
+        val secondResolved = resolver.resolveWithMetadata(internalUrl)
+
+        assertThat(firstResolved?.url).isEqualTo("http://edge.example.com/live/77.m3u8?exp=1774017000")
+        assertThat(firstResolved?.expirationTime).isEqualTo(1_774_017_000_000L)
+        assertThat(secondResolved?.url).isEqualTo("http://edge.example.com/live/77.m3u8?exp=1774017000")
+        assertThat(fakeStalkerApiService.authenticateCalls).isEqualTo(1)
+        assertThat(fakeStalkerApiService.createLinkCalls).isEqualTo(2)
+    }
+
     private class FakeProviderDao(
         private val provider: ProviderEntity?
     ) : ProviderDao() {
         override fun getAll() = flowOf(listOfNotNull(provider))
         override suspend fun getAllSync(): List<ProviderEntity> = listOfNotNull(provider)
         override fun getActive() = flowOf(provider)
-        override suspend fun getByUrlAndUser(serverUrl: String, username: String): ProviderEntity? = null
+        override suspend fun getByUrlAndUser(serverUrl: String, username: String, stalkerMacAddress: String): ProviderEntity? = null
         override suspend fun getById(id: Long): ProviderEntity? = provider?.takeIf { it.id == id }
         override suspend fun getByIds(ids: List<Long>): List<ProviderEntity> =
             listOfNotNull(provider).filter { it.id in ids }
@@ -146,5 +200,88 @@ class XtreamStreamUrlResolverTest {
         override suspend fun activate(id: Long) = Unit
         override suspend fun updateSyncTime(id: Long, timestamp: Long) = Unit
         override suspend fun updateEpgUrl(id: Long, epgUrl: String) = Unit
+    }
+
+    private class FakeStalkerApiService : StalkerApiService {
+        var authenticateCalls: Int = 0
+        var createLinkCalls: Int = 0
+
+        override suspend fun authenticate(profile: StalkerDeviceProfile): Result<Pair<StalkerSession, StalkerProviderProfile>> {
+            authenticateCalls += 1
+            return Result.success(
+                StalkerSession(
+                    loadUrl = "https://portal.example.com/server/load.php",
+                    portalReferer = "https://portal.example.com/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Test")
+            )
+        }
+
+        override suspend fun getLiveCategories(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile
+        ): Result<List<StalkerCategoryRecord>> = Result.success(emptyList())
+
+        override suspend fun getLiveStreams(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            categoryId: String?
+        ): Result<List<StalkerItemRecord>> = Result.success(emptyList())
+
+        override suspend fun getVodCategories(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile
+        ): Result<List<StalkerCategoryRecord>> = Result.success(emptyList())
+
+        override suspend fun getVodStreams(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            categoryId: String?
+        ): Result<List<StalkerItemRecord>> = Result.success(emptyList())
+
+        override suspend fun getSeriesCategories(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile
+        ): Result<List<StalkerCategoryRecord>> = Result.success(emptyList())
+
+        override suspend fun getSeries(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            categoryId: String?
+        ): Result<List<StalkerItemRecord>> = Result.success(emptyList())
+
+        override suspend fun getSeriesDetails(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            seriesId: String
+        ): Result<StalkerSeriesDetails> = Result.success(
+            StalkerSeriesDetails(
+                series = StalkerItemRecord(id = seriesId, name = "Series"),
+                seasons = listOf(StalkerSeasonRecord(seasonNumber = 1, name = "Season 1", episodes = listOf(StalkerEpisodeRecord(id = "1", title = "Episode", episodeNumber = 1, seasonNumber = 1))))
+            )
+        )
+
+        override suspend fun getShortEpg(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            channelId: String,
+            limit: Int
+        ): Result<List<StalkerProgramRecord>> = Result.success(emptyList())
+
+        override suspend fun getEpg(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            channelId: String
+        ): Result<List<StalkerProgramRecord>> = Result.success(emptyList())
+
+        override suspend fun createLink(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            kind: StalkerStreamKind,
+            cmd: String
+        ): Result<String> {
+            createLinkCalls += 1
+            return Result.success("http://edge.example.com/live/77.m3u8?exp=1774017000")
+        }
     }
 }

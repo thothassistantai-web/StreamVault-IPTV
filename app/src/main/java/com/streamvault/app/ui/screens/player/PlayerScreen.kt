@@ -25,7 +25,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.animation.*
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -55,6 +54,7 @@ import com.streamvault.player.PlaybackState
 import com.streamvault.player.PLAYER_TRACK_AUTO_ID
 import com.streamvault.player.PlayerEngine
 import com.streamvault.player.PlayerError
+import com.streamvault.player.PlayerRenderSurfaceType
 import com.streamvault.player.PlayerSurfaceResizeMode
 import com.streamvault.player.PlayerTrack
 import com.streamvault.player.TrackType
@@ -77,6 +77,7 @@ import androidx.lifecycle.Lifecycle
 import com.streamvault.app.R
 import com.streamvault.app.MainActivity
 import com.streamvault.app.cast.CastConnectionState
+import com.streamvault.app.ui.components.PlayerRenderView
 import com.streamvault.app.ui.design.requestFocusSafely
 import com.streamvault.app.ui.screens.player.overlay.ChannelInfoOverlay
 import com.streamvault.app.ui.screens.player.overlay.ChannelVariantSelectionDialog
@@ -766,26 +767,10 @@ fun PlayerScreen(
             }
     ) {
         // ExoPlayer Video Surface
-        AndroidView(
-            factory = { context ->
-                viewModel.playerEngine.createRenderView(
-                    context = context,
-                    resizeMode = aspectRatio.toPlayerSurfaceResizeMode()
-                )
-            },
-            update = { renderView ->
-                // Only re-runs when aspectRatio changes (Compose tracks
-                // the read of aspectRatio above). PlayerView's internal
-                // AspectRatioFrameLayout handles video-size changes on
-                // its own — no need to rebind on every format change.
-                viewModel.playerEngine.bindRenderView(
-                    renderView = renderView,
-                    resizeMode = aspectRatio.toPlayerSurfaceResizeMode()
-                )
-            },
-            onRelease = { renderView ->
-                viewModel.playerEngine.releaseRenderView(renderView)
-            },
+        PlayerRenderView(
+            playerEngine = viewModel.playerEngine,
+            resizeMode = aspectRatio.toPlayerSurfaceResizeMode(),
+            surfaceType = PlayerRenderSurfaceType.SURFACE_VIEW,
             modifier = Modifier.fillMaxSize()
         )
 

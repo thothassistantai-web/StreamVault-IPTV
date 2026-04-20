@@ -30,6 +30,14 @@ object UrlSecurityPolicy {
         }
     }
 
+    fun validateStalkerPortalUrl(url: String): String? {
+        return if (!containsNewlines(url) && hasAllowedScheme(url, xtreamServerSchemes)) {
+            null
+        } else {
+            "Portal URLs must use HTTP or HTTPS."
+        }
+    }
+
     fun validateXtreamEpgUrl(url: String): String? {
         return if (!containsNewlines(url) && hasAllowedScheme(url, xtreamServerSchemes)) {
             null

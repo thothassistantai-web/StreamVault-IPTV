@@ -521,6 +521,7 @@ private fun DashboardProviderHealthCard(
     val sourceLabel = when (health.type) {
         com.streamvault.domain.model.ProviderType.XTREAM_CODES -> stringResource(R.string.dashboard_provider_xtream)
         com.streamvault.domain.model.ProviderType.M3U -> stringResource(R.string.dashboard_provider_m3u)
+        com.streamvault.domain.model.ProviderType.STALKER_PORTAL -> "Stalker/MAG Portal"
     }
 
     Surface(

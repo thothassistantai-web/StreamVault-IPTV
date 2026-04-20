@@ -12,6 +12,7 @@ interface ChannelRepository {
     fun getChannelsByCategoryPage(providerId: Long, categoryId: Long, limit: Int): Flow<List<Channel>>
     fun getChannelsByNumber(providerId: Long, categoryId: Long = ALL_CHANNELS_ID): Flow<List<Channel>>
     fun getChannelsWithoutErrors(providerId: Long, categoryId: Long = ALL_CHANNELS_ID): Flow<List<Channel>>
+    fun getChannelsWithoutErrorsPage(providerId: Long, categoryId: Long = ALL_CHANNELS_ID, limit: Int): Flow<List<Channel>>
     fun searchChannelsByCategory(providerId: Long, categoryId: Long, query: String): Flow<List<Channel>>
     fun searchChannelsByCategoryPaged(providerId: Long, categoryId: Long, query: String, limit: Int): Flow<List<Channel>>
     fun getCategories(providerId: Long): Flow<List<Category>>

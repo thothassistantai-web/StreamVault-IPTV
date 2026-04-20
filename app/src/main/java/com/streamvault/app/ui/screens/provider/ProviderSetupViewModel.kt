@@ -14,6 +14,7 @@ import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.ProviderRepository
 import com.streamvault.domain.usecase.M3uProviderSetupCommand
+import com.streamvault.domain.usecase.StalkerProviderSetupCommand
 import com.streamvault.domain.usecase.ValidateAndAddProvider
 import com.streamvault.domain.usecase.ValidateAndAddProviderResult
 import com.streamvault.domain.usecase.XtreamProviderSetupCommand
@@ -78,10 +79,18 @@ class ProviderSetupViewModel @Inject constructor(
                         username = provider.username,
                         password = "",
                         m3uUrl = provider.m3uUrl,
+                        stalkerMacAddress = provider.stalkerMacAddress,
+                        stalkerDeviceProfile = provider.stalkerDeviceProfile,
+                        stalkerDeviceTimezone = provider.stalkerDeviceTimezone,
+                        stalkerDeviceLocale = provider.stalkerDeviceLocale,
                         epgSyncMode = provider.epgSyncMode,
                         xtreamFastSyncEnabled = provider.xtreamFastSyncEnabled,
                         m3uVodClassificationEnabled = provider.m3uVodClassificationEnabled,
-                        selectedTab = if (provider.type == ProviderType.M3U) 1 else 0,
+                        selectedTab = when (provider.type) {
+                            ProviderType.XTREAM_CODES -> 0
+                            ProviderType.STALKER_PORTAL -> 1
+                            ProviderType.M3U -> 2
+                        },
                         m3uTab = if (provider.m3uUrl.startsWith("file://")) 1 else 0
                     )
                 }
@@ -103,6 +112,64 @@ class ProviderSetupViewModel @Inject constructor(
 
     fun updateEpgSyncMode(mode: ProviderEpgSyncMode) {
         _uiState.update { it.copy(epgSyncMode = mode) }
+    }
+
+    fun loginStalker(
+        portalUrl: String,
+        macAddress: String,
+        name: String,
+        deviceProfile: String,
+        timezone: String,
+        locale: String
+    ) {
+        _uiState.update { it.copy(validationError = null, error = null) }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, validationError = null, syncProgress = "Connecting...") }
+            val existingId = if (_uiState.value.isEditing) _uiState.value.existingProviderId else null
+
+            when (val result = validateAndAddProvider.loginStalker(
+                StalkerProviderSetupCommand(
+                    portalUrl = portalUrl,
+                    macAddress = macAddress,
+                    name = name,
+                    deviceProfile = deviceProfile,
+                    timezone = timezone,
+                    locale = locale,
+                    epgSyncMode = _uiState.value.epgSyncMode,
+                    existingProviderId = existingId
+                ),
+                onProgress = { msg -> _uiState.update { it.copy(syncProgress = msg) } }
+            )) {
+                is ValidateAndAddProviderResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            loginSuccess = true,
+                            createdProviderId = result.provider.id,
+                            error = null,
+                            validationError = null,
+                            syncProgress = null
+                        )
+                    }
+                }
+                is ValidateAndAddProviderResult.ValidationError -> {
+                    _uiState.update {
+                        it.copy(isLoading = false, validationError = result.message, error = null, syncProgress = null)
+                    }
+                }
+                is ValidateAndAddProviderResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = result.message,
+                            validationError = null,
+                            syncProgress = null
+                        )
+                    }
+                }
+            }
+        }
     }
 
     fun loginXtream(serverUrl: String, username: String, password: String, name: String) {
@@ -320,6 +387,10 @@ data class ProviderSetupState(
     val username: String = "",
     val password: String = "",
     val m3uUrl: String = "",
+    val stalkerMacAddress: String = "",
+    val stalkerDeviceProfile: String = "",
+    val stalkerDeviceTimezone: String = "",
+    val stalkerDeviceLocale: String = "",
     val createdProviderId: Long? = null,
     val createdProviderName: String? = null,
     val pendingCombinedAttachProfileId: Long? = null,

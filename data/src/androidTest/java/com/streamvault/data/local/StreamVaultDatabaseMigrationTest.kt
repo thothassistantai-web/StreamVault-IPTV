@@ -84,12 +84,12 @@ class StreamVaultDatabaseMigrationTest {
     }
 
     @Test
-    fun migrate1To37_fullChainValidatesLatestSchema() {
+    fun migrate1To39_fullChainValidatesLatestSchema() {
         migrationTestHelper.createDatabase("streamvault-full-chain-test", 1).close()
 
         migrationTestHelper.runMigrationsAndValidate(
             "streamvault-full-chain-test",
-            37,
+            39,
             true,
             StreamVaultDatabase.MIGRATION_1_2,
             StreamVaultDatabase.MIGRATION_2_3,
@@ -126,8 +126,49 @@ class StreamVaultDatabaseMigrationTest {
             StreamVaultDatabase.MIGRATION_33_34,
             StreamVaultDatabase.MIGRATION_34_35,
             StreamVaultDatabase.MIGRATION_35_36,
-            StreamVaultDatabase.MIGRATION_36_37
+            StreamVaultDatabase.MIGRATION_36_37,
+            StreamVaultDatabase.MIGRATION_37_38,
+            StreamVaultDatabase.MIGRATION_38_39
         ).close()
+    }
+
+    @Test
+    fun migrate38To39_addsStalkerProviderColumnsAndUniqueIndex() {
+        migrationTestHelper.createDatabase("streamvault-38-39-test", 38).apply {
+            execSQL(
+                """
+                INSERT INTO providers (
+                    id, name, type, server_url, username, password, m3u_url, epg_url,
+                    is_active, max_connections, allowed_output_formats_json, epg_sync_mode,
+                    xtream_fast_sync_enabled, m3u_vod_classification_enabled, status,
+                    last_synced_at, created_at
+                ) VALUES (1, 'Provider', 'XTREAM_CODES', 'https://provider.example.com', 'demo', 'secret', '', '', 1, 1, '[]', 'UPFRONT', 1, 0, 'ACTIVE', 0, 0)
+                """.trimIndent()
+            )
+            close()
+        }
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-38-39-test",
+            39,
+            true,
+            StreamVaultDatabase.MIGRATION_38_39
+        )
+
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'stalker_mac_address'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'stalker_device_profile'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'stalker_device_timezone'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'stalker_device_locale'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM providers WHERE id = 1 AND stalker_mac_address = ''"))
+        assertEquals(
+            1,
+            countRows(
+                migratedDb,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'index_providers_server_url_username_stalker_mac_address'"
+            )
+        )
+
+        migratedDb.close()
     }
 
     @Test

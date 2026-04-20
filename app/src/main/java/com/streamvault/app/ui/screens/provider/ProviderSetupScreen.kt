@@ -75,7 +75,7 @@ import kotlinx.coroutines.withContext
 
 // ??? Source type ?????????????????????????????????????????????????????????????
 
-private enum class SourceType { XTREAM, M3U_URL, M3U_FILE }
+private enum class SourceType { XTREAM, STALKER, M3U_URL, M3U_FILE }
 
 // ??? Screen ??????????????????????????????????????????????????????????????????
 
@@ -100,6 +100,10 @@ fun ProviderSetupScreen(
     var serverUrl by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    var stalkerMacAddress by rememberSaveable { mutableStateOf("") }
+    var stalkerDeviceProfile by rememberSaveable { mutableStateOf("") }
+    var stalkerDeviceTimezone by rememberSaveable { mutableStateOf("") }
+    var stalkerDeviceLocale by rememberSaveable { mutableStateOf("") }
     var fileImportError by rememberSaveable { mutableStateOf<String?>(null) }
     var handledInitialImportUri by rememberSaveable { mutableStateOf<String?>(null) }
     var showDiscardDraftDialog by rememberSaveable { mutableStateOf(false) }
@@ -161,7 +165,7 @@ fun ProviderSetupScreen(
         val importUri = initialImportUri?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (handledInitialImportUri == importUri) return@LaunchedEffect
         handledInitialImportUri = importUri
-        selectedTab = 1
+        selectedTab = 2
         viewModel.updateM3uTab(1)
         runCatching { android.net.Uri.parse(importUri) }.getOrNull()?.let(::importM3uUri)
     }
@@ -222,12 +226,17 @@ fun ProviderSetupScreen(
             username = uiState.username
             password = uiState.password
             m3uUrl = uiState.m3uUrl
+            stalkerMacAddress = uiState.stalkerMacAddress
+            stalkerDeviceProfile = uiState.stalkerDeviceProfile
+            stalkerDeviceTimezone = uiState.stalkerDeviceTimezone
+            stalkerDeviceLocale = uiState.stalkerDeviceLocale
         }
     }
 
     // ?? Derived UI source type ????????????????????????????????????????????????
     val sourceType = when {
         selectedTab == 0 -> SourceType.XTREAM
+        selectedTab == 1 -> SourceType.STALKER
         uiState.m3uTab == 1 -> SourceType.M3U_FILE
         else -> SourceType.M3U_URL
     }
@@ -236,8 +245,9 @@ fun ProviderSetupScreen(
         if (uiState.isEditing) return
         when (type) {
             SourceType.XTREAM  -> { selectedTab = 0 }
-            SourceType.M3U_URL -> { selectedTab = 1; viewModel.updateM3uTab(0) }
-            SourceType.M3U_FILE-> { selectedTab = 1; viewModel.updateM3uTab(1) }
+            SourceType.STALKER -> { selectedTab = 1 }
+            SourceType.M3U_URL -> { selectedTab = 2; viewModel.updateM3uTab(0) }
+            SourceType.M3U_FILE-> { selectedTab = 2; viewModel.updateM3uTab(1) }
         }
     }
 
@@ -245,6 +255,10 @@ fun ProviderSetupScreen(
         serverUrl.isNotBlank() ||
             username.isNotBlank() ||
             password.isNotBlank() ||
+            stalkerMacAddress.isNotBlank() ||
+            stalkerDeviceProfile.isNotBlank() ||
+            stalkerDeviceTimezone.isNotBlank() ||
+            stalkerDeviceLocale.isNotBlank() ||
             m3uUrl.isNotBlank()
         )
 
@@ -292,9 +306,14 @@ fun ProviderSetupScreen(
                         username = username, onUsernameChange = { username = ProviderInputSanitizer.sanitizeUsernameForEditing(it) },
                         password = password, onPasswordChange = { password = ProviderInputSanitizer.sanitizePasswordForEditing(it) },
                         m3uUrl = m3uUrl, onM3uUrlChange = { m3uUrl = ProviderInputSanitizer.sanitizeUrlForEditing(it) },
+                        stalkerMacAddress = stalkerMacAddress, onStalkerMacAddressChange = { stalkerMacAddress = ProviderInputSanitizer.sanitizeMacAddressForEditing(it) },
+                        stalkerDeviceProfile = stalkerDeviceProfile, onStalkerDeviceProfileChange = { stalkerDeviceProfile = ProviderInputSanitizer.sanitizeDeviceProfileForEditing(it) },
+                        stalkerDeviceTimezone = stalkerDeviceTimezone, onStalkerDeviceTimezoneChange = { stalkerDeviceTimezone = ProviderInputSanitizer.sanitizeTimezoneForEditing(it) },
+                        stalkerDeviceLocale = stalkerDeviceLocale, onStalkerDeviceLocaleChange = { stalkerDeviceLocale = ProviderInputSanitizer.sanitizeLocaleForEditing(it) },
                         fileImportError = fileImportError,
                         onFilePick = { filePickerLauncher.launch(arrayOf("*/*")) },
                         onLoginXtream = { viewModel.loginXtream(serverUrl, username, password, name) },
+                        onLoginStalker = { viewModel.loginStalker(serverUrl, stalkerMacAddress, name, stalkerDeviceProfile, stalkerDeviceTimezone, stalkerDeviceLocale) },
                         onAddM3u = { viewModel.addM3u(m3uUrl, name) },
                         onToggleFastSync = { viewModel.updateXtreamFastSyncEnabled(!uiState.xtreamFastSyncEnabled) },
                         onToggleM3uVodClassification = { viewModel.updateM3uVodClassificationEnabled(!uiState.m3uVodClassificationEnabled) },
@@ -321,9 +340,14 @@ fun ProviderSetupScreen(
                         username = username, onUsernameChange = { username = ProviderInputSanitizer.sanitizeUsernameForEditing(it) },
                         password = password, onPasswordChange = { password = ProviderInputSanitizer.sanitizePasswordForEditing(it) },
                         m3uUrl = m3uUrl, onM3uUrlChange = { m3uUrl = ProviderInputSanitizer.sanitizeUrlForEditing(it) },
+                        stalkerMacAddress = stalkerMacAddress, onStalkerMacAddressChange = { stalkerMacAddress = ProviderInputSanitizer.sanitizeMacAddressForEditing(it) },
+                        stalkerDeviceProfile = stalkerDeviceProfile, onStalkerDeviceProfileChange = { stalkerDeviceProfile = ProviderInputSanitizer.sanitizeDeviceProfileForEditing(it) },
+                        stalkerDeviceTimezone = stalkerDeviceTimezone, onStalkerDeviceTimezoneChange = { stalkerDeviceTimezone = ProviderInputSanitizer.sanitizeTimezoneForEditing(it) },
+                        stalkerDeviceLocale = stalkerDeviceLocale, onStalkerDeviceLocaleChange = { stalkerDeviceLocale = ProviderInputSanitizer.sanitizeLocaleForEditing(it) },
                         fileImportError = fileImportError,
                         onFilePick = { filePickerLauncher.launch(arrayOf("*/*")) },
                         onLoginXtream = { viewModel.loginXtream(serverUrl, username, password, name) },
+                        onLoginStalker = { viewModel.loginStalker(serverUrl, stalkerMacAddress, name, stalkerDeviceProfile, stalkerDeviceTimezone, stalkerDeviceLocale) },
                         onAddM3u = { viewModel.addM3u(m3uUrl, name) },
                         onToggleFastSync = { viewModel.updateXtreamFastSyncEnabled(!uiState.xtreamFastSyncEnabled) },
                         onToggleM3uVodClassification = { viewModel.updateM3uVodClassificationEnabled(!uiState.m3uVodClassificationEnabled) },
@@ -375,9 +399,14 @@ private fun ProviderFormContent(
     username: String, onUsernameChange: (String) -> Unit,
     password: String, onPasswordChange: (String) -> Unit,
     m3uUrl: String, onM3uUrlChange: (String) -> Unit,
+    stalkerMacAddress: String, onStalkerMacAddressChange: (String) -> Unit,
+    stalkerDeviceProfile: String, onStalkerDeviceProfileChange: (String) -> Unit,
+    stalkerDeviceTimezone: String, onStalkerDeviceTimezoneChange: (String) -> Unit,
+    stalkerDeviceLocale: String, onStalkerDeviceLocaleChange: (String) -> Unit,
     fileImportError: String?,
     onFilePick: () -> Unit,
     onLoginXtream: () -> Unit,
+    onLoginStalker: () -> Unit,
     onAddM3u: () -> Unit,
     onToggleFastSync: () -> Unit,
     onToggleM3uVodClassification: () -> Unit,
@@ -448,7 +477,13 @@ private fun ProviderFormContent(
                         uiState = uiState,
                         onToggleFastSync = onToggleFastSync,
                         onToggleM3uVodClassification = onToggleM3uVodClassification,
-                        onSelectEpgSyncMode = onSelectEpgSyncMode
+                        onSelectEpgSyncMode = onSelectEpgSyncMode,
+                        stalkerDeviceProfile = stalkerDeviceProfile,
+                        onStalkerDeviceProfileChange = onStalkerDeviceProfileChange,
+                        stalkerDeviceTimezone = stalkerDeviceTimezone,
+                        onStalkerDeviceTimezoneChange = onStalkerDeviceTimezoneChange,
+                        stalkerDeviceLocale = stalkerDeviceLocale,
+                        onStalkerDeviceLocaleChange = onStalkerDeviceLocaleChange
                     )
                     FormErrors(uiState.validationError, uiState.error)
                     ActionButton(
@@ -459,6 +494,52 @@ private fun ProviderFormContent(
                         },
                         isLoading = uiState.isLoading,
                         onClick = onLoginXtream
+                    )
+                }
+
+                SourceType.STALKER -> {
+                    ProviderTextField(
+                        value = serverUrl, onValueChange = onServerUrlChange,
+                        placeholder = "Portal URL",
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                            keyboardType = if (isTelevisionDevice) KeyboardType.Ascii else KeyboardType.Uri,
+                            imeAction = ImeAction.Next
+                        )
+                    )
+                    ProviderTextField(
+                        value = stalkerMacAddress, onValueChange = onStalkerMacAddressChange,
+                        placeholder = "MAC address",
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Characters,
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Ascii,
+                            imeAction = ImeAction.Next
+                        )
+                    )
+                    AdvancedProviderOptionsSection(
+                        sourceType = sourceType,
+                        uiState = uiState,
+                        onToggleFastSync = onToggleFastSync,
+                        onToggleM3uVodClassification = onToggleM3uVodClassification,
+                        onSelectEpgSyncMode = onSelectEpgSyncMode,
+                        stalkerDeviceProfile = stalkerDeviceProfile,
+                        onStalkerDeviceProfileChange = onStalkerDeviceProfileChange,
+                        stalkerDeviceTimezone = stalkerDeviceTimezone,
+                        onStalkerDeviceTimezoneChange = onStalkerDeviceTimezoneChange,
+                        stalkerDeviceLocale = stalkerDeviceLocale,
+                        onStalkerDeviceLocaleChange = onStalkerDeviceLocaleChange
+                    )
+                    FormErrors(uiState.validationError, uiState.error)
+                    ActionButton(
+                        text = when {
+                            uiState.isLoading -> androidx.compose.ui.res.stringResource(R.string.setup_connecting)
+                            uiState.isEditing -> androidx.compose.ui.res.stringResource(R.string.setup_save)
+                            else              -> androidx.compose.ui.res.stringResource(R.string.setup_login)
+                        },
+                        isLoading = uiState.isLoading,
+                        onClick = onLoginStalker
                     )
                 }
 
@@ -473,7 +554,13 @@ private fun ProviderFormContent(
                         uiState = uiState,
                         onToggleFastSync = onToggleFastSync,
                         onToggleM3uVodClassification = onToggleM3uVodClassification,
-                        onSelectEpgSyncMode = onSelectEpgSyncMode
+                        onSelectEpgSyncMode = onSelectEpgSyncMode,
+                        stalkerDeviceProfile = stalkerDeviceProfile,
+                        onStalkerDeviceProfileChange = onStalkerDeviceProfileChange,
+                        stalkerDeviceTimezone = stalkerDeviceTimezone,
+                        onStalkerDeviceTimezoneChange = onStalkerDeviceTimezoneChange,
+                        stalkerDeviceLocale = stalkerDeviceLocale,
+                        onStalkerDeviceLocaleChange = onStalkerDeviceLocaleChange
                     )
                     FormErrors(uiState.validationError, uiState.error)
                     ActionButton(
@@ -503,7 +590,13 @@ private fun ProviderFormContent(
                         uiState = uiState,
                         onToggleFastSync = onToggleFastSync,
                         onToggleM3uVodClassification = onToggleM3uVodClassification,
-                        onSelectEpgSyncMode = onSelectEpgSyncMode
+                        onSelectEpgSyncMode = onSelectEpgSyncMode,
+                        stalkerDeviceProfile = stalkerDeviceProfile,
+                        onStalkerDeviceProfileChange = onStalkerDeviceProfileChange,
+                        stalkerDeviceTimezone = stalkerDeviceTimezone,
+                        onStalkerDeviceTimezoneChange = onStalkerDeviceTimezoneChange,
+                        stalkerDeviceLocale = stalkerDeviceLocale,
+                        onStalkerDeviceLocaleChange = onStalkerDeviceLocaleChange
                     )
                     FormErrors(uiState.validationError, uiState.error)
                     ActionButton(
@@ -527,14 +620,21 @@ private fun AdvancedProviderOptionsSection(
     uiState: ProviderSetupState,
     onToggleFastSync: () -> Unit,
     onToggleM3uVodClassification: () -> Unit,
-    onSelectEpgSyncMode: (ProviderEpgSyncMode) -> Unit
+    onSelectEpgSyncMode: (ProviderEpgSyncMode) -> Unit,
+    stalkerDeviceProfile: String,
+    onStalkerDeviceProfileChange: (String) -> Unit,
+    stalkerDeviceTimezone: String,
+    onStalkerDeviceTimezoneChange: (String) -> Unit,
+    stalkerDeviceLocale: String,
+    onStalkerDeviceLocaleChange: (String) -> Unit
 ) {
     var showAdvancedOptions by rememberSaveable(sourceType) { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isEditing, uiState.epgSyncMode, uiState.xtreamFastSyncEnabled, sourceType) {
-        val hasNonDefaultSelection = (sourceType == SourceType.XTREAM && uiState.epgSyncMode != ProviderEpgSyncMode.UPFRONT) ||
+        val hasNonDefaultSelection = ((sourceType == SourceType.XTREAM || sourceType == SourceType.STALKER) && uiState.epgSyncMode != ProviderEpgSyncMode.UPFRONT) ||
             (sourceType == SourceType.XTREAM && !uiState.xtreamFastSyncEnabled) ||
-            (sourceType != SourceType.XTREAM && !uiState.m3uVodClassificationEnabled)
+            ((sourceType == SourceType.M3U_URL || sourceType == SourceType.M3U_FILE) && !uiState.m3uVodClassificationEnabled) ||
+            (sourceType == SourceType.STALKER && (stalkerDeviceProfile.isNotBlank() || stalkerDeviceTimezone.isNotBlank() || stalkerDeviceLocale.isNotBlank()))
         if (uiState.isEditing && hasNonDefaultSelection) {
             showAdvancedOptions = true
         }
@@ -643,7 +743,7 @@ private fun AdvancedProviderOptionsSection(
                     }
                 }
 
-                if (sourceType != SourceType.XTREAM) {
+                if (sourceType == SourceType.M3U_URL || sourceType == SourceType.M3U_FILE) {
                     Surface(
                         onClick = onToggleM3uVodClassification,
                         modifier = Modifier
@@ -690,7 +790,7 @@ private fun AdvancedProviderOptionsSection(
                     }
                 }
 
-                if (sourceType == SourceType.XTREAM) {
+                if (sourceType == SourceType.XTREAM || sourceType == SourceType.STALKER) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -717,6 +817,24 @@ private fun AdvancedProviderOptionsSection(
                             )
                         }
                     }
+                }
+
+                if (sourceType == SourceType.STALKER) {
+                    ProviderTextField(
+                        value = stalkerDeviceProfile,
+                        onValueChange = onStalkerDeviceProfileChange,
+                        placeholder = "Device profile (optional)"
+                    )
+                    ProviderTextField(
+                        value = stalkerDeviceTimezone,
+                        onValueChange = onStalkerDeviceTimezoneChange,
+                        placeholder = "Timezone (optional)"
+                    )
+                    ProviderTextField(
+                        value = stalkerDeviceLocale,
+                        onValueChange = onStalkerDeviceLocaleChange,
+                        placeholder = "Locale (optional)"
+                    )
                 }
             }
         }
@@ -839,6 +957,16 @@ private fun SourceTypeSelectorPanel(
                     onClick = { onSelect(SourceType.XTREAM) }
                 )
             }
+            if (!isEditing || sourceType == SourceType.STALKER) {
+                SourceTypeCard(
+                    title = androidx.compose.ui.res.stringResource(R.string.setup_stalker),
+                    badge = androidx.compose.ui.res.stringResource(R.string.badge_beta),
+                    subtitle = androidx.compose.ui.res.stringResource(R.string.setup_info_stalker_body),
+                    selected = sourceType == SourceType.STALKER,
+                    enabled = !isEditing,
+                    onClick = { onSelect(SourceType.STALKER) }
+                )
+            }
             if (!isEditing || sourceType == SourceType.M3U_URL) {
                 SourceTypeCard(
                     title = androidx.compose.ui.res.stringResource(R.string.setup_tab_url),
@@ -875,6 +1003,7 @@ private fun SourceTypeSelectorPanel(
 @Composable
 private fun SourceTypeCard(
     title: String,
+    badge: String? = null,
     subtitle: String,
     selected: Boolean,
     enabled: Boolean,
@@ -897,7 +1026,26 @@ private fun SourceTypeCard(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Text(text = title, style = MaterialTheme.typography.bodyMedium, color = if (selected) Primary else TextPrimary)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (selected) Primary else TextPrimary
+                )
+                badge?.let {
+                    StatusPill(
+                        label = it,
+                        containerColor = AccentAmber,
+                        contentColor = Color.Black,
+                        horizontalPadding = 6.dp,
+                        verticalPadding = 2.dp,
+                        cornerRadius = 6.dp
+                    )
+                }
+            }
             Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim, maxLines = 2)
         }
     }
@@ -918,6 +1066,14 @@ private fun SourceTypeTabRow(
                 text = androidx.compose.ui.res.stringResource(R.string.setup_xtream),
                 isSelected = sourceType == SourceType.XTREAM,
                 onClick = { if (!isEditing) onSelect(SourceType.XTREAM) }
+            )
+        }
+        if (!isEditing || sourceType == SourceType.STALKER) {
+            TabButton(
+                text = androidx.compose.ui.res.stringResource(R.string.setup_stalker),
+                badge = androidx.compose.ui.res.stringResource(R.string.badge_beta),
+                isSelected = sourceType == SourceType.STALKER,
+                onClick = { if (!isEditing) onSelect(SourceType.STALKER) }
             )
         }
         if (!isEditing || sourceType == SourceType.M3U_URL) {
@@ -1364,7 +1520,7 @@ private fun FileSelectorCard(
 // ??? TabButton (used by SourceTypeTabRow) ?????????????????????????????????????
 
 @Composable
-private fun TabButton(text: String, isSelected: Boolean, onClick: () -> Unit) {
+private fun TabButton(text: String, isSelected: Boolean, onClick: () -> Unit, badge: String? = null) {
     var isFocused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
@@ -1379,12 +1535,27 @@ private fun TabButton(text: String, isSelected: Boolean, onClick: () -> Unit) {
             focusedBorder = Border(BorderStroke(2.dp, FocusBorder))
         )
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (isSelected) Primary else if (isFocused) TextPrimary else OnSurface,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isSelected) Primary else if (isFocused) TextPrimary else OnSurface
+            )
+            badge?.let {
+                StatusPill(
+                    label = it,
+                    containerColor = AccentAmber,
+                    contentColor = Color.Black,
+                    horizontalPadding = 6.dp,
+                    verticalPadding = 2.dp,
+                    cornerRadius = 6.dp
+                )
+            }
+        }
     }
 }
 

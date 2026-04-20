@@ -13,7 +13,7 @@ import com.streamvault.domain.model.ProviderType
 
 @Entity(
     tableName = "providers",
-    indices = [Index(value = ["server_url", "username"], unique = true)]
+    indices = [Index(value = ["server_url", "username", "stalker_mac_address"], unique = true)]
 )
 data class ProviderEntity(
     @PrimaryKey(autoGenerate = true)
@@ -25,6 +25,10 @@ data class ProviderEntity(
     val password: String = "",
     @ColumnInfo(name = "m3u_url") val m3uUrl: String = "",
     @ColumnInfo(name = "epg_url") val epgUrl: String = "",
+    @ColumnInfo(name = "stalker_mac_address") val stalkerMacAddress: String = "",
+    @ColumnInfo(name = "stalker_device_profile") val stalkerDeviceProfile: String = "",
+    @ColumnInfo(name = "stalker_device_timezone") val stalkerDeviceTimezone: String = "",
+    @ColumnInfo(name = "stalker_device_locale") val stalkerDeviceLocale: String = "",
     @ColumnInfo(name = "is_active") val isActive: Boolean = true,
     @ColumnInfo(name = "max_connections") val maxConnections: Int = 1,
     @ColumnInfo(name = "expiration_date") val expirationDate: Long? = null,
@@ -97,6 +101,12 @@ data class ChannelBrowseEntity(
     @ColumnInfo(name = "is_user_protected") val isUserProtected: Boolean = false,
     @ColumnInfo(name = "logical_group_id") val logicalGroupId: String = "",
     @ColumnInfo(name = "error_count") val errorCount: Int = 0
+)
+
+data class ChannelGuideLookupEntity(
+    val id: Long = 0,
+    @ColumnInfo(name = "stream_id") val streamId: Long = 0,
+    @ColumnInfo(name = "epg_channel_id") val epgChannelId: String? = null
 )
 
 @Entity(

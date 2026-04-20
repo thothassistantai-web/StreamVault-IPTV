@@ -1164,11 +1164,11 @@ class PlayerViewModel @Inject constructor(
                 okHttpClient.newCall(request).execute().use { response ->
                     when (response.code) {
                         401, 403 -> PlaybackProbeFailure(
-                            message = "This Xtream stream was rejected by the provider (${response.code} Unauthorized/Forbidden).",
+                            message = "This provider stream was rejected (${response.code} Unauthorized/Forbidden).",
                             recoveryType = PlayerRecoveryType.SOURCE
                         )
                         404 -> PlaybackProbeFailure(
-                            message = "This Xtream stream is unavailable on the provider right now (404).",
+                            message = "This provider stream is unavailable right now (404).",
                             recoveryType = PlayerRecoveryType.SOURCE
                         )
                         in 500..599 -> PlaybackProbeFailure(
@@ -1187,7 +1187,10 @@ class PlayerViewModel @Inject constructor(
         val providerId = currentProviderId.takeIf { it > 0L } ?: return false
         if (providerId in probePassedProviderIds) return false
         val provider = providerRepository.getProvider(providerId) ?: return false
-        return provider.type == com.streamvault.domain.model.ProviderType.XTREAM_CODES &&
+        return (
+            provider.type == com.streamvault.domain.model.ProviderType.XTREAM_CODES ||
+                provider.type == com.streamvault.domain.model.ProviderType.STALKER_PORTAL
+            ) &&
             (xtreamStreamUrlResolver.isInternalStreamUrl(currentStreamUrl) || xtreamStreamUrlResolver.isInternalStreamUrl(url))
     }
 
@@ -1315,6 +1318,7 @@ class PlayerViewModel @Inject constructor(
                             providerSourceLabel = when (provider.type) {
                                 com.streamvault.domain.model.ProviderType.XTREAM_CODES -> "Xtream Codes"
                                 com.streamvault.domain.model.ProviderType.M3U -> "M3U Playlist"
+                                com.streamvault.domain.model.ProviderType.STALKER_PORTAL -> "Stalker/MAG Portal"
                             }
                         )
                     }
@@ -2119,7 +2123,7 @@ class PlayerViewModel @Inject constructor(
         hasRetriedXtreamAuthRefresh = true
         probePassedProviderIds.remove(currentProviderId)
         setLastFailureReason(error.message)
-        appendRecoveryAction("Refreshed Xtream playback URL after auth failure")
+        appendRecoveryAction("Refreshed provider playback URL after auth failure")
         showPlayerNotice(
             message = "Refreshing the provider playback URL…",
             recoveryType = PlayerRecoveryType.NETWORK,
@@ -2134,7 +2138,12 @@ class PlayerViewModel @Inject constructor(
     private suspend fun isXtreamPlaybackSession(): Boolean {
         val providerId = currentProviderId.takeIf { it > 0L } ?: return false
         val provider = providerRepository.getProvider(providerId) ?: return false
-        if (provider.type != ProviderType.XTREAM_CODES) return false
+        if (
+            provider.type != ProviderType.XTREAM_CODES &&
+            provider.type != ProviderType.STALKER_PORTAL
+        ) {
+            return false
+        }
         return xtreamStreamUrlResolver.isInternalStreamUrl(currentStreamUrl) ||
             xtreamStreamUrlResolver.isInternalStreamUrl(currentResolvedPlaybackUrl)
     }

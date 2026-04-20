@@ -97,6 +97,14 @@ class ChannelRepositoryImpl @Inject constructor(
         observeChannels(channelFlowWithoutErrors(providerId, categoryId), providerId)
             .map(::sortChannelsByNumber)
 
+    override fun getChannelsWithoutErrorsPage(
+        providerId: Long,
+        categoryId: Long,
+        limit: Int
+    ): Flow<List<Channel>> =
+        observeChannels(channelFlowWithoutErrorsPage(providerId, categoryId, limit), providerId)
+            .map(::sortChannelsByNumber)
+
     override fun searchChannelsByCategory(providerId: Long, categoryId: Long, query: String): Flow<List<Channel>> =
         searchChannelEntities(providerId, categoryId, query, CATEGORY_SEARCH_LIMIT)
             .let { flow -> observeChannels(flow, providerId) }
@@ -606,6 +614,17 @@ class ChannelRepositoryImpl @Inject constructor(
             channelDao.getByProviderWithoutErrors(providerId)
         } else {
             channelDao.getByCategoryWithoutErrors(providerId, categoryId)
+        }
+
+    private fun channelFlowWithoutErrorsPage(
+        providerId: Long,
+        categoryId: Long,
+        limit: Int
+    ): Flow<List<ChannelBrowseEntity>> =
+        if (categoryId == ChannelRepository.ALL_CHANNELS_ID) {
+            channelDao.getByProviderWithoutErrorsBrowsePage(providerId, limit)
+        } else {
+            channelDao.getByCategoryWithoutErrorsBrowsePage(providerId, categoryId, limit)
         }
 
     private fun safeSearchFlow(source: Flow<List<ChannelBrowseEntity>>): Flow<List<ChannelBrowseEntity>> =

@@ -1059,7 +1059,11 @@ class HomeViewModel @Inject constructor(
         channels: List<Channel>,
         existingPrograms: Map<String, Program>
     ): Map<String, Program> {
-        if (_uiState.value.provider?.type != com.streamvault.domain.model.ProviderType.XTREAM_CODES) {
+        val providerType = _uiState.value.provider?.type
+        if (
+            providerType != com.streamvault.domain.model.ProviderType.XTREAM_CODES &&
+            providerType != com.streamvault.domain.model.ProviderType.STALKER_PORTAL
+        ) {
             return emptyMap()
         }
 
