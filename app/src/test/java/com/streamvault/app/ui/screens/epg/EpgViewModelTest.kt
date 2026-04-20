@@ -1,6 +1,7 @@
 package com.streamvault.app.ui.screens.epg
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import androidx.lifecycle.ViewModel
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.domain.manager.ParentalControlManager
@@ -24,6 +25,7 @@ import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.EpgRepository
 import com.streamvault.domain.repository.EpgSourceRepository
 import com.streamvault.domain.repository.FavoriteRepository
+import com.streamvault.domain.repository.LiveStreamProgramRequest
 import com.streamvault.domain.repository.ProviderRepository
 import com.streamvault.domain.usecase.GetCustomCategories
 import com.streamvault.domain.usecase.ScheduleRecording
@@ -103,10 +105,10 @@ class EpgViewModelTest {
             }
         }
         testDispatcher.scheduler.advanceUntilIdle()
-        assertThat(condition()).isTrue()
+        assertWithMessage(createdViewModels.lastOrNull()?.uiState?.value.toString()).that(condition()).isTrue()
     }
 
-    private fun createViewModel(): EpgViewModel =
+    private fun createViewModel(providerRepository: ProviderRepository = this.providerRepository): EpgViewModel =
         EpgViewModel(
             providerRepository = providerRepository,
             combinedM3uRepository = combinedM3uRepository,
