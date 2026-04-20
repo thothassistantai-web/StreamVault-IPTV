@@ -41,7 +41,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.tv.material3.Border
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -51,6 +50,7 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.streamvault.app.R
 import com.streamvault.app.device.rememberIsTelevisionDevice
+import com.streamvault.app.ui.components.PlayerRenderView
 import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.theme.FocusBorder
@@ -64,6 +64,7 @@ import com.streamvault.app.ui.theme.SurfaceHighlight
 import com.streamvault.domain.model.Category
 import com.streamvault.domain.model.Channel
 import com.streamvault.player.PlayerEngine
+import com.streamvault.player.PlayerRenderSurfaceType
 import com.streamvault.player.PlayerSurfaceResizeMode
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -147,22 +148,10 @@ internal fun LivePreviewPane(
                 contentAlignment = Alignment.Center
             ) {
                 if (channel != null && playerEngine != null && errorMessage == null) {
-                    AndroidView(
-                        factory = { context ->
-                            playerEngine.createRenderView(
-                                context = context,
-                                resizeMode = PlayerSurfaceResizeMode.FIT
-                            )
-                        },
-                        update = { renderView ->
-                            playerEngine.bindRenderView(
-                                renderView = renderView,
-                                resizeMode = PlayerSurfaceResizeMode.FIT
-                            )
-                        },
-                        onRelease = { renderView ->
-                            playerEngine.releaseRenderView(renderView)
-                        },
+                    PlayerRenderView(
+                        playerEngine = playerEngine,
+                        resizeMode = PlayerSurfaceResizeMode.FIT,
+                        surfaceType = PlayerRenderSurfaceType.SURFACE_VIEW,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {

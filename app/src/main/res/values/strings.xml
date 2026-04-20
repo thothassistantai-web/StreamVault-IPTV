@@ -830,11 +830,14 @@
     <string name="setup_source_type_label">Source Type</string>
     <string name="setup_info_xtream_title">Use Xtream when credentials are available</string>
     <string name="setup_info_xtream_body">Best when you have server, user, and password.</string>
+    <string name="setup_info_stalker_body">Portal URL plus a provider-approved MAC address.</string>
     <string name="setup_info_m3u_title">Use M3U for URL or file-based playlists</string>
     <string name="setup_info_m3u_body">Use a playlist link or import a local file.</string>
     <string name="setup_info_manage_title">You can manage providers later</string>
     <string name="setup_info_manage_body">Refresh, edit, or replace it later from Settings.</string>
+    <string name="badge_beta">Beta</string>
     <string name="setup_xtream">Xtream Codes</string>
+    <string name="setup_stalker">Stalker</string>
     <string name="setup_m3u">M3U Playlist</string>
     <string name="setup_name_hint">Playlist Name (Optional)</string>
     <string name="setup_server_hint">Server URL</string>

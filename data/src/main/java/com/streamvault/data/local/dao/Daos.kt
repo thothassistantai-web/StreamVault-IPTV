@@ -24,8 +24,12 @@ abstract class ProviderDao {
     @Query("SELECT * FROM providers WHERE is_active = 1 LIMIT 1")
     abstract fun getActive(): Flow<ProviderEntity?>
 
-    @Query("SELECT * FROM providers WHERE server_url = :serverUrl AND username = :username")
-    abstract suspend fun getByUrlAndUser(serverUrl: String, username: String): ProviderEntity?
+    @Query("SELECT * FROM providers WHERE server_url = :serverUrl AND username = :username AND stalker_mac_address = :stalkerMacAddress")
+    abstract suspend fun getByUrlAndUser(
+        serverUrl: String,
+        username: String,
+        stalkerMacAddress: String = ""
+    ): ProviderEntity?
 
     @Query("SELECT * FROM providers WHERE id = :id")
     abstract suspend fun getById(id: Long): ProviderEntity?

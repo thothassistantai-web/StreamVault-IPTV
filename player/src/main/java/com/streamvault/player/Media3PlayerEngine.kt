@@ -473,8 +473,11 @@ class Media3PlayerEngine @Inject constructor(
         preloadCoordinator.store(mediaId, streamInfo, resolvedStreamType, mediaSource)
     }
 
-    override fun createRenderView(context: Context, resizeMode: PlayerSurfaceResizeMode) =
-        viewBinder.createRenderView(context, resizeMode)
+    override fun createRenderView(
+        context: Context,
+        resizeMode: PlayerSurfaceResizeMode,
+        surfaceType: PlayerRenderSurfaceType
+    ) = viewBinder.createRenderView(context, resizeMode, surfaceType)
 
     override fun bindRenderView(renderView: android.view.View, resizeMode: PlayerSurfaceResizeMode) {
         viewBinder.bind(renderView, getOrCreatePlayer(), resizeMode)
@@ -1003,7 +1006,7 @@ class Media3PlayerEngine @Inject constructor(
             return
         }
 
-        if (category == PlaybackErrorCategory.DECODER) {
+        if (category == PlaybackErrorCategory.DECODER || category == PlaybackErrorCategory.FORMAT_UNSUPPORTED) {
             val fallbackMode = decoderPreferencePolicy.onDecoderInitFailure(activeDecoderMode, mediaId)
             if (fallbackMode != null) {
                 Log.w(
@@ -1019,6 +1022,11 @@ class Media3PlayerEngine @Inject constructor(
         val nextAttempt = retryAttempt + 1
         if (retryPolicy.shouldRetry(error, retryContext, playbackStarted, nextAttempt)) {
             val delayMs = retryPolicy.retryDelayMs(error, nextAttempt)
+            val retrySeekPositionMs = exoPlayer?.currentPosition?.takeIf {
+                category == PlaybackErrorCategory.FORMAT_UNSUPPORTED &&
+                    currentResolvedStreamType == ResolvedStreamType.PROGRESSIVE &&
+                    it > 0L
+            }
             // retryGeneration captured and checked on Main — safe with
             // Dispatchers.Main.immediate. If the scope dispatcher is ever changed
             // (e.g. in tests), convert retryGeneration to AtomicLong.
@@ -1048,7 +1056,12 @@ class Media3PlayerEngine @Inject constructor(
                 ) {
                     exoPlayer?.seekToDefaultPosition()
                 }
-                prepareInternal(streamInfo, preserveRetryState = category != PlaybackErrorCategory.LIVE_WINDOW, seekPositionMs = null, autoPlay = true)
+                prepareInternal(
+                    streamInfo,
+                    preserveRetryState = category != PlaybackErrorCategory.LIVE_WINDOW,
+                    seekPositionMs = retrySeekPositionMs,
+                    autoPlay = true
+                )
             }
             return
         }

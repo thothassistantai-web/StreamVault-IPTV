@@ -28,6 +28,17 @@ data class M3uProviderSetupCommand(
     val existingProviderId: Long? = null
 )
 
+data class StalkerProviderSetupCommand(
+    val portalUrl: String,
+    val macAddress: String,
+    val name: String,
+    val deviceProfile: String = "",
+    val timezone: String = "",
+    val locale: String = "",
+    val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.UPFRONT,
+    val existingProviderId: Long? = null
+)
+
 sealed class ValidateAndAddProviderResult {
     data class Success(val provider: Provider) : ValidateAndAddProviderResult()
     data class ValidationError(val message: String) : ValidateAndAddProviderResult()
@@ -111,6 +122,37 @@ class ValidateAndAddProvider @Inject constructor(
                     }
                 }
             }
+
+            is Result.Error -> ValidateAndAddProviderResult.ValidationError(validated.message)
+            is Result.Loading -> ValidateAndAddProviderResult.Error("Unexpected loading state")
+        }
+    }
+
+    suspend fun loginStalker(
+        command: StalkerProviderSetupCommand,
+        onProgress: ((String) -> Unit)? = null
+    ): ValidateAndAddProviderResult {
+        return when (
+            val validated = providerSetupInputValidator.validateStalker(
+                portalUrl = command.portalUrl,
+                macAddress = command.macAddress,
+                name = command.name,
+                deviceProfile = command.deviceProfile,
+                timezone = command.timezone,
+                locale = command.locale
+            )
+        ) {
+            is Result.Success -> providerRepository.loginStalker(
+                portalUrl = validated.data.portalUrl,
+                macAddress = validated.data.macAddress,
+                name = validated.data.name,
+                deviceProfile = validated.data.deviceProfile,
+                timezone = validated.data.timezone,
+                locale = validated.data.locale,
+                epgSyncMode = command.epgSyncMode,
+                onProgress = onProgress,
+                id = command.existingProviderId
+            ).toUseCaseResult()
 
             is Result.Error -> ValidateAndAddProviderResult.ValidationError(validated.message)
             is Result.Loading -> ValidateAndAddProviderResult.Error("Unexpected loading state")

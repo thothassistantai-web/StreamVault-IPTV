@@ -755,6 +755,7 @@ class EpgViewModel @Inject constructor(
                         providerSourceLabel = when (provider.type) {
                             com.streamvault.domain.model.ProviderType.XTREAM_CODES -> "Xtream Codes"
                             com.streamvault.domain.model.ProviderType.M3U -> "M3U Playlist"
+                            com.streamvault.domain.model.ProviderType.STALKER_PORTAL -> "Stalker/MAG Portal"
                         },
                         providerArchiveSummary = buildProviderArchiveSummary(provider),
                         categories = categories,
@@ -790,6 +791,7 @@ class EpgViewModel @Inject constructor(
                         providerSourceLabel = when (provider.type) {
                             com.streamvault.domain.model.ProviderType.XTREAM_CODES -> "Xtream Codes"
                             com.streamvault.domain.model.ProviderType.M3U -> "M3U Playlist"
+                            com.streamvault.domain.model.ProviderType.STALKER_PORTAL -> "Stalker/MAG Portal"
                         },
                         providerArchiveSummary = buildProviderArchiveSummary(provider),
                         categories = categories,
@@ -1133,6 +1135,12 @@ class EpgViewModel @Inject constructor(
                 } else {
                     "M3U replay depends on the provider catch-up template and matching guide data."
                 }
+            com.streamvault.domain.model.ProviderType.STALKER_PORTAL ->
+                if (provider.epgUrl.isBlank()) {
+                    "Portal guide falls back to on-demand Stalker data when XMLTV is unavailable."
+                } else {
+                    "Guide combines optional XMLTV with on-demand Stalker portal data."
+                }
         }
     }
 
@@ -1374,7 +1382,10 @@ class EpgViewModel @Inject constructor(
         windowStart: Long,
         windowEnd: Long
     ): Map<String, List<Program>> {
-        if (provider.type != com.streamvault.domain.model.ProviderType.XTREAM_CODES) {
+        if (
+            provider.type != com.streamvault.domain.model.ProviderType.XTREAM_CODES &&
+            provider.type != com.streamvault.domain.model.ProviderType.STALKER_PORTAL
+        ) {
             return emptyMap()
         }
 

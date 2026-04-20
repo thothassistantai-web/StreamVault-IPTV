@@ -9,6 +9,10 @@ data class Provider(
     val password: String = "",
     val m3uUrl: String = "",
     val epgUrl: String = "",
+    val stalkerMacAddress: String = "",
+    val stalkerDeviceProfile: String = "",
+    val stalkerDeviceTimezone: String = "",
+    val stalkerDeviceLocale: String = "",
     val isActive: Boolean = true,
     val maxConnections: Int = 1,
     val expirationDate: Long? = null,
@@ -33,7 +37,8 @@ data class Provider(
 
 enum class ProviderType {
     XTREAM_CODES,
-    M3U
+    M3U,
+    STALKER_PORTAL
 }
 
 enum class ProviderEpgSyncMode {

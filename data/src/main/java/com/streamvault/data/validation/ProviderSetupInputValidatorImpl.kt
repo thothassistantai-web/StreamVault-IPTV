@@ -4,6 +4,7 @@ import com.streamvault.data.util.ProviderInputSanitizer
 import com.streamvault.data.util.UrlSecurityPolicy
 import com.streamvault.domain.manager.ProviderSetupInputValidator
 import com.streamvault.domain.manager.ValidatedM3uProviderInput
+import com.streamvault.domain.manager.ValidatedStalkerProviderInput
 import com.streamvault.domain.manager.ValidatedXtreamProviderInput
 import com.streamvault.domain.model.Result
 import javax.inject.Inject
@@ -64,6 +65,46 @@ class ProviderSetupInputValidatorImpl @Inject constructor() : ProviderSetupInput
             ValidatedM3uProviderInput(
                 url = normalizedUrl,
                 name = normalizedName
+            )
+        )
+    }
+
+    override fun validateStalker(
+        portalUrl: String,
+        macAddress: String,
+        name: String,
+        deviceProfile: String,
+        timezone: String,
+        locale: String
+    ): Result<ValidatedStalkerProviderInput> {
+        val normalizedPortalUrl = ProviderInputSanitizer.normalizeUrl(portalUrl)
+        val normalizedMacAddress = ProviderInputSanitizer.normalizeMacAddress(macAddress)
+        val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
+        val normalizedDeviceProfile = ProviderInputSanitizer.normalizeDeviceProfile(deviceProfile)
+        val normalizedTimezone = ProviderInputSanitizer.normalizeTimezone(timezone)
+        val normalizedLocale = ProviderInputSanitizer.normalizeLocale(locale)
+
+        if (normalizedPortalUrl.isBlank()) {
+            return Result.error("Please enter portal URL")
+        }
+        ProviderInputSanitizer.validateUrl(normalizedPortalUrl)?.let { message ->
+            return Result.error(message)
+        }
+        UrlSecurityPolicy.validateStalkerPortalUrl(normalizedPortalUrl)?.let { message ->
+            return Result.error(message)
+        }
+        ProviderInputSanitizer.validateMacAddress(normalizedMacAddress)?.let { message ->
+            return Result.error(message)
+        }
+
+        return Result.success(
+            ValidatedStalkerProviderInput(
+                portalUrl = normalizedPortalUrl,
+                macAddress = normalizedMacAddress,
+                name = normalizedName,
+                deviceProfile = normalizedDeviceProfile,
+                timezone = normalizedTimezone,
+                locale = normalizedLocale
             )
         )
     }

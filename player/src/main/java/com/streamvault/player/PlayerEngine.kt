@@ -20,6 +20,12 @@ import kotlinx.coroutines.flow.StateFlow
 
 const val PLAYER_TRACK_AUTO_ID = "__auto__"
 
+enum class PlayerRenderSurfaceType {
+    AUTO,
+    SURFACE_VIEW,
+    TEXTURE_VIEW
+}
+
 /**
  * Abstraction over the underlying media player.
  * UI layer talks to this interface, never to ExoPlayer directly.
@@ -91,7 +97,11 @@ interface PlayerEngine {
      */
     fun preload(streamInfo: StreamInfo?)
 
-    fun createRenderView(context: Context, resizeMode: PlayerSurfaceResizeMode): View
+    fun createRenderView(
+        context: Context,
+        resizeMode: PlayerSurfaceResizeMode,
+        surfaceType: PlayerRenderSurfaceType = PlayerRenderSurfaceType.AUTO
+    ): View
     fun bindRenderView(renderView: View, resizeMode: PlayerSurfaceResizeMode)
     fun releaseRenderView(renderView: View)
 }

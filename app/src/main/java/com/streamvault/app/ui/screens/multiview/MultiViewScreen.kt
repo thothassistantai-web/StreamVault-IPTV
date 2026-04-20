@@ -61,7 +61,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -77,11 +76,13 @@ import androidx.tv.material3.Surface
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import com.streamvault.app.R
+import com.streamvault.app.ui.components.PlayerRenderView
 import com.streamvault.app.ui.components.dialogs.PinDialog
 import com.streamvault.app.ui.components.dialogs.PremiumDialog
 import com.streamvault.app.ui.components.dialogs.PremiumDialogActionButton
 import com.streamvault.app.ui.components.dialogs.PremiumDialogFooterButton
 import com.streamvault.app.ui.theme.Primary
+import com.streamvault.player.PlayerRenderSurfaceType
 import com.streamvault.player.PlayerSurfaceResizeMode
 import kotlinx.coroutines.launch
 import com.streamvault.app.ui.interaction.TvClickableSurface
@@ -416,27 +417,16 @@ private fun PlayerCell(
                 else -> {
                     val engine = slot.playerEngine
                     if (engine != null) {
-                        AndroidView(
-                            factory = { ctx ->
-                                engine.createRenderView(
-                                    context = ctx,
-                                    resizeMode = PlayerSurfaceResizeMode.FILL
-                                ).apply {
-                                    isFocusable = false
-                                    isFocusableInTouchMode = false
-                                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                                }
-                            },
-                            update = { renderView ->
-                                engine.bindRenderView(
-                                    renderView = renderView,
-                                    resizeMode = PlayerSurfaceResizeMode.FILL
-                                )
-                            },
-                            onRelease = { renderView ->
-                                engine.releaseRenderView(renderView)
-                            },
-                            modifier = Modifier.fillMaxSize()
+                        PlayerRenderView(
+                            playerEngine = engine,
+                            resizeMode = PlayerSurfaceResizeMode.FILL,
+                            surfaceType = PlayerRenderSurfaceType.SURFACE_VIEW,
+                            modifier = Modifier.fillMaxSize(),
+                            configureView = {
+                                isFocusable = false
+                                isFocusableInTouchMode = false
+                                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                            }
                         )
                     }
 

@@ -40,6 +40,7 @@ class SeriesRepositoryImplTest {
     private val favoriteDao: FavoriteDao = mock()
     private val playbackHistoryDao: PlaybackHistoryDao = mock()
     private val providerDao: ProviderDao = mock()
+    private val stalkerApiService: StalkerApiService = mock()
     private val xtreamApiService: XtreamApiService = mock()
     private val preferencesRepository: PreferencesRepository = mock()
     private val xtreamStreamUrlResolver: XtreamStreamUrlResolver = mock()
@@ -184,6 +185,7 @@ class SeriesRepositoryImplTest {
         favoriteDao = favoriteDao,
         playbackHistoryDao = playbackHistoryDao,
         providerDao = providerDao,
+        stalkerApiService = stalkerApiService,
         xtreamApiService = xtreamApiService,
         credentialCrypto = credentialCrypto,
         preferencesRepository = preferencesRepository,

@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.streamvault.domain.manager.ProviderSetupInputValidator
 import com.streamvault.domain.model.Program
 import com.streamvault.domain.manager.ValidatedM3uProviderInput
+import com.streamvault.domain.manager.ValidatedStalkerProviderInput
 import com.streamvault.domain.manager.ValidatedXtreamProviderInput
 import com.streamvault.domain.model.ProviderEpgSyncMode
 import com.streamvault.domain.model.Provider
@@ -189,6 +190,53 @@ class ValidateAndAddProviderTest {
         assertThat(repository.lastXtreamCall).isNull()
         assertThat(repository.lastM3uCall).isNull()
     }
+
+    @Test
+    fun delegates_validated_stalker_input_to_repository() = runTest {
+        val repository = FakeProviderRepository()
+        val useCase = ValidateAndAddProvider(
+            providerSetupInputValidator = FakeProviderSetupInputValidator(
+                stalkerResult = Result.success(
+                    ValidatedStalkerProviderInput(
+                        portalUrl = "https://portal.example.com",
+                        macAddress = "00:1A:79:12:34:56",
+                        name = "MAG",
+                        deviceProfile = "MAG250",
+                        timezone = "UTC",
+                        locale = "en"
+                    )
+                )
+            ),
+            providerRepository = repository
+        )
+
+        val result = useCase.loginStalker(
+            StalkerProviderSetupCommand(
+                portalUrl = " https://portal.example.com ",
+                macAddress = "00-1a-79-12-34-56",
+                name = " MAG ",
+                deviceProfile = " MAG250 ",
+                timezone = " UTC ",
+                locale = " en ",
+                epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+                existingProviderId = 21L
+            )
+        )
+
+        assertThat(result).isInstanceOf(ValidateAndAddProviderResult.Success::class.java)
+        assertThat(repository.lastStalkerCall).isEqualTo(
+            StalkerCall(
+                portalUrl = "https://portal.example.com",
+                macAddress = "00:1A:79:12:34:56",
+                name = "MAG",
+                deviceProfile = "MAG250",
+                timezone = "UTC",
+                locale = "en",
+                epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+                id = 21L
+            )
+        )
+    }
 }
 
 private class FakeProviderSetupInputValidator(
@@ -204,6 +252,16 @@ private class FakeProviderSetupInputValidator(
             url = "https://example.com/playlist.m3u",
             name = "Playlist"
         )
+    ),
+    private val stalkerResult: Result<ValidatedStalkerProviderInput> = Result.success(
+        ValidatedStalkerProviderInput(
+            portalUrl = "https://portal.example.com",
+            macAddress = "00:1A:79:12:34:56",
+            name = "Provider",
+            deviceProfile = "MAG250",
+            timezone = "UTC",
+            locale = "en"
+        )
     )
 ) : ProviderSetupInputValidator {
     override fun validateXtream(
@@ -216,6 +274,15 @@ private class FakeProviderSetupInputValidator(
         url: String,
         name: String
     ): Result<ValidatedM3uProviderInput> = m3uResult
+
+    override fun validateStalker(
+        portalUrl: String,
+        macAddress: String,
+        name: String,
+        deviceProfile: String,
+        timezone: String,
+        locale: String
+    ): Result<ValidatedStalkerProviderInput> = stalkerResult
 }
 
 private data class XtreamCall(
@@ -236,9 +303,21 @@ private data class M3uCall(
     val id: Long?
 )
 
+private data class StalkerCall(
+    val portalUrl: String,
+    val macAddress: String,
+    val name: String,
+    val deviceProfile: String,
+    val timezone: String,
+    val locale: String,
+    val epgSyncMode: ProviderEpgSyncMode,
+    val id: Long?
+)
+
 private class FakeProviderRepository : ProviderRepository {
     var lastXtreamCall: XtreamCall? = null
     var lastM3uCall: M3uCall? = null
+    var lastStalkerCall: StalkerCall? = null
 
     override fun getProviders(): Flow<List<Provider>> = flowOf(emptyList())
 
@@ -278,6 +357,38 @@ private class FakeProviderRepository : ProviderRepository {
     ): Result<Provider> {
         lastM3uCall = M3uCall(url, name, epgSyncMode, m3uVodClassificationEnabled, id)
         return Result.success(provider(id = id ?: 2L, name = name, type = ProviderType.M3U, m3uUrl = url))
+    }
+
+    override suspend fun loginStalker(
+        portalUrl: String,
+        macAddress: String,
+        name: String,
+        deviceProfile: String,
+        timezone: String,
+        locale: String,
+        epgSyncMode: ProviderEpgSyncMode,
+        onProgress: ((String) -> Unit)?,
+        id: Long?
+    ): Result<Provider> {
+        lastStalkerCall = StalkerCall(
+            portalUrl = portalUrl,
+            macAddress = macAddress,
+            name = name,
+            deviceProfile = deviceProfile,
+            timezone = timezone,
+            locale = locale,
+            epgSyncMode = epgSyncMode,
+            id = id
+        )
+        return Result.success(
+            provider(id = id ?: 3L, name = name, type = ProviderType.STALKER_PORTAL).copy(
+                serverUrl = portalUrl,
+                stalkerMacAddress = macAddress,
+                stalkerDeviceProfile = deviceProfile,
+                stalkerDeviceTimezone = timezone,
+                stalkerDeviceLocale = locale
+            )
+        )
     }
 
     override suspend fun refreshProviderData(

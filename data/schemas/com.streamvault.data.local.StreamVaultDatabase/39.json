@@ -1,12 +1,12 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 38,
-    "identityHash": "169d96c0c53479ea0410496874769635",
+    "version": 39,
+    "identityHash": "bf7bd0c2c84cf26f5990eaaf01e6cac8",
     "entities": [
       {
         "tableName": "providers",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `type` TEXT NOT NULL, `server_url` TEXT NOT NULL, `username` TEXT NOT NULL, `password` TEXT NOT NULL, `m3u_url` TEXT NOT NULL, `epg_url` TEXT NOT NULL, `is_active` INTEGER NOT NULL, `max_connections` INTEGER NOT NULL, `expiration_date` INTEGER, `api_version` TEXT, `allowed_output_formats_json` TEXT NOT NULL, `epg_sync_mode` TEXT NOT NULL, `xtream_fast_sync_enabled` INTEGER NOT NULL, `m3u_vod_classification_enabled` INTEGER NOT NULL, `status` TEXT NOT NULL, `last_synced_at` INTEGER NOT NULL, `created_at` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `type` TEXT NOT NULL, `server_url` TEXT NOT NULL, `username` TEXT NOT NULL, `password` TEXT NOT NULL, `m3u_url` TEXT NOT NULL, `epg_url` TEXT NOT NULL, `stalker_mac_address` TEXT NOT NULL, `stalker_device_profile` TEXT NOT NULL, `stalker_device_timezone` TEXT NOT NULL, `stalker_device_locale` TEXT NOT NULL, `is_active` INTEGER NOT NULL, `max_connections` INTEGER NOT NULL, `expiration_date` INTEGER, `api_version` TEXT, `allowed_output_formats_json` TEXT NOT NULL, `epg_sync_mode` TEXT NOT NULL, `xtream_fast_sync_enabled` INTEGER NOT NULL, `m3u_vod_classification_enabled` INTEGER NOT NULL, `status` TEXT NOT NULL, `last_synced_at` INTEGER NOT NULL, `created_at` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "id",
@@ -53,6 +53,30 @@
           {
             "fieldPath": "epgUrl",
             "columnName": "epg_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stalkerMacAddress",
+            "columnName": "stalker_mac_address",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stalkerDeviceProfile",
+            "columnName": "stalker_device_profile",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stalkerDeviceTimezone",
+            "columnName": "stalker_device_timezone",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stalkerDeviceLocale",
+            "columnName": "stalker_device_locale",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -129,14 +153,15 @@
         },
         "indices": [
           {
-            "name": "index_providers_server_url_username",
+            "name": "index_providers_server_url_username_stalker_mac_address",
             "unique": true,
             "columnNames": [
               "server_url",
-              "username"
+              "username",
+              "stalker_mac_address"
             ],
             "orders": [],
-            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_providers_server_url_username` ON `${TABLE_NAME}` (`server_url`, `username`)"
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_providers_server_url_username_stalker_mac_address` ON `${TABLE_NAME}` (`server_url`, `username`, `stalker_mac_address`)"
           }
         ]
       },
@@ -4046,7 +4071,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '169d96c0c53479ea0410496874769635')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'bf7bd0c2c84cf26f5990eaaf01e6cac8')"
     ]
   }
 }

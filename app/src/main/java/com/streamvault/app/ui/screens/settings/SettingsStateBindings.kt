@@ -382,12 +382,20 @@ private fun buildCapabilitySummary(application: Application, provider: Provider)
                 application.getString(R.string.settings_capability_m3u_without_epg)
             }
         }
+        ProviderType.STALKER_PORTAL -> {
+            if (provider.epgUrl.isNotBlank()) {
+                "Portal catalog with MAC auth, XMLTV import, and on-demand playback link resolution."
+            } else {
+                "Portal catalog with MAC auth and on-demand guide/playback resolution."
+            }
+        }
     }
 }
 
 private fun Provider.sourceLabel(): String = when (type) {
     ProviderType.XTREAM_CODES -> "Xtream Codes"
     ProviderType.M3U -> "M3U Playlist"
+    ProviderType.STALKER_PORTAL -> "Stalker/MAG Portal"
 }
 
 private fun Provider.expirySummary(): String {
@@ -410,6 +418,13 @@ private fun Provider.archiveSummary(): String = when (type) {
             "M3U replay is limited without guide coverage."
         } else {
             "M3U replay depends on channel templates and guide alignment."
+        }
+    }
+    ProviderType.STALKER_PORTAL -> {
+        if (epgUrl.isBlank()) {
+            "Stalker replay depends on portal support; guide falls back to portal data."
+        } else {
+            "Stalker replay depends on portal support with optional XMLTV coverage."
         }
     }
 }

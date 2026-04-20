@@ -18,6 +18,8 @@ import com.streamvault.data.local.entity.SeriesEntity
 import com.streamvault.data.mapper.toDomain
 import com.streamvault.data.mapper.toEntity
 import com.streamvault.data.parser.M3uParser
+import com.streamvault.data.remote.stalker.StalkerApiService
+import com.streamvault.data.remote.stalker.StalkerProvider
 import com.streamvault.data.remote.dto.XtreamCategory
 import com.streamvault.data.remote.dto.XtreamSeriesItem
 import com.streamvault.data.remote.dto.XtreamStream
@@ -112,6 +114,7 @@ class SyncManager @Inject constructor(
     private val categoryDao: CategoryDao,
     private val catalogSyncDao: CatalogSyncDao,
     private val tmdbIdentityDao: TmdbIdentityDao,
+    private val stalkerApiService: StalkerApiService,
     private val xtreamJson: Json,
     private val m3uParser: M3uParser,
     private val epgRepository: EpgRepository,
@@ -359,6 +362,7 @@ class SyncManager @Inject constructor(
                 when (provider.type) {
                     ProviderType.XTREAM_CODES -> syncXtream(provider, force, onProgress)
                     ProviderType.M3U -> syncM3u(provider, force, onProgress)
+                    ProviderType.STALKER_PORTAL -> syncStalker(provider, force, onProgress)
                 }
             }
             providerDao.updateSyncTime(providerId, System.currentTimeMillis())
@@ -840,6 +844,124 @@ class SyncManager @Inject constructor(
         return if (warnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = warnings)
     }
 
+    private suspend fun syncStalker(
+        provider: Provider,
+        force: Boolean,
+        onProgress: ((String) -> Unit)?
+    ): SyncOutcome {
+        val warnings = mutableListOf<String>()
+        UrlSecurityPolicy.validateStalkerPortalUrl(provider.serverUrl)?.let { message ->
+            throw IllegalStateException(message)
+        }
+        progress(provider.id, onProgress, "Connecting to portal...")
+        val api = createStalkerSyncProvider(provider)
+        requireResult(api.authenticate(), "Failed to authenticate with portal")
+
+        var metadata = syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)
+        val now = System.currentTimeMillis()
+
+        if (force || ContentCachePolicy.shouldRefresh(metadata.lastLiveSuccess, ContentCachePolicy.CATALOG_TTL_MILLIS, now)) {
+            progress(provider.id, onProgress, "Downloading Live TV...")
+            val hiddenLiveCategoryIds = preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE).first()
+            val categories = requireResult(api.getLiveCategories(), "Failed to load live categories")
+            val channels = loadStalkerChannelsByCategory(api, categories, onProgress)
+            val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
+                providerId = provider.id,
+                visibleCategories = categories.map { category ->
+                    CategoryEntity(
+                        providerId = provider.id,
+                        categoryId = category.id,
+                        name = category.name,
+                        parentId = category.parentId,
+                        type = ContentType.LIVE,
+                        isAdult = category.isAdult
+                    )
+                },
+                visibleChannels = channels.map { it.toEntity() },
+                hiddenLiveCategoryIds = hiddenLiveCategoryIds
+            )
+            val acceptedCount = syncCatalogStore.replaceLiveCatalog(
+                providerId = provider.id,
+                categories = liveCatalog.categories,
+                channels = liveCatalog.channels
+            )
+            metadata = metadata.copy(
+                lastLiveSync = now,
+                lastLiveSuccess = now,
+                liveCount = acceptedCount
+            )
+            syncMetadataRepository.updateMetadata(metadata)
+        }
+
+        if (force || ContentCachePolicy.shouldRefresh(metadata.lastMovieSuccess, ContentCachePolicy.CATALOG_TTL_MILLIS, now)) {
+            progress(provider.id, onProgress, "Downloading Movies...")
+            val categories = requireResult(api.getVodCategories(), "Failed to load movie categories")
+            val movies = loadStalkerMoviesByCategory(api, categories, onProgress)
+            val acceptedCount = syncCatalogStore.replaceMovieCatalog(
+                providerId = provider.id,
+                categories = categories.map { category ->
+                    CategoryEntity(
+                        providerId = provider.id,
+                        categoryId = category.id,
+                        name = category.name,
+                        parentId = category.parentId,
+                        type = ContentType.MOVIE,
+                        isAdult = category.isAdult
+                    )
+                },
+                movies = movies.asSequence().map { it.toEntity() }
+            )
+            metadata = metadata.copy(
+                lastMovieSync = now,
+                lastMovieAttempt = now,
+                lastMovieSuccess = now,
+                movieCount = acceptedCount,
+                movieSyncMode = VodSyncMode.FULL,
+                movieWarningsCount = 0,
+                movieCatalogStale = false
+            )
+            syncMetadataRepository.updateMetadata(metadata)
+        }
+
+        if (force || ContentCachePolicy.shouldRefresh(metadata.lastSeriesSuccess, ContentCachePolicy.CATALOG_TTL_MILLIS, now)) {
+            progress(provider.id, onProgress, "Downloading Series...")
+            val categories = requireResult(api.getSeriesCategories(), "Failed to load series categories")
+            val series = loadStalkerSeriesByCategory(api, categories, onProgress)
+            val acceptedCount = syncCatalogStore.replaceSeriesCatalog(
+                providerId = provider.id,
+                categories = categories.map { category ->
+                    CategoryEntity(
+                        providerId = provider.id,
+                        categoryId = category.id,
+                        name = category.name,
+                        parentId = category.parentId,
+                        type = ContentType.SERIES,
+                        isAdult = category.isAdult
+                    )
+                },
+                series = series.asSequence().map { it.toEntity() }
+            )
+            metadata = metadata.copy(
+                lastSeriesSync = now,
+                lastSeriesSuccess = now,
+                seriesCount = acceptedCount
+            )
+            syncMetadataRepository.updateMetadata(metadata)
+        }
+
+        if (shouldSyncEpgUpfront(provider)) {
+            warnings += syncProviderEpg(
+                provider = provider,
+                metadata = metadata,
+                now = now,
+                force = force,
+                onProgress = onProgress
+            )
+        }
+
+        return if (warnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = warnings)
+    }
+
     private suspend fun syncProviderEpg(
         provider: Provider,
         metadata: SyncMetadata,
@@ -908,6 +1030,34 @@ class SyncManager @Inject constructor(
                     }
                 }
             }
+
+            ProviderType.STALKER_PORTAL -> {
+                val currentEpgUrl = providerDao.getById(provider.id)?.epgUrl ?: provider.epgUrl
+                if (!currentEpgUrl.isNullOrBlank() && (force || ContentCachePolicy.shouldRefresh(updatedMetadata.lastEpgSuccess, ContentCachePolicy.EPG_TTL_MILLIS, now))) {
+                    val epgValidationError = UrlSecurityPolicy.validateOptionalEpgUrl(currentEpgUrl)
+                    if (epgValidationError != null) {
+                        warnings.add(epgValidationError)
+                    } else {
+                        try {
+                            progress(provider.id, onProgress, "Downloading EPG...")
+                            retryTransient { epgRepository.refreshEpg(provider.id, currentEpgUrl) }
+                            updatedMetadata = updatedMetadata.copy(
+                                lastEpgSync = now,
+                                lastEpgSuccess = now,
+                                epgCount = programDao.countByProvider(provider.id)
+                            )
+                            syncMetadataRepository.updateMetadata(updatedMetadata)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.e(TAG, "EPG sync failed (non-fatal): ${sanitizeThrowableMessage(e)}")
+                            warnings.add("Portal XMLTV sync failed; live guide will fall back to on-demand Stalker data.")
+                        }
+                    }
+                } else {
+                    warnings.add("No XMLTV URL configured; live guide will use on-demand portal data when available.")
+                }
+            }
         }
 
         try {
@@ -939,13 +1089,22 @@ class SyncManager @Inject constructor(
                 }
             }
             ProviderType.M3U -> providerDao.getById(provider.id)?.epgUrl ?: provider.epgUrl
+            ProviderType.STALKER_PORTAL -> providerDao.getById(provider.id)?.epgUrl ?: provider.epgUrl
         }
         if (epgUrl.isBlank()) {
+            if (provider.type == ProviderType.STALKER_PORTAL) {
+                progress(provider.id, onProgress, "Refreshing external EPG sources...")
+                epgSourceRepository.refreshAllForProvider(provider.id)
+                progress(provider.id, onProgress, "Resolving EPG mappings...")
+                epgSourceRepository.resolveForProvider(provider.id, hiddenLiveCategoryIds)
+                return
+            }
             throw IllegalStateException("No EPG URL configured for this provider")
         }
         val validationError = when (provider.type) {
             ProviderType.XTREAM_CODES -> UrlSecurityPolicy.validateXtreamEpgUrl(epgUrl)
             ProviderType.M3U -> UrlSecurityPolicy.validateOptionalEpgUrl(epgUrl)
+            ProviderType.STALKER_PORTAL -> UrlSecurityPolicy.validateOptionalEpgUrl(epgUrl)
         }
         validationError?.let { message ->
             throw IllegalStateException(message)
@@ -1090,6 +1249,36 @@ class SyncManager @Inject constructor(
                         lastLiveSync = now,
                         lastLiveSuccess = now,
                         liveCount = stats.liveCount
+                )
+                syncMetadataRepository.updateMetadata(metadata)
+            }
+            ProviderType.STALKER_PORTAL -> {
+                progress(provider.id, onProgress, "Retrying Live TV...")
+                val api = createStalkerSyncProvider(provider)
+                val hiddenLiveCategoryIds = preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE).first()
+                val categories = requireResult(api.getLiveCategories(), "Failed to load live categories")
+                val channels = loadStalkerChannelsByCategory(api, categories, onProgress)
+                val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
+                    providerId = provider.id,
+                    visibleCategories = categories.map { category ->
+                        CategoryEntity(
+                            providerId = provider.id,
+                            categoryId = category.id,
+                            name = category.name,
+                            parentId = category.parentId,
+                            type = ContentType.LIVE,
+                            isAdult = category.isAdult
+                        )
+                    },
+                    visibleChannels = channels.map { it.toEntity() },
+                    hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                )
+                val acceptedCount = syncCatalogStore.replaceLiveCatalog(provider.id, liveCatalog.categories, liveCatalog.channels)
+                val metadata = (syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id))
+                    .copy(
+                        lastLiveSync = now,
+                        lastLiveSuccess = now,
+                        liveCount = acceptedCount
                     )
                 syncMetadataRepository.updateMetadata(metadata)
             }
@@ -1249,6 +1438,37 @@ class SyncManager @Inject constructor(
                         movieSyncMode = VodSyncMode.FULL,
                         movieWarningsCount = stats.warnings.size,
                         movieCatalogStale = false
+                )
+                syncMetadataRepository.updateMetadata(metadata)
+            }
+            ProviderType.STALKER_PORTAL -> {
+                progress(provider.id, onProgress, "Retrying Movies...")
+                val api = createStalkerSyncProvider(provider)
+                val categories = requireResult(api.getVodCategories(), "Failed to load movie categories")
+                val movies = loadStalkerMoviesByCategory(api, categories, onProgress)
+                val acceptedCount = syncCatalogStore.replaceMovieCatalog(
+                    providerId = provider.id,
+                    categories = categories.map { category ->
+                        CategoryEntity(
+                            providerId = provider.id,
+                            categoryId = category.id,
+                            name = category.name,
+                            parentId = category.parentId,
+                            type = ContentType.MOVIE,
+                            isAdult = category.isAdult
+                        )
+                    },
+                    movies = movies.asSequence().map { it.toEntity() }
+                )
+                val metadata = (syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id))
+                    .copy(
+                        lastMovieSync = now,
+                        lastMovieAttempt = now,
+                        lastMovieSuccess = now,
+                        movieCount = acceptedCount,
+                        movieSyncMode = VodSyncMode.FULL,
+                        movieWarningsCount = 0,
+                        movieCatalogStale = false
                     )
                 syncMetadataRepository.updateMetadata(metadata)
             }
@@ -1259,109 +1479,141 @@ class SyncManager @Inject constructor(
         provider: Provider,
         onProgress: ((String) -> Unit)?
     ) {
-        if (provider.type != ProviderType.XTREAM_CODES) {
-            throw IllegalStateException("Series retry is available only for Xtream providers")
-        }
-        progress(provider.id, onProgress, "Retrying Series...")
-        val useTextClassification = preferencesRepository.useXtreamTextClassification.first()
-        val enableBase64TextCompatibility = preferencesRepository.xtreamBase64TextCompatibility.first()
-        val api = createXtreamSyncProvider(provider, useTextClassification, enableBase64TextCompatibility)
-        val currentMetadata = syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)
-        val seriesSyncResult = syncXtreamSeriesCatalog(
-            provider = provider,
-            api = api,
-            existingMetadata = currentMetadata,
-            onProgress = onProgress
-        )
-
-        val now = System.currentTimeMillis()
-        val seriesSequentialStress = seriesSyncResult.strategyFeedback.segmentedStressDetected
-        val seriesProviderAdaptation = updateSequentialProviderAdaptation(
-            previousRemembered = currentMetadata.seriesSequentialFailuresRemembered,
-            previousHealthyStreak = currentMetadata.seriesHealthySyncStreak,
-            sawSequentialStress = seriesSequentialStress
-        )
-        val seriesAvoidFullUntil = updateAvoidFullUntil(
-            previousAvoidFullUntil = currentMetadata.seriesAvoidFullUntil,
-            now = now,
-            feedback = seriesSyncResult.strategyFeedback
-        )
-        when (val seriesResult = seriesSyncResult.catalogResult) {
-            is CatalogStrategyResult.Success -> {
-                val acceptedCount = seriesSyncResult.stagedSessionId?.let { sessionId ->
-                    syncCatalogStore.applyStagedSeriesCatalog(provider.id, sessionId, seriesSyncResult.categories)
-                    seriesSyncResult.stagedAcceptedCount
-                } ?: syncCatalogStore.replaceSeriesCatalog(
-                    providerId = provider.id,
-                    categories = seriesSyncResult.categories,
-                    series = seriesResult.items.asSequence().map { it.toEntity() }
+        when (provider.type) {
+            ProviderType.XTREAM_CODES -> {
+                progress(provider.id, onProgress, "Retrying Series...")
+                val useTextClassification = preferencesRepository.useXtreamTextClassification.first()
+                val enableBase64TextCompatibility = preferencesRepository.xtreamBase64TextCompatibility.first()
+                val api = createXtreamSyncProvider(provider, useTextClassification, enableBase64TextCompatibility)
+                val currentMetadata = syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)
+                val seriesSyncResult = syncXtreamSeriesCatalog(
+                    provider = provider,
+                    api = api,
+                    existingMetadata = currentMetadata,
+                    onProgress = onProgress
                 )
-                syncMetadataRepository.updateMetadata(
-                    currentMetadata.copy(
+
+                val now = System.currentTimeMillis()
+                val seriesSequentialStress = seriesSyncResult.strategyFeedback.segmentedStressDetected
+                val seriesProviderAdaptation = updateSequentialProviderAdaptation(
+                    previousRemembered = currentMetadata.seriesSequentialFailuresRemembered,
+                    previousHealthyStreak = currentMetadata.seriesHealthySyncStreak,
+                    sawSequentialStress = seriesSequentialStress
+                )
+                val seriesAvoidFullUntil = updateAvoidFullUntil(
+                    previousAvoidFullUntil = currentMetadata.seriesAvoidFullUntil,
+                    now = now,
+                    feedback = seriesSyncResult.strategyFeedback
+                )
+                when (val seriesResult = seriesSyncResult.catalogResult) {
+                    is CatalogStrategyResult.Success -> {
+                        val acceptedCount = seriesSyncResult.stagedSessionId?.let { sessionId ->
+                            syncCatalogStore.applyStagedSeriesCatalog(provider.id, sessionId, seriesSyncResult.categories)
+                            seriesSyncResult.stagedAcceptedCount
+                        } ?: syncCatalogStore.replaceSeriesCatalog(
+                            providerId = provider.id,
+                            categories = seriesSyncResult.categories,
+                            series = seriesResult.items.asSequence().map { it.toEntity() }
+                        )
+                        syncMetadataRepository.updateMetadata(
+                            currentMetadata.copy(
+                                lastSeriesSync = now,
+                                lastSeriesSuccess = now,
+                                seriesCount = acceptedCount,
+                                seriesAvoidFullUntil = seriesAvoidFullUntil,
+                                seriesSequentialFailuresRemembered = seriesProviderAdaptation.rememberSequential,
+                                seriesHealthySyncStreak = seriesProviderAdaptation.healthyStreak
+                            )
+                        )
+                    }
+                    is CatalogStrategyResult.Partial -> {
+                        val acceptedCount = seriesSyncResult.stagedSessionId?.let { sessionId ->
+                            syncCatalogStore.applyStagedSeriesCatalog(provider.id, sessionId, seriesSyncResult.categories)
+                            seriesSyncResult.stagedAcceptedCount
+                        } ?: syncCatalogStore.replaceSeriesCatalog(
+                            providerId = provider.id,
+                            categories = seriesSyncResult.categories,
+                            series = seriesResult.items.asSequence().map { it.toEntity() }
+                        )
+                        syncMetadataRepository.updateMetadata(
+                            currentMetadata.copy(
+                                lastSeriesSync = now,
+                                seriesCount = acceptedCount,
+                                seriesAvoidFullUntil = seriesAvoidFullUntil,
+                                seriesSequentialFailuresRemembered = currentMetadata.seriesSequentialFailuresRemembered || seriesSequentialStress,
+                                seriesHealthySyncStreak = 0
+                            )
+                        )
+                    }
+                    is CatalogStrategyResult.EmptyValid -> {
+                        val existingSeriesCount = seriesDao.getCount(provider.id).first()
+                        syncMetadataRepository.updateMetadata(
+                            currentMetadata.copy(
+                                seriesAvoidFullUntil = seriesAvoidFullUntil,
+                                seriesSequentialFailuresRemembered = currentMetadata.seriesSequentialFailuresRemembered || seriesSequentialStress,
+                                seriesHealthySyncStreak = 0
+                            )
+                        )
+                        throw IllegalStateException(
+                            if (existingSeriesCount > 0) {
+                                "Series refresh returned an empty catalog; existing library was preserved."
+                            } else {
+                                "Series catalog was empty."
+                            }
+                        )
+                    }
+                    is CatalogStrategyResult.Failure -> {
+                        val enteringLazyMode = seriesResult.strategyName == "lazy_by_category" && !seriesSyncResult.categories.isNullOrEmpty()
+                        if (enteringLazyMode) {
+                            seriesSyncResult.categories?.let { syncCatalogStore.replaceCategories(provider.id, "SERIES", it) }
+                        }
+                        syncMetadataRepository.updateMetadata(
+                            currentMetadata.copy(
+                                lastSeriesSync = if (enteringLazyMode) now else currentMetadata.lastSeriesSync,
+                                seriesAvoidFullUntil = seriesAvoidFullUntil,
+                                seriesSequentialFailuresRemembered = currentMetadata.seriesSequentialFailuresRemembered || seriesSequentialStress || shouldRememberSequentialPreference(seriesResult.error),
+                                seriesHealthySyncStreak = 0
+                            )
+                        )
+                        if (!enteringLazyMode) {
+                            throw IllegalStateException(
+                                syncErrorSanitizer.userMessage(seriesResult.error, "Failed to fetch series list"),
+                                seriesResult.error
+                            )
+                        }
+                    }
+                }
+            }
+            ProviderType.STALKER_PORTAL -> {
+                progress(provider.id, onProgress, "Retrying Series...")
+                val api = createStalkerSyncProvider(provider)
+                val categories = requireResult(api.getSeriesCategories(), "Failed to load series categories")
+                val series = loadStalkerSeriesByCategory(api, categories, onProgress)
+                val acceptedCount = syncCatalogStore.replaceSeriesCatalog(
+                    providerId = provider.id,
+                    categories = categories.map { category ->
+                        CategoryEntity(
+                            providerId = provider.id,
+                            categoryId = category.id,
+                            name = category.name,
+                            parentId = category.parentId,
+                            type = ContentType.SERIES,
+                            isAdult = category.isAdult
+                        )
+                    },
+                    series = series.asSequence().map { it.toEntity() }
+                )
+                val now = System.currentTimeMillis()
+                val metadata = (syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id))
+                    .copy(
                         lastSeriesSync = now,
                         lastSeriesSuccess = now,
-                        seriesCount = acceptedCount,
-                        seriesAvoidFullUntil = seriesAvoidFullUntil,
-                        seriesSequentialFailuresRemembered = seriesProviderAdaptation.rememberSequential,
-                        seriesHealthySyncStreak = seriesProviderAdaptation.healthyStreak
+                        seriesCount = acceptedCount
                     )
-                )
+                syncMetadataRepository.updateMetadata(metadata)
             }
-            is CatalogStrategyResult.Partial -> {
-                val acceptedCount = seriesSyncResult.stagedSessionId?.let { sessionId ->
-                    syncCatalogStore.applyStagedSeriesCatalog(provider.id, sessionId, seriesSyncResult.categories)
-                    seriesSyncResult.stagedAcceptedCount
-                } ?: syncCatalogStore.replaceSeriesCatalog(
-                    providerId = provider.id,
-                    categories = seriesSyncResult.categories,
-                    series = seriesResult.items.asSequence().map { it.toEntity() }
-                )
-                syncMetadataRepository.updateMetadata(
-                    currentMetadata.copy(
-                        lastSeriesSync = now,
-                        seriesCount = acceptedCount,
-                        seriesAvoidFullUntil = seriesAvoidFullUntil,
-                        seriesSequentialFailuresRemembered = currentMetadata.seriesSequentialFailuresRemembered || seriesSequentialStress,
-                        seriesHealthySyncStreak = 0
-                    )
-                )
-            }
-            is CatalogStrategyResult.EmptyValid -> {
-                val existingSeriesCount = seriesDao.getCount(provider.id).first()
-                syncMetadataRepository.updateMetadata(
-                    currentMetadata.copy(
-                        seriesAvoidFullUntil = seriesAvoidFullUntil,
-                        seriesSequentialFailuresRemembered = currentMetadata.seriesSequentialFailuresRemembered || seriesSequentialStress,
-                        seriesHealthySyncStreak = 0
-                    )
-                )
-                throw IllegalStateException(
-                    if (existingSeriesCount > 0) {
-                        "Series refresh returned an empty catalog; existing library was preserved."
-                    } else {
-                        "Series catalog was empty."
-                    }
-                )
-            }
-            is CatalogStrategyResult.Failure -> {
-                val enteringLazyMode = seriesResult.strategyName == "lazy_by_category" && !seriesSyncResult.categories.isNullOrEmpty()
-                if (enteringLazyMode) {
-                    seriesSyncResult.categories?.let { syncCatalogStore.replaceCategories(provider.id, "SERIES", it) }
-                }
-                syncMetadataRepository.updateMetadata(
-                    currentMetadata.copy(
-                        lastSeriesSync = if (enteringLazyMode) now else currentMetadata.lastSeriesSync,
-                        seriesAvoidFullUntil = seriesAvoidFullUntil,
-                        seriesSequentialFailuresRemembered = currentMetadata.seriesSequentialFailuresRemembered || seriesSequentialStress || shouldRememberSequentialPreference(seriesResult.error),
-                        seriesHealthySyncStreak = 0
-                    )
-                )
-                if (!enteringLazyMode) {
-                    throw IllegalStateException(
-                        syncErrorSanitizer.userMessage(seriesResult.error, "Failed to fetch series list"),
-                        seriesResult.error
-                    )
-                }
+            ProviderType.M3U -> {
+                throw IllegalStateException("Series retry is unavailable for this provider")
             }
         }
     }
@@ -1718,6 +1970,68 @@ class SyncManager @Inject constructor(
             useTextClassification = useTextClassification,
             enableBase64TextCompatibility = enableBase64TextCompatibility
         )
+    }
+
+    private fun createStalkerSyncProvider(provider: Provider): StalkerProvider {
+        return StalkerProvider(
+            providerId = provider.id,
+            api = stalkerApiService,
+            portalUrl = provider.serverUrl,
+            macAddress = provider.stalkerMacAddress,
+            deviceProfile = provider.stalkerDeviceProfile,
+            timezone = provider.stalkerDeviceTimezone,
+            locale = provider.stalkerDeviceLocale
+        )
+    }
+
+    private suspend fun loadStalkerChannelsByCategory(
+        api: StalkerProvider,
+        categories: List<com.streamvault.domain.model.Category>,
+        onProgress: ((String) -> Unit)?
+    ): List<Channel> {
+        if (categories.isEmpty()) {
+            return requireResult(api.getLiveStreams(null), "Failed to load live channels")
+        }
+        return categories.flatMap { category ->
+            progress(api.providerId, onProgress, "Loading ${category.name}...")
+            requireResult(api.getLiveStreams(category.id), "Failed to load live channels for ${category.name}")
+        }.distinctBy { it.streamId }
+    }
+
+    private suspend fun loadStalkerMoviesByCategory(
+        api: StalkerProvider,
+        categories: List<com.streamvault.domain.model.Category>,
+        onProgress: ((String) -> Unit)?
+    ): List<Movie> {
+        if (categories.isEmpty()) {
+            return requireResult(api.getVodStreams(null), "Failed to load movies")
+        }
+        return categories.flatMap { category ->
+            progress(api.providerId, onProgress, "Loading ${category.name}...")
+            requireResult(api.getVodStreams(category.id), "Failed to load movies for ${category.name}")
+        }.distinctBy { it.streamId }
+    }
+
+    private suspend fun loadStalkerSeriesByCategory(
+        api: StalkerProvider,
+        categories: List<com.streamvault.domain.model.Category>,
+        onProgress: ((String) -> Unit)?
+    ): List<Series> {
+        if (categories.isEmpty()) {
+            return requireResult(api.getSeriesList(null), "Failed to load series")
+        }
+        return categories.flatMap { category ->
+            progress(api.providerId, onProgress, "Loading ${category.name}...")
+            requireResult(api.getSeriesList(category.id), "Failed to load series for ${category.name}")
+        }.distinctBy { it.seriesId }
+    }
+
+    private fun <T> requireResult(result: com.streamvault.domain.model.Result<T>, fallbackMessage: String): T {
+        return when (result) {
+            is com.streamvault.domain.model.Result.Success -> result.data
+            is com.streamvault.domain.model.Result.Error -> throw IllegalStateException(result.message.ifBlank { fallbackMessage }, result.exception)
+            is com.streamvault.domain.model.Result.Loading -> throw IllegalStateException("Unexpected loading state")
+        }
     }
 
     private fun logXtreamCatalogFallback(

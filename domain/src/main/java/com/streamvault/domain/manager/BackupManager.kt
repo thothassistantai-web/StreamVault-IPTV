@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
 import com.streamvault.domain.model.Result
 
 data class BackupData(
-    val version: Int = 4,
+    val version: Int = 5,
     val checksum: String? = null,
     val preferences: Map<String, String>? = null,
     val providers: List<Provider>? = null,
@@ -23,6 +23,7 @@ data class BackupData(
 data class ProtectedCategoryBackup(
     val providerServerUrl: String,
     val providerUsername: String,
+    val providerStalkerMacAddress: String? = null,
     val categoryId: Long,
     val categoryName: String,
     val type: ContentType
@@ -31,6 +32,7 @@ data class ProtectedCategoryBackup(
 data class ScheduledRecordingBackup(
     val providerServerUrl: String,
     val providerUsername: String,
+    val providerStalkerMacAddress: String? = null,
     val channelId: Long,
     val channelName: String,
     val streamUrl: String,

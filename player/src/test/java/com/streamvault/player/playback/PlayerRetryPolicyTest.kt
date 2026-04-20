@@ -52,4 +52,18 @@ class PlayerRetryPolicyTest {
         val error = IllegalStateException("decoder init failed")
         assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 1)).isFalse()
     }
+
+    @Test
+    fun `format unsupported after playback start retries once`() {
+        val error = IllegalStateException("video format unsupported")
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 1)).isTrue()
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 2)).isFalse()
+        assertThat(policy.maxAttempts(error, playbackStarted = true)).isEqualTo(1)
+    }
+
+    @Test
+    fun `decoder init failure after playback start still does not retry`() {
+        val error = IllegalStateException("decoder init failed")
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 1)).isFalse()
+    }
 }

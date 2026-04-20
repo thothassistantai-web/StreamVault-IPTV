@@ -36,12 +36,7 @@ class PlayerRetryPolicy(
         attempt: Int
     ): Boolean {
         val category = PlayerErrorClassifier.classify(error)
-        if (playbackStarted && category in setOf(
-                PlaybackErrorCategory.DECODER,
-                PlaybackErrorCategory.FORMAT_UNSUPPORTED,
-                PlaybackErrorCategory.DRM
-            )
-        ) {
+        if (playbackStarted && category in setOf(PlaybackErrorCategory.DECODER, PlaybackErrorCategory.DRM)) {
             return false
         }
         val maxAttempts = maxAttemptsFor(error, streamContext, playbackStarted)
@@ -104,7 +99,7 @@ class PlayerRetryPolicy(
             PlaybackErrorCategory.CLEAR_TEXT_BLOCKED,
             PlaybackErrorCategory.SSL,
             PlaybackErrorCategory.HTTP_AUTH,
-            PlaybackErrorCategory.FORMAT_UNSUPPORTED -> 0
+            PlaybackErrorCategory.FORMAT_UNSUPPORTED -> if (playbackStarted) 1 else 0
 
             PlaybackErrorCategory.LIVE_WINDOW -> 1
             PlaybackErrorCategory.HTTP_SERVER -> if (streamContext.isLive) 3 else 2

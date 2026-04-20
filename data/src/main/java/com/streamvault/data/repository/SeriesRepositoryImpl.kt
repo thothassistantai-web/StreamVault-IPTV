@@ -4,6 +4,8 @@ import android.database.sqlite.SQLiteException
 import com.streamvault.data.local.dao.*
 import com.streamvault.data.local.entity.*
 import com.streamvault.data.mapper.*
+import com.streamvault.data.remote.stalker.StalkerApiService
+import com.streamvault.data.remote.stalker.StalkerProvider
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.XtreamProvider
 import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
@@ -47,6 +49,7 @@ class SeriesRepositoryImpl @Inject constructor(
     private val favoriteDao: FavoriteDao,
     private val playbackHistoryDao: PlaybackHistoryDao,
     private val providerDao: ProviderDao,
+    private val stalkerApiService: StalkerApiService,
     private val xtreamApiService: XtreamApiService,
     private val credentialCrypto: CredentialCrypto,
     private val preferencesRepository: PreferencesRepository,
@@ -278,18 +281,21 @@ class SeriesRepositoryImpl @Inject constructor(
         val provider = providerDao.getById(providerId)
             ?: return Result.error("Provider not found")
 
-        // M3U and other non-Xtream providers have no standardized series-detail endpoint.
-        if (provider.type != ProviderType.XTREAM_CODES || seriesEntity.seriesId <= 0L) {
+        if (seriesEntity.seriesId <= 0L) {
             return Result.success(buildSeriesWithPersistedEpisodes(seriesEntity))
         }
 
-        val xtreamProvider = try {
-            getOrCreateXtreamProvider(providerId, provider)
+        val remoteResult = try {
+            when (provider.type) {
+                ProviderType.XTREAM_CODES -> getOrCreateXtreamProvider(providerId, provider).getSeriesInfo(seriesEntity.seriesId)
+                ProviderType.STALKER_PORTAL -> createStalkerProvider(providerId, provider).getSeriesInfo(seriesEntity.seriesId)
+                ProviderType.M3U -> return Result.success(buildSeriesWithPersistedEpisodes(seriesEntity))
+            }
         } catch (e: Exception) {
             return Result.error(e.message ?: "Failed to access provider credentials", e)
         }
 
-        return when (val remoteResult = xtreamProvider.getSeriesInfo(seriesEntity.seriesId)) {
+        return when (remoteResult) {
             is Result.Success -> {
                 val remoteSeries = remoteResult.data
 
@@ -1023,5 +1029,17 @@ class SeriesRepositoryImpl @Inject constructor(
                 )
             }
         }!!.provider
+    }
+
+    private fun createStalkerProvider(providerId: Long, provider: ProviderEntity): StalkerProvider {
+        return StalkerProvider(
+            providerId = providerId,
+            api = stalkerApiService,
+            portalUrl = provider.serverUrl,
+            macAddress = provider.stalkerMacAddress,
+            deviceProfile = provider.stalkerDeviceProfile,
+            timezone = provider.stalkerDeviceTimezone,
+            locale = provider.stalkerDeviceLocale
+        )
     }
 }

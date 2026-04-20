@@ -20,6 +20,7 @@ import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.SyncMetadata
 import com.streamvault.domain.repository.EpgRepository
 import com.streamvault.domain.repository.EpgSourceRepository
+import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.preferences.PreferencesRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -84,6 +85,11 @@ class SyncManagerTest {
         override suspend fun activate(id: Long) = Unit
         override suspend fun setActive(id: Long) = Unit
         override suspend fun getByUrlAndUser(url: String, user: String): ProviderEntity? = null
+        override suspend fun getByUrlAndUser(
+            serverUrl: String,
+            username: String,
+            stalkerMacAddress: String
+        ): ProviderEntity? = null
         override suspend fun updateEpgUrl(id: Long, epgUrl: String) = Unit
     }
 
@@ -170,6 +176,7 @@ class SyncManagerTest {
     private val epgRepo: EpgRepository = mock()
     private val epgSourceRepo: EpgSourceRepository = mock()
     private val preferencesRepo: PreferencesRepository = mock()
+    private val stalkerApiService: StalkerApiService = mock()
     private val xtreamBackend = FakeXtreamBackend()
     private val xtreamJson = Json {
         ignoreUnknownKeys = true
@@ -237,6 +244,7 @@ class SyncManagerTest {
         categoryDao = categoryDao,
         catalogSyncDao = catalogSyncDao,
         tmdbIdentityDao = tmdbIdentityDao,
+        stalkerApiService = stalkerApiService,
         xtreamJson = xtreamJson,
         m3uParser = M3uParser(),
         epgRepository = epgRepo,

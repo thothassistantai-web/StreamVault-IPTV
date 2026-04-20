@@ -6,6 +6,8 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.streamvault.data.remote.NetworkTimeoutConfig
+import com.streamvault.data.remote.stalker.OkHttpStalkerApiService
+import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.OkHttpXtreamApiService
 import com.streamvault.data.remote.xtream.XtreamUrlFactory
@@ -72,6 +74,11 @@ object NetworkModule {
     @Singleton
     fun provideXtreamApiService(okHttpClient: OkHttpClient, xtreamJson: Json): XtreamApiService =
         OkHttpXtreamApiService(okHttpClient, xtreamJson)
+
+    @Provides
+    @Singleton
+    fun provideStalkerApiService(okHttpClient: OkHttpClient, xtreamJson: Json): StalkerApiService =
+        OkHttpStalkerApiService(okHttpClient, xtreamJson)
 
     @Provides
     @Singleton

@@ -122,6 +122,18 @@ private class FakeSyncProviderRepository(
         id: Long?
     ): Result<Provider> = error("Not used in test")
 
+    override suspend fun loginStalker(
+        portalUrl: String,
+        macAddress: String,
+        name: String,
+        deviceProfile: String,
+        timezone: String,
+        locale: String,
+        epgSyncMode: ProviderEpgSyncMode,
+        onProgress: ((String) -> Unit)?,
+        id: Long?
+    ): Result<Provider> = error("Not used in test")
+
     override suspend fun refreshProviderData(
         providerId: Long,
         force: Boolean,
