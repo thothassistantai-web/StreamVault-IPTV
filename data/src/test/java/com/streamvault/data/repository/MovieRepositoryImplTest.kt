@@ -17,6 +17,7 @@ import com.streamvault.data.local.entity.ProviderEntity
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.data.remote.dto.XtreamCategory
 import com.streamvault.data.remote.dto.XtreamStream
+import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.data.security.CredentialCrypto

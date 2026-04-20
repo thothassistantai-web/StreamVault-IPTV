@@ -105,7 +105,7 @@ enum class SyncRepairSection {
 
 @Singleton
 class SyncManager @Inject constructor(
-    @ApplicationContext private val applicationContext: Context,
+    @param:ApplicationContext private val applicationContext: Context,
     private val providerDao: ProviderDao,
     private val channelDao: ChannelDao,
     private val movieDao: MovieDao,

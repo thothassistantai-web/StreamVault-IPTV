@@ -9,6 +9,7 @@ import com.streamvault.data.local.dao.ProgramDao
 import com.streamvault.data.local.dao.ProviderEpgSourceDao
 import com.streamvault.data.local.entity.ChannelEntity
 import com.streamvault.data.local.entity.ChannelEpgMappingEntity
+import com.streamvault.data.local.entity.ChannelGuideLookupEntity
 import com.streamvault.data.local.entity.EpgChannelEntity
 import com.streamvault.data.local.entity.EpgProgrammeEntity
 import com.streamvault.data.local.entity.ProgramBrowseEntity
@@ -306,8 +307,8 @@ class EpgResolutionEngineTest {
                 confidence = 1.0f, updatedAt = now
             )
         ))
-        whenever(channelDao.getByProviderSync(PROVIDER_ID)).thenReturn(listOf(
-            makeChannel(id = 1, name = "BBC One", epgChannelId = "bbc1")
+        whenever(channelDao.getGuideLookupsByIds(listOf(1L))).thenReturn(listOf(
+            makeGuideLookup(id = 1, epgChannelId = "bbc1")
         ))
         whenever(epgProgrammeDao.getForChannels(SOURCE_1, listOf("bbc1"), startTime, endTime)).thenReturn(listOf(
             EpgProgrammeEntity(id = 1, epgSourceId = SOURCE_1, xmltvChannelId = "bbc1", startTime = startTime, endTime = endTime, title = "News")
@@ -334,8 +335,8 @@ class EpgResolutionEngineTest {
                 confidence = 0.5f, updatedAt = now
             )
         ))
-        whenever(channelDao.getByProviderSync(PROVIDER_ID)).thenReturn(listOf(
-            makeChannel(id = 1, name = "Local Channel", epgChannelId = "local.ch1")
+        whenever(channelDao.getGuideLookupsByIds(listOf(1L))).thenReturn(listOf(
+            makeGuideLookup(id = 1, epgChannelId = "local.ch1")
         ))
         whenever(programDao.getForChannelsSync(PROVIDER_ID, listOf("local.ch1"), startTime, endTime)).thenReturn(listOf(
             ProgramBrowseEntity(id = 1, providerId = PROVIDER_ID, channelId = "local.ch1", title = "Local News", startTime = startTime, endTime = endTime)
@@ -356,8 +357,8 @@ class EpgResolutionEngineTest {
                 sourceType = EpgSourceType.NONE.name, updatedAt = now
             )
         ))
-        whenever(channelDao.getByProviderSync(PROVIDER_ID)).thenReturn(listOf(
-            makeChannel(id = 1, name = "Mystery Channel", epgChannelId = null)
+        whenever(channelDao.getGuideLookupsByIds(listOf(1L))).thenReturn(listOf(
+            makeGuideLookup(id = 1, epgChannelId = null)
         ))
 
         val result = engine.getResolvedProgrammes(PROVIDER_ID, listOf(1L), now - 3600_000, now + 3600_000)
@@ -378,5 +379,15 @@ class EpgResolutionEngineTest {
         epgChannelId = epgChannelId,
         streamId = streamId,
         providerId = PROVIDER_ID
+    )
+
+    private fun makeGuideLookup(
+        id: Long,
+        epgChannelId: String? = null,
+        streamId: Long = 0L
+    ) = ChannelGuideLookupEntity(
+        id = id,
+        streamId = streamId,
+        epgChannelId = epgChannelId
     )
 }
