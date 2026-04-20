@@ -216,6 +216,15 @@ private data class CombinedGuideRequest(
     val providerIds: List<Long>
 )
 
+private data class GuideFallbackContext(
+    val providerId: Long,
+    val selectedCategoryId: Long,
+    val guideAnchorTime: Long,
+    val guideWindowStart: Long,
+    val guideWindowEnd: Long,
+    val visibleChannelIds: List<Long>
+)
+
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class EpgViewModel @Inject constructor(
@@ -235,7 +244,8 @@ class EpgViewModel @Inject constructor(
 
     companion object {
         const val MAX_CHANNELS = 60
-        private const val MAX_XTREAM_GUIDE_FALLBACK_CHANNELS = 24
+        private const val MAX_XTREAM_GUIDE_FALLBACK_CHANNELS = 10
+        private const val MAX_XTREAM_GUIDE_FALLBACK_PROGRAMS = 6
         const val LOOKBACK_MS = 60 * 60 * 1000L
         const val LOOKAHEAD_MS = 6 * 60 * 60 * 1000L
         const val HALF_HOUR_SHIFT_MS = 30 * 60 * 1000L
@@ -264,6 +274,7 @@ class EpgViewModel @Inject constructor(
     private val _programReminderUiState = MutableStateFlow(ProgramReminderUiState())
     val programReminderUiState: StateFlow<ProgramReminderUiState> = _programReminderUiState.asStateFlow()
     private var overrideSearchJob: Job? = null
+    private var guideFallbackJob: Job? = null
     private var combinedCategoriesById: Map<Long, CombinedCategory> = emptyMap()
 
     init {
@@ -620,6 +631,7 @@ class EpgViewModel @Inject constructor(
                 old.first == new.first && old.second?.id == new.second?.id
             }.collectLatest { (activeSource, activeProvider) ->
                 if (activeSource == null && activeProvider == null) {
+                    guideFallbackJob?.cancel()
                     baseGuideSnapshot.value = null
                     _uiState.update {
                         it.copy(
@@ -765,6 +777,13 @@ class EpgViewModel @Inject constructor(
                         favoriteChannelIds = favoriteIds
                     )
                 }.collectLatest { channelSelection ->
+                    val visibleChannels = channelSelection.channels.take(MAX_CHANNELS)
+                    val guideResult = loadGuidePrograms(
+                        providerId = provider.id,
+                        channels = visibleChannels,
+                        windowStart = request.windowStart,
+                        windowEnd = request.windowEnd
+                    )
                     publishGuideSnapshot(
                         providerId = provider.id,
                         providerName = provider.name,
@@ -776,15 +795,19 @@ class EpgViewModel @Inject constructor(
                         categories = categories,
                         request = request,
                         channelSelection = channelSelection,
-                        guideResult = loadGuidePrograms(
-                            provider = provider,
+                        guideResult = guideResult
+                    )
+                    scheduleGuideFallbackEnrichment(
+                        snapshotContext = GuideFallbackContext(
                             providerId = provider.id,
-                            channels = channelSelection.channels.take(MAX_CHANNELS),
-                            categoryId = request.resolvedCategoryId,
-                            favoritesOnly = request.favoritesOnly,
-                            windowStart = request.windowStart,
-                            windowEnd = request.windowEnd
-                        )
+                            selectedCategoryId = request.resolvedCategoryId,
+                            guideAnchorTime = request.anchorTime,
+                            guideWindowStart = request.windowStart,
+                            guideWindowEnd = request.windowEnd,
+                            visibleChannelIds = visibleChannels.map(Channel::id)
+                        ),
+                        channels = visibleChannels,
+                        existingProgramsByChannel = guideResult.programsByChannel
                     )
                     finalizeStartupCategory(request.resolvedCategoryId)
                 }
@@ -885,6 +908,12 @@ class EpgViewModel @Inject constructor(
                     favoriteChannelIds = favoriteIds
                 )
             }.collectLatest { channelSelection ->
+                val visibleChannels = channelSelection.channels.take(MAX_CHANNELS)
+                val guideResult = loadCombinedGuidePrograms(
+                    channels = visibleChannels,
+                    windowStart = request.windowStart,
+                    windowEnd = request.windowEnd
+                )
                 publishGuideSnapshot(
                     providerId = 0L,
                     providerName = profileName,
@@ -893,11 +922,19 @@ class EpgViewModel @Inject constructor(
                     categories = categories,
                     request = request,
                     channelSelection = channelSelection,
-                    guideResult = loadCombinedGuidePrograms(
-                        channels = channelSelection.channels.take(MAX_CHANNELS),
-                        windowStart = request.windowStart,
-                        windowEnd = request.windowEnd
-                    )
+                    guideResult = guideResult
+                )
+                scheduleGuideFallbackEnrichment(
+                    snapshotContext = GuideFallbackContext(
+                        providerId = 0L,
+                        selectedCategoryId = request.resolvedCategoryId,
+                        guideAnchorTime = request.anchorTime,
+                        guideWindowStart = request.windowStart,
+                        guideWindowEnd = request.windowEnd,
+                        visibleChannelIds = visibleChannels.map(Channel::id)
+                    ),
+                    channels = visibleChannels,
+                    existingProgramsByChannel = guideResult.programsByChannel
                 )
                 finalizeStartupCategory(request.resolvedCategoryId)
             }
@@ -1203,11 +1240,8 @@ class EpgViewModel @Inject constructor(
     }
 
     private suspend fun loadGuidePrograms(
-        provider: com.streamvault.domain.model.Provider,
         providerId: Long,
         channels: List<Channel>,
-        categoryId: Long,
-        favoritesOnly: Boolean,
         windowStart: Long,
         windowEnd: Long
     ): GuideProgramsResult {
@@ -1243,20 +1277,9 @@ class EpgViewModel @Inject constructor(
 
             val programsByChannel = resolvedPrograms + legacyPrograms
 
-            // 3. Xtream on-demand fallback for still-missing channels
-            val fallbackProgramsByChannel = fetchXtreamGuideFallback(
-                provider = provider,
-                providerId = providerId,
-                channels = channels,
-                existingProgramsByChannel = programsByChannel,
-                windowStart = windowStart,
-                windowEnd = windowEnd
-            )
-            val mergedProgramsByChannel = programsByChannel + fallbackProgramsByChannel
-
             GuideProgramsResult(
-                programsByChannel = mergedProgramsByChannel,
-                failedCount = guideKeys.count { lookupKey -> mergedProgramsByChannel[lookupKey].isNullOrEmpty() }
+                programsByChannel = programsByChannel,
+                failedCount = countMissingGuideEntries(channels, programsByChannel)
             )
         }
     }
@@ -1276,19 +1299,9 @@ class EpgViewModel @Inject constructor(
 
         val mergedProgramsByChannel = buildMap<String, List<Program>> {
             groupedPrograms.forEach { (providerId, providerChannels) ->
-                val provider = providerRepository.getProvider(providerId)
-                    ?: com.streamvault.domain.model.Provider(
-                        id = providerId,
-                        name = "M3U Provider",
-                        type = com.streamvault.domain.model.ProviderType.M3U,
-                        serverUrl = ""
-                    )
                 val result = loadGuidePrograms(
-                    provider = provider,
                     providerId = providerId,
                     channels = providerChannels,
-                    categoryId = ChannelRepository.ALL_CHANNELS_ID,
-                    favoritesOnly = false,
                     windowStart = windowStart,
                     windowEnd = windowEnd
                 )
@@ -1298,8 +1311,59 @@ class EpgViewModel @Inject constructor(
         val guideKeys = channels.mapNotNull(Channel::guideLookupKey).distinct()
         return GuideProgramsResult(
             programsByChannel = mergedProgramsByChannel,
-            failedCount = guideKeys.count { lookupKey -> mergedProgramsByChannel[lookupKey].isNullOrEmpty() }
+            failedCount = countMissingGuideEntries(channels, mergedProgramsByChannel)
         )
+    }
+
+    private fun scheduleGuideFallbackEnrichment(
+        snapshotContext: GuideFallbackContext,
+        channels: List<Channel>,
+        existingProgramsByChannel: Map<String, List<Program>>
+    ) {
+        guideFallbackJob?.cancel()
+        if (channels.isEmpty()) {
+            guideFallbackJob = null
+            return
+        }
+
+        guideFallbackJob = viewModelScope.launch {
+            val fallbackProgramsByChannel = buildMap {
+                channels.groupBy(Channel::providerId).forEach { (providerId, providerChannels) ->
+                    val provider = providerRepository.getProvider(providerId) ?: return@forEach
+                    val providerPrograms = fetchXtreamGuideFallback(
+                        provider = provider,
+                        providerId = providerId,
+                        channels = providerChannels,
+                        existingProgramsByChannel = existingProgramsByChannel + this,
+                        windowStart = snapshotContext.guideWindowStart,
+                        windowEnd = snapshotContext.guideWindowEnd
+                    )
+                    putAll(providerPrograms)
+                }
+            }
+            if (fallbackProgramsByChannel.isEmpty()) {
+                return@launch
+            }
+
+            baseGuideSnapshot.update { currentSnapshot ->
+                if (currentSnapshot == null || !currentSnapshot.matches(snapshotContext)) {
+                    return@update currentSnapshot
+                }
+
+                val mergedProgramsByChannel = currentSnapshot.baseProgramsByChannel + fallbackProgramsByChannel
+                val visibleChannels = currentSnapshot.visibleChannels
+                val channelsWithSchedule = countChannelsWithSchedule(visibleChannels, mergedProgramsByChannel)
+                val hasUpcomingData = hasUpcomingGuideData(mergedProgramsByChannel, currentSnapshot.guideWindowStart)
+
+                currentSnapshot.copy(
+                    baseProgramsByChannel = mergedProgramsByChannel,
+                    failedScheduleCount = countMissingGuideEntries(visibleChannels, mergedProgramsByChannel),
+                    lastUpdatedAt = System.currentTimeMillis(),
+                    baseChannelsWithSchedule = channelsWithSchedule,
+                    baseGuideStale = visibleChannels.isNotEmpty() && (channelsWithSchedule == 0 || !hasUpcomingData)
+                )
+            }
+        }
     }
 
     private suspend fun fetchXtreamGuideFallback(
@@ -1333,7 +1397,7 @@ class EpgViewModel @Inject constructor(
                     epgChannelId = channel.epgChannelId
                 )
             },
-            limit = 12
+            limit = MAX_XTREAM_GUIDE_FALLBACK_PROGRAMS
         )
 
         return fallbackChannels.mapNotNull { channel ->
@@ -1350,6 +1414,40 @@ class EpgViewModel @Inject constructor(
             if (programs.isEmpty()) null else lookupKey to programs
         }.toMap()
     }
+
+    private fun GuideBaseSnapshot.matches(context: GuideFallbackContext): Boolean =
+        providerId == context.providerId &&
+            selectedCategoryId == context.selectedCategoryId &&
+            guideAnchorTime == context.guideAnchorTime &&
+            guideWindowStart == context.guideWindowStart &&
+            guideWindowEnd == context.guideWindowEnd &&
+            visibleChannels.map(Channel::id) == context.visibleChannelIds
+
+    private fun countMissingGuideEntries(
+        channels: List<Channel>,
+        programsByChannel: Map<String, List<Program>>
+    ): Int =
+        channels.mapNotNull(Channel::guideLookupKey)
+            .distinct()
+            .count { lookupKey -> programsByChannel[lookupKey].isNullOrEmpty() }
+
+    private fun countChannelsWithSchedule(
+        channels: List<Channel>,
+        programsByChannel: Map<String, List<Program>>
+    ): Int =
+        channels.count { channel ->
+            channel.guideLookupKey()
+                ?.let { lookupKey -> programsByChannel[lookupKey].orEmpty().isNotEmpty() }
+                ?: false
+        }
+
+    private fun hasUpcomingGuideData(
+        programsByChannel: Map<String, List<Program>>,
+        windowStart: Long
+    ): Boolean =
+        programsByChannel.values.any { programs ->
+            programs.any { program -> program.endTime > windowStart }
+        }
 
     private suspend fun buildGuideDisplaySnapshot(
         baseSnapshot: GuideBaseSnapshot,

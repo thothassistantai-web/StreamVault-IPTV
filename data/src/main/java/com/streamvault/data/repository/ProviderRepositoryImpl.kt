@@ -42,6 +42,10 @@ class ProviderRepositoryImpl @Inject constructor(
     private val syncMetadataRepository: SyncMetadataRepository,
     private val transactionRunner: DatabaseTransactionRunner
 ) : ProviderRepository {
+    private companion object {
+        const val XTREAM_GUIDE_BATCH_CONCURRENCY = 4
+    }
+
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun getProviders(): Flow<List<Provider>> =
@@ -297,13 +301,20 @@ class ProviderRepositoryImpl @Inject constructor(
         limit: Int
     ): Result<List<Program>> {
         return when (val providerContextResult = createXtreamLiveProgramProviderContext(providerId)) {
-            is Result.Success -> fetchXtreamProgramsForLiveStream(
-                providerId = providerId,
-                streamId = streamId,
-                epgChannelId = epgChannelId,
-                limit = limit,
-                xtreamProvider = providerContextResult.data
-            )
+            is Result.Success -> {
+                val result = fetchXtreamProgramsForLiveStream(
+                    providerId = providerId,
+                    streamId = streamId,
+                    epgChannelId = epgChannelId,
+                    limit = limit,
+                    xtreamProvider = providerContextResult.data
+                )
+                if (result is Result.Success && result.data.isNotEmpty()) {
+                    cacheProgramsForChannel(providerId, result.data)
+                    refreshCachedEpgMetadata(providerId)
+                }
+                result
+            }
             is Result.Error -> Result.error(providerContextResult.message, providerContextResult.exception)
             is Result.Loading -> Result.error("Unexpected loading state")
         }
@@ -323,9 +334,10 @@ class ProviderRepositoryImpl @Inject constructor(
 
         return when (val providerContextResult = createXtreamLiveProgramProviderContext(providerId)) {
             is Result.Success -> coroutineScope {
+                val requestDispatcher = Dispatchers.IO.limitedParallelism(XTREAM_GUIDE_BATCH_CONCURRENCY)
                 normalizedRequests
                     .map { request ->
-                        async {
+                        async(requestDispatcher) {
                             request to fetchXtreamProgramsForLiveStream(
                                 providerId = providerId,
                                 streamId = request.streamId,
@@ -336,6 +348,15 @@ class ProviderRepositoryImpl @Inject constructor(
                         }
                     }
                     .awaitAll()
+                    .also { results ->
+                        val cachedPrograms = results
+                            .mapNotNull { (_, result) -> (result as? Result.Success)?.data }
+                            .flatten()
+                        if (cachedPrograms.isNotEmpty()) {
+                            cacheProgramsForChannels(providerId, cachedPrograms)
+                            refreshCachedEpgMetadata(providerId)
+                        }
+                    }
                     .toMap()
             }
             is Result.Error -> normalizedRequests.associateWith { request ->
@@ -444,14 +465,13 @@ class ProviderRepositoryImpl @Inject constructor(
             ?.sortedBy { it.startTime }
             .orEmpty()
         if (shortPrograms.isNotEmpty()) {
-            val normalizedPrograms = normalizeXtreamPrograms(
-                providerId = providerId,
-                channelId = epgChannelId ?: streamId.toString(),
-                programs = shortPrograms
+            return Result.success(
+                normalizeXtreamPrograms(
+                    providerId = providerId,
+                    channelId = epgChannelId ?: streamId.toString(),
+                    programs = shortPrograms
+                )
             )
-            cacheProgramsForChannel(providerId, normalizedPrograms)
-            refreshCachedEpgMetadata(providerId)
-            return Result.success(normalizedPrograms)
         }
 
         return when (val fullProgramsResult = xtreamProvider.getEpg(streamId.toString())) {
@@ -461,8 +481,6 @@ class ProviderRepositoryImpl @Inject constructor(
                     channelId = epgChannelId ?: streamId.toString(),
                     programs = fullProgramsResult.data.sortedBy { it.startTime }
                 )
-                cacheProgramsForChannel(providerId, normalizedPrograms)
-                refreshCachedEpgMetadata(providerId)
                 Result.success(normalizedPrograms)
             }
             is Result.Error -> {
@@ -526,6 +544,17 @@ class ProviderRepositoryImpl @Inject constructor(
         transactionRunner.inTransaction {
             programDao.deleteForChannel(providerId, channelId)
             programDao.insertAll(programs.map { it.toEntity().copy(providerId = providerId) })
+        }
+    }
+
+    private suspend fun cacheProgramsForChannels(providerId: Long, programs: List<Program>) {
+        if (programs.isEmpty()) return
+        val programsByChannel = programs.groupBy { it.channelId }
+        transactionRunner.inTransaction {
+            programsByChannel.forEach { (channelId, channelPrograms) ->
+                programDao.deleteForChannel(providerId, channelId)
+                programDao.insertAll(channelPrograms.map { it.toEntity().copy(providerId = providerId) })
+            }
         }
     }
 
