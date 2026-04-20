@@ -99,6 +99,12 @@ data class ChannelBrowseEntity(
     @ColumnInfo(name = "error_count") val errorCount: Int = 0
 )
 
+data class ChannelGuideLookupEntity(
+    val id: Long = 0,
+    @ColumnInfo(name = "stream_id") val streamId: Long = 0,
+    @ColumnInfo(name = "epg_channel_id") val epgChannelId: String? = null
+)
+
 @Entity(
     tableName = "channel_preferences",
     foreignKeys = [ForeignKey(

@@ -267,8 +267,13 @@ class EpgResolutionEngine @Inject constructor(
 
         if (mappings.isEmpty()) return@withContext emptyMap()
 
-        // Also load channel entities to get epgChannelId for the lookup key
-        val channels = channelDao.getByProviderSync(providerId)
+        val channels = if (channelIds.size <= 500) {
+            channelDao.getGuideLookupsByIds(channelIds)
+        } else {
+            channelIds.chunked(500).flatMap { chunk ->
+                channelDao.getGuideLookupsByIds(chunk)
+            }
+        }
         val channelById = channels.associateBy { it.id }
 
         val result = mutableMapOf<String, List<Program>>()
