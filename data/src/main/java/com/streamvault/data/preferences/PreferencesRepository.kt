@@ -2,6 +2,8 @@ package com.streamvault.data.preferences
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import androidx.datastore.core.DataStore
@@ -165,16 +167,34 @@ class PreferencesRepository @Inject constructor(
     }
 
     private val parentalSessionPreferences: SharedPreferences by lazy {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        EncryptedSharedPreferences.create(
-            context,
-            ParentalSessionKeys.FILE_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        runCatching {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                ParentalSessionKeys.FILE_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }.getOrElse { e ->
+            // Android 9 (API 28) on certain OEM devices (MediaTek, some Samsung/Huawei) has
+            // buggy Keystore HAL implementations that throw GeneralSecurityException or
+            // KeyStoreException during MasterKey generation. Fall back to unencrypted prefs
+            // so the app stays functional. Only PIN lockout timestamps are affected — the PIN
+            // hash/salt itself is stored in DataStore and is unaffected by this fallback.
+            Log.w(
+                "PreferencesRepository",
+                "EncryptedSharedPreferences unavailable on API ${Build.VERSION.SDK_INT} " +
+                    "(Keystore error). Parental PIN lockout persistence uses unencrypted fallback.",
+                e
+            )
+            context.getSharedPreferences(
+                "${ParentalSessionKeys.FILE_NAME}_fallback",
+                Context.MODE_PRIVATE
+            )
+        }
     }
 
     val lastActiveProviderId: Flow<Long?> = context.dataStore.data.map { preferences ->

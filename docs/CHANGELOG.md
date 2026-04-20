@@ -1,6 +1,22 @@
 ﻿# Changelog
 
 All notable product changes are recorded in this document.
+## [1.0.7] - 2026-04-19
+
+### Fixed
+
+- Fixed crash on launch affecting some Android 9 (API 28) devices. On certain OEM builds
+  (MediaTek-based chipsets, some Samsung and Huawei devices), the Android Keystore HAL
+  throws a `GeneralSecurityException` or `KeyStoreException` when `EncryptedSharedPreferences`
+  is first initialised. This preference store holds the parental PIN lockout state and is
+  accessed during `ParentalControlManager` initialisation, which runs synchronously on the
+  first ViewModelScope creation at app startup — causing an immediate cold-start crash. The
+  fix wraps the encrypted store creation in a `runCatching` block and falls back to a
+  standard (unencrypted) `SharedPreferences` file if the Keystore is unavailable. The PIN
+  hash and salt themselves are stored in DataStore and are unaffected.
+
+---
+
 ## [1.0.6] - 2026-04-19
 
 ### Fixed
