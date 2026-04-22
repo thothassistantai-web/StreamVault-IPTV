@@ -94,18 +94,6 @@ class SyncCatalogStoreTest {
                 )
             )
         )
-        whenever(catalogSyncDao.getChannelStages(eq(providerId), any())).thenReturn(
-            listOf(
-                ChannelImportStageEntity(
-                    sessionId = 1L,
-                    providerId = providerId,
-                    streamId = 1001L,
-                    name = "World News HD",
-                    streamUrl = "https://new.example.com/live",
-                    syncFingerprint = "new-channel"
-                )
-            )
-        )
 
         store().replaceLiveCatalog(
             providerId = providerId,
@@ -122,59 +110,16 @@ class SyncCatalogStoreTest {
             )
         )
 
-        val updatedChannels = argumentCaptor<List<ChannelEntity>>()
-        verify(channelDao).updateAll(updatedChannels.capture())
-        assertThat(updatedChannels.firstValue.single()).isEqualTo(
-            currentChannel.copy(
-                name = "World News HD",
-                streamUrl = "https://new.example.com/live",
-                syncFingerprint = "new-channel"
-            )
-        )
+        verify(catalogSyncDao).updateChangedChannelsFromStage(eq(providerId), any())
     }
 
     @Test
     fun `applyStagedMovieCatalog batches changed movie updates`() = runTest {
         val providerId = 7L
         val sessionId = 33L
-        val currentMovie = MovieEntity(
-            id = 31L,
-            streamId = 2001L,
-            name = "Old Movie",
-            providerId = providerId,
-            streamUrl = "https://old.example.com/movie",
-            syncFingerprint = "old-movie",
-            watchProgress = 1234L,
-            watchCount = 4
-        )
-
-        whenever(movieDao.getByProviderSync(providerId)).thenReturn(listOf(currentMovie))
-        whenever(catalogSyncDao.getMovieStages(providerId, sessionId)).thenReturn(
-            listOf(
-                MovieImportStageEntity(
-                    sessionId = sessionId,
-                    providerId = providerId,
-                    streamId = 2001L,
-                    name = "New Movie",
-                    streamUrl = "https://new.example.com/movie",
-                    rating = 8.2f,
-                    syncFingerprint = "new-movie"
-                )
-            )
-        )
-
         store().applyStagedMovieCatalog(providerId, sessionId, categories = null)
 
-        val updatedMovies = argumentCaptor<List<MovieEntity>>()
-        verify(movieDao).updateAll(updatedMovies.capture())
-        assertThat(updatedMovies.firstValue.single()).isEqualTo(
-            currentMovie.copy(
-                name = "New Movie",
-                streamUrl = "https://new.example.com/movie",
-                rating = 8.2f,
-                syncFingerprint = "new-movie"
-            )
-        )
+        verify(catalogSyncDao).updateChangedMoviesFromStage(providerId, sessionId)
         verify(movieDao).restoreWatchProgress(providerId)
     }
 
@@ -182,41 +127,9 @@ class SyncCatalogStoreTest {
     fun `applyStagedSeriesCatalog batches changed series updates`() = runTest {
         val providerId = 7L
         val sessionId = 44L
-        val currentSeries = SeriesEntity(
-            id = 41L,
-            seriesId = 3001L,
-            name = "Old Series",
-            providerId = providerId,
-            syncFingerprint = "old-series"
-        )
-
-        whenever(seriesDao.getByProviderSync(providerId)).thenReturn(listOf(currentSeries))
-        whenever(catalogSyncDao.getSeriesStages(providerId, sessionId)).thenReturn(
-            listOf(
-                SeriesImportStageEntity(
-                    sessionId = sessionId,
-                    providerId = providerId,
-                    seriesId = 3001L,
-                    name = "New Series",
-                    rating = 9.1f,
-                    lastModified = 999L,
-                    syncFingerprint = "new-series"
-                )
-            )
-        )
-
         store().applyStagedSeriesCatalog(providerId, sessionId, categories = null)
 
-        val updatedSeries = argumentCaptor<List<SeriesEntity>>()
-        verify(seriesDao).updateAll(updatedSeries.capture())
-        assertThat(updatedSeries.firstValue.single()).isEqualTo(
-            currentSeries.copy(
-                name = "New Series",
-                rating = 9.1f,
-                lastModified = 999L,
-                syncFingerprint = "new-series"
-            )
-        )
+        verify(catalogSyncDao).updateChangedSeriesFromStage(providerId, sessionId)
     }
 
     @Test
