@@ -1,12 +1,9 @@
 package com.streamvault.app.util
 
-private const val DEFAULT_PLAYBACK_COMPLETION_THRESHOLD = 0.95f
+import com.streamvault.domain.util.isPlaybackComplete as domainIsPlaybackComplete
 
 fun isPlaybackComplete(
     progressMs: Long,
     totalDurationMs: Long,
-    threshold: Float = DEFAULT_PLAYBACK_COMPLETION_THRESHOLD
-): Boolean {
-    if (progressMs <= 0L || totalDurationMs <= 0L) return false
-    return progressMs >= (totalDurationMs * threshold).toLong()
-}
+    threshold: Float = com.streamvault.domain.util.DEFAULT_PLAYBACK_COMPLETION_THRESHOLD
+): Boolean = domainIsPlaybackComplete(progressMs, totalDurationMs, threshold)

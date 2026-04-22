@@ -1,16 +1,28 @@
 ﻿# Changelog
 
 All notable product changes are recorded in this document.
-## [1.0.8] - 2026-04-21
+## [1.0.8] - 2026-04-22
+
+### Added
+
+- Added resume action on movie and series detail screens — shows formatted position and episode context (e.g. "Resume · S2 E3 · 23:45").
 
 ### Fixed
 
-- Fixed Xtream Movies and Series sometimes showing categories but loading zero items after fast sync.
-- Fixed Xtream fast-sync category hydration treating temporary empty category responses as completed, which could leave VOD groups partially loaded until a later refresh.
-- Fixed slow Stalker provider adds by loading VOD and Series categories first and fetching their items only when needed.
-- Fixed Stalker streams failing on some portals by sending the required MAG/STB playback headers and user-agent on the final media request.
-- Fixed malformed Stalker stream links on some portals when the server already returned a direct playback URL.
-- Fixed Stalker EPG sync options so upfront, background, and manual refresh can use the portal guide with XMLTV fallback.
+- Fixed Pro-mode Live TV preview to fullscreen handoff so live playback can continue more smoothly without media-session crashes.
+- Fixed manual EPG add flow crashing instead of showing a proper error.
+- Fixed M3U/M3U8 playlists using `#EXTGRP` loading all Live TV channels into one group.
+- Fixed Stalker live sync over-requesting channels on provider add.
+- Fixed Stalker EPG sync making redundant requests for duplicate or placeholder guide keys.
+- Fixed Stalker background EPG sync skipping the bulk portal request and going straight to per-channel fetches.
+- Fixed new Stalker providers defaulting to upfront EPG sync instead of background sync.
+- Fixed Stalker playback on portals requiring MAG-style headers or fresh direct-URL resolution.
+- Fixed Stalker probe failures and HTTP `456` errors being reported too generically.
+- Fixed Xtream fast sync leaving movie and series categories temporarily empty.
+- Fixed VOD browse pagination skipping items or leaving groups incomplete.
+- Fixed VOD resume position, episode progress, and continue-watching state not updating reliably.
+- Fixed silent audio when a stream's codec (e.g. EAC3, AC3) is unsupported — player now surfaces a clear error.
+- Fixed Xtream Live TV taking a very long time to load on first sync with large providers (50k+ channels).
 
 ---
 
@@ -22,7 +34,6 @@ All notable product changes are recorded in this document.
 
 ### Fixed
 
-- Fixed TV Guide startup loading full large categories before first render.
 - Fixed startup crashes on some Android 9 devices when secure preference storage fails to initialize.
 - Fixed Picture-in-Picture setup on devices that report invalid or unsupported video aspect ratios.
 - Fixed launch crashes for some upgrades from 1.0.4 or earlier caused by orphaned provider content left behind by older deletes.

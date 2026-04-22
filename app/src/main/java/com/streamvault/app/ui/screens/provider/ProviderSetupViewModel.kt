@@ -414,14 +414,14 @@ data class ProviderSetupState(
     val createdProviderName: String? = null,
     val pendingCombinedAttachProfileId: Long? = null,
     val pendingCombinedAttachProfileName: String? = null,
-    val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.UPFRONT,
+    val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
     val hasCustomizedEpgSyncMode: Boolean = false,
     val xtreamFastSyncEnabled: Boolean = true,
     val m3uVodClassificationEnabled: Boolean = false
 )
 
 private fun defaultEpgSyncModeFor(sourceType: ProviderSetupViewModel.SetupSourceType): ProviderEpgSyncMode = when (sourceType) {
-    ProviderSetupViewModel.SetupSourceType.STALKER -> ProviderEpgSyncMode.BACKGROUND
+    ProviderSetupViewModel.SetupSourceType.STALKER,
     ProviderSetupViewModel.SetupSourceType.XTREAM,
-    ProviderSetupViewModel.SetupSourceType.M3U -> ProviderEpgSyncMode.UPFRONT
+    ProviderSetupViewModel.SetupSourceType.M3U -> ProviderEpgSyncMode.BACKGROUND
 }

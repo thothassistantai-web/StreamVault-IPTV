@@ -3,6 +3,7 @@ package com.streamvault.app.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamvault.app.di.AuxiliaryPlayerEngine
+import com.streamvault.app.player.LivePreviewHandoffManager
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.app.ui.screens.multiview.MultiViewManager
 import com.streamvault.app.ui.model.applyProviderCategoryDisplayPreferences
@@ -78,6 +79,7 @@ class HomeViewModel @Inject constructor(
     private val syncManager: SyncManager,
     private val tvInputChannelSyncManager: TvInputChannelSyncManager,
     private val multiViewManager: MultiViewManager,
+    private val livePreviewHandoffManager: LivePreviewHandoffManager,
     @AuxiliaryPlayerEngine
     private val playerEngineProvider: InjectProvider<PlayerEngine>
 ) : ViewModel() {
@@ -971,6 +973,11 @@ class HomeViewModel @Inject constructor(
                     engine.prepare(result.data)
                     engine.setVolume(1f)
                     engine.play()
+                    livePreviewHandoffManager.registerPreviewSession(
+                        channel = channel,
+                        streamInfo = result.data,
+                        engine = engine
+                    )
                 }
                 is Result.Error -> {
                     if (!isActivePreviewSession(previewVersion, channel.id)) return@launch
@@ -986,12 +993,37 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun clearPreview() {
+    fun beginPreviewHandoff(channel: Channel): Boolean {
+        val engine = previewPlayerEngine ?: return false
+        if (_uiState.value.previewChannelId != channel.id) return false
+        if (!livePreviewHandoffManager.beginFullscreenHandoff(channel.id, engine)) return false
+
+        engine.clearRenderBinding()
         previewSessionVersion++
         previewPlaybackJob?.cancel()
         previewErrorJob?.cancel()
         previewPlaybackJob = null
         previewErrorJob = null
+        previewPlayerEngine = null
+        _uiState.update {
+            it.copy(
+                previewChannelId = null,
+                previewPlayerEngine = null,
+                isPreviewLoading = false,
+                previewErrorMessage = null
+            )
+        }
+        return true
+    }
+
+    fun clearPreview() {
+        if (previewPlayerEngine == null) return
+        previewSessionVersion++
+        previewPlaybackJob?.cancel()
+        previewErrorJob?.cancel()
+        previewPlaybackJob = null
+        previewErrorJob = null
+        livePreviewHandoffManager.clear(previewPlayerEngine)
         previewPlayerEngine?.stop()
         previewPlayerEngine?.release()
         previewPlayerEngine = null

@@ -84,6 +84,14 @@ class OkHttpXtreamApiService(
             onItem = onItem
         )
 
+    suspend fun streamLiveStreams(endpoint: String, onItem: suspend (XtreamStream) -> Unit): Int =
+        streamArray(
+            endpoint = endpoint,
+            profile = RequestProfile.HEAVY_CATALOG,
+            deserializer = XtreamStream.serializer(),
+            onItem = onItem
+        )
+
     override suspend fun getVodInfo(endpoint: String): XtreamVodInfoResponse = get(endpoint)
 
     override suspend fun getSeriesCategories(endpoint: String): List<XtreamCategory> = get(endpoint)

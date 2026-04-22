@@ -58,7 +58,7 @@ class GetContinueWatching @Inject constructor(
     private fun continueWatchingKey(entry: PlaybackHistory): String = when (entry.contentType) {
         ContentType.MOVIE -> "movie:${entry.contentId}"
         ContentType.SERIES,
-        ContentType.SERIES_EPISODE -> "series:${entry.seriesId ?: entry.contentId}"
+        ContentType.SERIES_EPISODE -> "series:${entry.seriesId?.takeIf { it > 0L } ?: entry.contentId}"
         ContentType.LIVE -> "live:${entry.contentId}"
     }
 

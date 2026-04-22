@@ -125,8 +125,9 @@ fun <Item> buildVodSearchCatalog(
         .groupBy { itemCategoryName(it) ?: uncategorizedName }
         .toMutableMap()
 
-    grouped[VodBrowseDefaults.FAVORITES_CATEGORY] = enrichedItems.filter { item ->
-        itemId(item) in globalFavoriteIds
+    val favoriteMatches = enrichedItems.filter { item -> itemId(item) in globalFavoriteIds }
+    if (favoriteMatches.isNotEmpty()) {
+        grouped[VodBrowseDefaults.FAVORITES_CATEGORY] = favoriteMatches
     }
 
     customCategories

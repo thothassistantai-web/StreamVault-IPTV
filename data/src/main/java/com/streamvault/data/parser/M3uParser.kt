@@ -74,9 +74,7 @@ class M3uParser {
                             pendingExtinf = parseExtinf(line)
                         }
                         line.startsWith("#") -> {
-                            // Preserve pendingExtinf across known directives that appear
-                            // between #EXTINF and the stream URL (e.g. #EXTVLCOPT, #EXTGRP,
-                            // #KODIPROP, #EXTATTRPARAM). Only reset on another #EXTINF.
+                            pendingExtinf = pendingExtinf?.let { applyPendingDirective(it, line) }
                         }
                         pendingExtinf != null -> {
                             parseEntry(pendingExtinf!!, line, header.userAgent)?.let(entries::add)
@@ -120,9 +118,7 @@ class M3uParser {
                         pendingExtinf = parseExtinf(line)
                     }
                     line.startsWith("#") -> {
-                        // Preserve pendingExtinf across known directives that appear
-                        // between #EXTINF and the stream URL (e.g. #EXTVLCOPT, #EXTGRP,
-                        // #KODIPROP, #EXTATTRPARAM). Only reset on another #EXTINF.
+                        pendingExtinf = pendingExtinf?.let { applyPendingDirective(it, line) }
                     }
                     pendingExtinf != null -> {
                         parseEntry(pendingExtinf!!, line, header.userAgent)?.let { onEntry(it) }
@@ -184,6 +180,11 @@ class M3uParser {
         return !catchUp.isNullOrBlank() || !catchUpSource.isNullOrBlank() || !timeshift.isNullOrBlank()
     }
 
+    private fun applyPendingDirective(extinf: ParsedExtinf, line: String): ParsedExtinf {
+        val extGrpTitle = parseStandaloneGroupTitle(line) ?: return extinf
+        return extinf.copy(groupTitle = extGrpTitle)
+    }
+
     private fun sanitizeLine(rawLine: String): String =
         rawLine.removePrefix("\uFEFF").trim()
 
@@ -225,6 +226,16 @@ class M3uParser {
             .asSequence()
             .map { it.trim() }
             .firstOrNull { it.isNotEmpty() }
+    }
+
+    private fun parseStandaloneGroupTitle(line: String): String? {
+        if (!line.startsWith(EXT_GRP_TAG, ignoreCase = true)) return null
+        val suffix = line.substring(EXT_GRP_TAG.length).trimStart()
+        val rawValue = when {
+            suffix.startsWith(":") || suffix.startsWith("=") -> suffix.substring(1)
+            else -> suffix
+        }
+        return rawValue.trim().trim('"').takeIf { it.isNotEmpty() }
     }
 
     private fun parseExtinf(line: String): ParsedExtinf? {
@@ -394,6 +405,8 @@ class M3uParser {
     }
 
     companion object {
+        private const val EXT_GRP_TAG = "#EXTGRP"
+
         private val headerEpgAttributes = listOf(
             "x-tvg-url",
             "url-tvg",

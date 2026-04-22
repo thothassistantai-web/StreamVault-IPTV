@@ -849,6 +849,189 @@ class SyncManagerTest {
     }
 
     @Test
+    fun retrySection_epg_stalker_dedupes_same_guide_key_within_one_run() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+            epgUrl = ""
+        )
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        org.mockito.kotlin.whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        org.mockito.kotlin.whenever(channelDao.getGuideSyncEntriesByProvider(1L)).thenReturn(
+            listOf(
+                ChannelGuideSyncEntity(streamId = 100L, name = "News", epgChannelId = "shared-guide-id"),
+                ChannelGuideSyncEntity(streamId = 101L, name = "News HD", epgChannelId = "shared-guide-id"),
+                ChannelGuideSyncEntity(streamId = 102L, name = "Sports", epgChannelId = "sports-guide-id")
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("shared-guide-id"))).thenReturn(
+            Result.success(
+                listOf(
+                    StalkerProgramRecord(
+                        id = "p1",
+                        channelId = "shared-guide-id",
+                        title = "Morning News",
+                        description = "Top stories",
+                        startTimeMillis = 1_700_000_000_000L,
+                        endTimeMillis = 1_700_000_360_000L
+                    )
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("sports-guide-id"))).thenReturn(
+            Result.success(
+                listOf(
+                    StalkerProgramRecord(
+                        id = "p2",
+                        channelId = "sports-guide-id",
+                        title = "Live Sports",
+                        description = "Match coverage",
+                        startTimeMillis = 1_700_000_000_000L,
+                        endTimeMillis = 1_700_000_360_000L
+                    )
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(programDao.countByProvider(1L)).thenReturn(2)
+
+        val result = manager.retrySection(providerId = 1L, section = SyncRepairSection.EPG)
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).getEpg(any(), any(), eq("shared-guide-id"))
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).getEpg(any(), any(), eq("sports-guide-id"))
+    }
+
+    @Test
+    fun retrySection_epg_stalker_uses_bulk_first_and_only_falls_back_for_uncovered_keys() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+            epgUrl = ""
+        )
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        org.mockito.kotlin.whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        org.mockito.kotlin.whenever(channelDao.getGuideSyncEntriesByProvider(1L)).thenReturn(
+            listOf(
+                ChannelGuideSyncEntity(streamId = 100L, name = "News", epgChannelId = "shared-guide-id"),
+                ChannelGuideSyncEntity(streamId = 102L, name = "Sports", epgChannelId = "sports-guide-id")
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getBulkEpg(any(), any(), eq(6))).thenReturn(
+            Result.success(
+                listOf(
+                    StalkerProgramRecord(
+                        id = "p1",
+                        channelId = "shared-guide-id",
+                        title = "Morning News",
+                        description = "Top stories",
+                        startTimeMillis = 1_700_000_000_000L,
+                        endTimeMillis = 1_700_000_360_000L
+                    )
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("sports-guide-id"))).thenReturn(
+            Result.success(
+                listOf(
+                    StalkerProgramRecord(
+                        id = "p2",
+                        channelId = "sports-guide-id",
+                        title = "Live Sports",
+                        description = "Match coverage",
+                        startTimeMillis = 1_700_000_000_000L,
+                        endTimeMillis = 1_700_000_360_000L
+                    )
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(programDao.countByProvider(1L)).thenReturn(2)
+
+        val result = manager.retrySection(providerId = 1L, section = SyncRepairSection.EPG)
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).getBulkEpg(any(), any(), eq(6))
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).getEpg(any(), any(), eq("shared-guide-id"))
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).getEpg(any(), any(), eq("sports-guide-id"))
+    }
+
+    @Test
+    fun retrySection_epg_stalker_falls_back_to_stream_id_for_placeholder_epg_key() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+            epgUrl = ""
+        )
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        org.mockito.kotlin.whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        org.mockito.kotlin.whenever(channelDao.getGuideSyncEntriesByProvider(1L)).thenReturn(
+            listOf(
+                ChannelGuideSyncEntity(
+                    streamId = 100L,
+                    name = "News",
+                    epgChannelId = "No details available"
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("100"))).thenReturn(
+            Result.success(
+                listOf(
+                    StalkerProgramRecord(
+                        id = "p1",
+                        channelId = "100",
+                        title = "Morning News",
+                        description = "Top stories",
+                        startTimeMillis = 1_700_000_000_000L,
+                        endTimeMillis = 1_700_000_360_000L
+                    )
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(programDao.countByProvider(1L)).thenReturn(1)
+
+        val result = manager.retrySection(providerId = 1L, section = SyncRepairSection.EPG)
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).getEpg(any(), any(), eq("100"))
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).getEpg(any(), any(), eq("No details available"))
+    }
+
+    @Test
     fun `sync_xtream_movie_failure_does_not_block_series_sync`() = runTest {
         val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
         val now = System.currentTimeMillis()

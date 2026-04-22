@@ -154,6 +154,12 @@ interface StalkerApiService {
         channelId: String
     ): Result<List<StalkerProgramRecord>>
 
+    suspend fun getBulkEpg(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        periodHours: Int = 6
+    ): Result<List<StalkerProgramRecord>>
+
     suspend fun createLink(
         session: StalkerSession,
         profile: StalkerDeviceProfile,

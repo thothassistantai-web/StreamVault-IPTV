@@ -361,7 +361,7 @@ fun AppNavigation(mainActivity: MainActivity) {
                             )
                         }
                         com.streamvault.domain.model.ContentType.SERIES -> {
-                            Routes.seriesDetail(history.seriesId ?: history.contentId, Routes.HOME)
+                            Routes.seriesDetail(history.contentId, Routes.HOME)
                         }
                         com.streamvault.domain.model.ContentType.SERIES_EPISODE -> {
                             Routes.player(

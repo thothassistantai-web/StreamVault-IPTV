@@ -175,7 +175,6 @@ class SeriesViewModel @Inject constructor(
                     }
                 }
                 .flatMapLatest { params ->
-                    _previewBatchSize.value = 8
                     _previewBatchSize.flatMapLatest { batchSize ->
                         if (params.query.isBlank()) {
                             val categoryIds = params.providerCategories.take(batchSize).map { it.id }
@@ -273,7 +272,7 @@ class SeriesViewModel @Inject constructor(
                         favoriteRepository.getAllFavorites(provider.id, ContentType.SERIES),
                         getCustomCategories(provider.id, ContentType.SERIES),
                         seriesRepository.getCategories(provider.id),
-                        playbackHistoryRepository.getRecentlyWatchedByProvider(provider.id, limit = 2_000),
+                        playbackHistoryRepository.getRecentlyWatchedByProvider(provider.id, limit = 100),
                         preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.SERIES),
                         preferencesRepository.getCategorySortMode(provider.id, ContentType.SERIES)
                     ) { values ->
@@ -470,6 +469,7 @@ class SeriesViewModel @Inject constructor(
     }
 
     fun selectCategory(categoryName: String?) {
+        _previewBatchSize.value = 8
         activeProviderId?.let { providerId ->
             parentalControlManager.retainUnlockedCategory(
                 providerId = providerId,
@@ -514,6 +514,7 @@ class SeriesViewModel @Inject constructor(
     }
 
     fun setSearchQuery(query: String) {
+        _previewBatchSize.value = 8
         setVodSearchQuery(query, _searchQuery, _uiState) { updatedQuery ->
             copy(searchQuery = updatedQuery)
         }

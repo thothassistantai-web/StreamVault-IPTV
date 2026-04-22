@@ -175,11 +175,11 @@ class SeriesRepositoryImpl @Inject constructor(
             if (filteredCategories.isEmpty()) {
                 flowOf(emptyMap())
             } else {
-                filteredCategories.forEach { category ->
-                    val provider = providerDao.getById(providerId)
-                    if (provider != null &&
-                        (provider.type == ProviderType.XTREAM_CODES || provider.type == ProviderType.STALKER_PORTAL)
-                    ) {
+                val provider = providerDao.getById(providerId)
+                if (provider != null &&
+                    (provider.type == ProviderType.XTREAM_CODES || provider.type == ProviderType.STALKER_PORTAL)
+                ) {
+                    filteredCategories.forEach { category ->
                         triggerSeriesCategoryHydration(providerId, category.categoryId, provider)
                     }
                 }
@@ -720,19 +720,25 @@ class SeriesRepositoryImpl @Inject constructor(
         when {
             query.filterBy.type == LibraryFilterType.ALL &&
                 query.sortBy in setOf(LibrarySortBy.LIBRARY, LibrarySortBy.TITLE) -> {
-                collectSeriesPages<NameCursor>(query, parentalLevel, collected, favoriteIds) { limit, cursor ->
+                collectSeriesPages<NameCursor>(query, parentalLevel, collected, favoriteIds,
+                    extractCursor = { NameCursor(it.name, it.id) }
+                ) { limit, cursor ->
                     loadSeriesNamePage(query, limit, cursor)
                 }
             }
             (query.sortBy == LibrarySortBy.RATING || query.filterBy.type == LibraryFilterType.TOP_RATED) -> {
-                collectSeriesPages<RatingCursor>(query, parentalLevel, collected, favoriteIds) { limit, cursor ->
+                collectSeriesPages<RatingCursor>(query, parentalLevel, collected, favoriteIds,
+                    extractCursor = { RatingCursor(it.rating, it.name, it.id) }
+                ) { limit, cursor ->
                     loadSeriesRatingPage(query, limit, cursor)
                 }
             }
             query.sortBy == LibrarySortBy.RELEASE ||
                 query.sortBy == LibrarySortBy.UPDATED ||
                 query.filterBy.type == LibraryFilterType.RECENTLY_UPDATED -> {
-                collectSeriesPages<FreshCursor>(query, parentalLevel, collected, favoriteIds) { limit, cursor ->
+                collectSeriesPages<FreshCursor>(query, parentalLevel, collected, favoriteIds,
+                    extractCursor = { FreshCursor(it.lastModified, it.name, it.id) }
+                ) { limit, cursor ->
                     loadSeriesFreshPage(query, limit, cursor)
                 }
             }
@@ -746,6 +752,7 @@ class SeriesRepositoryImpl @Inject constructor(
         parentalLevel: Int,
         collected: MutableList<Series>,
         favoriteIds: Set<Long>,
+        extractCursor: (SeriesBrowseEntity) -> C,
         loadPage: suspend (limit: Int, cursor: C?) -> List<SeriesBrowseEntity>
     ) {
         var cursor: C? = null
@@ -767,17 +774,8 @@ class SeriesRepositoryImpl @Inject constructor(
             if (batch.size < CURSOR_BATCH_SIZE) {
                 return
             }
-            @Suppress("UNCHECKED_CAST")
-            cursor = cursorFromQuery(query, batch.last()) as C
+            cursor = extractCursor(batch.last())
         }
-    }
-
-    private fun cursorFromQuery(query: LibraryBrowseQuery, entity: SeriesBrowseEntity): Any = when {
-        query.filterBy.type == LibraryFilterType.ALL &&
-            query.sortBy in setOf(LibrarySortBy.LIBRARY, LibrarySortBy.TITLE) -> NameCursor(entity.name, entity.id)
-        query.sortBy == LibrarySortBy.RATING || query.filterBy.type == LibraryFilterType.TOP_RATED ->
-            RatingCursor(entity.rating, entity.name, entity.id)
-        else -> FreshCursor(entity.lastModified, entity.name, entity.id)
     }
 
     private suspend fun loadSeriesNamePage(query: LibraryBrowseQuery, limit: Int, cursor: NameCursor?): List<SeriesBrowseEntity> {
@@ -1044,25 +1042,27 @@ class SeriesRepositoryImpl @Inject constructor(
             provider.password,
             enableBase64TextCompatibility.toString()
         ).joinToString("\u0000")
-        return xtreamProviderCache.compute(providerId) { _, cached ->
-            if (cached != null && cached.signature == signature) {
-                cached
-            } else {
-                val decryptedPassword = credentialCrypto.decryptIfNeeded(provider.password)
-                CachedXtreamProvider(
-                    signature = signature,
-                    provider = XtreamProvider(
-                        providerId = providerId,
-                        api = xtreamApiService,
-                        serverUrl = provider.serverUrl,
-                        username = provider.username,
-                        password = decryptedPassword,
-                        allowedOutputFormats = provider.toDomain().allowedOutputFormats,
-                        enableBase64TextCompatibility = enableBase64TextCompatibility
+        return requireNotNull(
+            xtreamProviderCache.compute(providerId) { _, cached ->
+                if (cached != null && cached.signature == signature) {
+                    cached
+                } else {
+                    val decryptedPassword = credentialCrypto.decryptIfNeeded(provider.password)
+                    CachedXtreamProvider(
+                        signature = signature,
+                        provider = XtreamProvider(
+                            providerId = providerId,
+                            api = xtreamApiService,
+                            serverUrl = provider.serverUrl,
+                            username = provider.username,
+                            password = decryptedPassword,
+                            allowedOutputFormats = provider.toDomain().allowedOutputFormats,
+                            enableBase64TextCompatibility = enableBase64TextCompatibility
+                        )
                     )
-                )
+                }
             }
-        }!!.provider
+        ) { "Provider cache compute returned null for providerId=$providerId" }.provider
     }
 
     private fun createStalkerProvider(providerId: Long, provider: ProviderEntity): StalkerProvider {
