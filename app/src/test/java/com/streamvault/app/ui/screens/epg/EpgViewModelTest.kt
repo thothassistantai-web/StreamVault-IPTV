@@ -314,20 +314,7 @@ class EpgViewModelTest {
         whenever(epgRepository.getResolvedProgramsForChannels(eq(provider.id), any(), any(), any())).thenReturn(emptyMap())
         whenever(epgRepository.getProgramsForChannelsSnapshot(eq(provider.id), any(), any(), any())).thenReturn(emptyMap())
 
-        val viewModel = EpgViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            channelRepository = channelRepository,
-            epgRepository = epgRepository,
-            epgSourceRepository = epgSourceRepository,
-            favoriteRepository = favoriteRepository,
-            preferencesRepository = preferencesRepository,
-            parentalControlManager = parentalControlManager,
-            programReminderManager = programReminderManager,
-            getCustomCategories = getCustomCategories,
-            scheduleRecording = scheduleRecording,
-            recordingManager = recordingManager
-        )
+        val viewModel = createViewModel()
 
         advanceUntilIdle()
         viewModel.toggleFavoritesOnly()
@@ -366,20 +353,7 @@ class EpgViewModelTest {
         whenever(epgRepository.getResolvedProgramsForChannels(eq(provider.id), any(), any(), any())).thenReturn(emptyMap())
         whenever(epgRepository.getProgramsForChannelsSnapshot(eq(provider.id), any(), any(), any())).thenReturn(emptyMap())
 
-        val viewModel = EpgViewModel(
-            providerRepository = providerRepository,
-            combinedM3uRepository = combinedM3uRepository,
-            channelRepository = channelRepository,
-            epgRepository = epgRepository,
-            epgSourceRepository = epgSourceRepository,
-            favoriteRepository = favoriteRepository,
-            preferencesRepository = preferencesRepository,
-            parentalControlManager = parentalControlManager,
-            programReminderManager = programReminderManager,
-            getCustomCategories = getCustomCategories,
-            scheduleRecording = scheduleRecording,
-            recordingManager = recordingManager
-        )
+        val viewModel = createViewModel()
 
         advanceUntilIdle()
         waitForUiState { viewModel.uiState.value.selectedCategoryId == ChannelRepository.ALL_CHANNELS_ID }
