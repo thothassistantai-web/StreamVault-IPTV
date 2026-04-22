@@ -124,6 +124,36 @@ class ProviderSetupViewModelTest {
     }
 
     @Test
+    fun `xtream source defaults epg sync mode to background when user has not customized it`() = runTest {
+        val viewModel = ProviderSetupViewModel(
+            providerRepository = providerRepository,
+            combinedM3uRepository = combinedM3uRepository,
+            validateAndAddProvider = validateAndAddProvider
+        )
+
+        viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.XTREAM)
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.epgSyncMode).isEqualTo(ProviderEpgSyncMode.BACKGROUND)
+        assertThat(viewModel.uiState.value.hasCustomizedEpgSyncMode).isFalse()
+    }
+
+    @Test
+    fun `m3u source defaults epg sync mode to background when user has not customized it`() = runTest {
+        val viewModel = ProviderSetupViewModel(
+            providerRepository = providerRepository,
+            combinedM3uRepository = combinedM3uRepository,
+            validateAndAddProvider = validateAndAddProvider
+        )
+
+        viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.M3U)
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.epgSyncMode).isEqualTo(ProviderEpgSyncMode.BACKGROUND)
+        assertThat(viewModel.uiState.value.hasCustomizedEpgSyncMode).isFalse()
+    }
+
+    @Test
     fun `source defaults do not override customized epg sync mode`() = runTest {
         val viewModel = ProviderSetupViewModel(
             providerRepository = providerRepository,

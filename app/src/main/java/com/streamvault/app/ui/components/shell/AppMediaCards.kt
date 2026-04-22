@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import com.streamvault.domain.util.isPlaybackComplete
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -378,6 +379,9 @@ fun SeriesPosterCard(series: Series, modifier: Modifier = Modifier) {
 fun EpisodeRowCard(episode: Episode, modifier: Modifier = Modifier) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val previewWidth = if (screenWidth < 700.dp) 124.dp else 164.dp
+    val durationMs = episode.durationSeconds.toLong() * 1000L
+    val showProgress = episode.watchProgress > 5000L && durationMs > 0L &&
+        !isPlaybackComplete(episode.watchProgress, durationMs)
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -385,50 +389,63 @@ fun EpisodeRowCard(episode: Episode, modifier: Modifier = Modifier) {
             .background(AppColors.SurfaceElevated)
             .padding(16.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .width(previewWidth)
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(AppColors.SurfaceEmphasis),
-                contentAlignment = Alignment.Center
-            ) {
-                // Fallback label always visible; covered by AsyncImage on successful load
-                Text(
-                    text = stringResource(R.string.label_episode, episode.episodeNumber),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = AppColors.TextSecondary
-                )
-                if (!episode.coverUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = episode.coverUrl,
-                        contentDescription = episode.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = episode.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = AppColors.TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                ContentMetadataStrip(
-                    values = listOf(stringResource(R.string.label_episode_full, episode.episodeNumber), episode.duration ?: "")
-                )
-                episode.plot?.takeIf { it.isNotBlank() }?.let { plot ->
+        Column {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .width(previewWidth)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AppColors.SurfaceEmphasis),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Fallback label always visible; covered by AsyncImage on successful load
                     Text(
-                        text = plot,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppColors.TextSecondary,
-                        maxLines = 2,
+                        text = stringResource(R.string.label_episode, episode.episodeNumber),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = AppColors.TextSecondary
+                    )
+                    if (!episode.coverUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = episode.coverUrl,
+                            contentDescription = episode.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = episode.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = AppColors.TextPrimary,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    ContentMetadataStrip(
+                        values = listOf(stringResource(R.string.label_episode_full, episode.episodeNumber), episode.duration ?: "")
+                    )
+                    episode.plot?.takeIf { it.isNotBlank() }?.let { plot ->
+                        Text(
+                            text = plot,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppColors.TextSecondary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
+            }
+            if (showProgress) {
+                LinearProgressIndicator(
+                    progress = { (episode.watchProgress.toFloat() / durationMs).coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .height(3.dp),
+                    color = AppColors.Brand,
+                    trackColor = AppColors.SurfaceEmphasis
+                )
             }
         }
     }

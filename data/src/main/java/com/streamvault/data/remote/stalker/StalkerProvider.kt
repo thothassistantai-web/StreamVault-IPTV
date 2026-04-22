@@ -168,6 +168,21 @@ class StalkerProvider(
         }
     }
 
+    suspend fun getBulkEpg(periodHours: Int = 6): Result<List<Program>> {
+        return when (val authResult = ensureAuthenticated()) {
+            is Result.Success -> {
+                val (session, _) = authResult.data
+                when (val epgResult = api.getBulkEpg(session, currentDeviceProfile(), periodHours)) {
+                    is Result.Success -> Result.success(epgResult.data.map { it.toProgram() })
+                    is Result.Error -> Result.error(epgResult.message, epgResult.exception)
+                    is Result.Loading -> Result.error("Unexpected loading state")
+                }
+            }
+            is Result.Error -> Result.error(authResult.message, authResult.exception)
+            is Result.Loading -> Result.error("Unexpected loading state")
+        }
+    }
+
     override suspend fun getShortEpg(channelId: String, limit: Int): Result<List<Program>> {
         return when (val authResult = ensureAuthenticated()) {
             is Result.Success -> {

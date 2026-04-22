@@ -793,12 +793,16 @@ class MovieRepositoryImpl @Inject constructor(
         when {
             query.filterBy.type == LibraryFilterType.ALL &&
                 query.sortBy in setOf(LibrarySortBy.LIBRARY, LibrarySortBy.TITLE) -> {
-                collectMoviePages<NameCursor>(query, parentalLevel, collected, favoriteIds) { limit, cursor ->
+                collectMoviePages<NameCursor>(query, parentalLevel, collected, favoriteIds,
+                    extractCursor = { NameCursor(it.name, it.id) }
+                ) { limit, cursor ->
                     loadMovieNamePage(query, limit, cursor)
                 }
             }
             (query.sortBy == LibrarySortBy.RATING || query.filterBy.type == LibraryFilterType.TOP_RATED) -> {
-                collectMoviePages<RatingCursor>(query, parentalLevel, collected, favoriteIds) { limit, cursor ->
+                collectMoviePages<RatingCursor>(query, parentalLevel, collected, favoriteIds,
+                    extractCursor = { RatingCursor(it.rating, it.name, it.id) }
+                ) { limit, cursor ->
                     loadMovieRatingPage(query, limit, cursor)
                 }
             }
@@ -807,7 +811,9 @@ class MovieRepositoryImpl @Inject constructor(
                     query.sortBy == LibrarySortBy.UPDATED ||
                     query.filterBy.type == LibraryFilterType.RECENTLY_UPDATED
                 ) -> {
-                collectMoviePages<FreshCursor>(query, parentalLevel, collected, favoriteIds) { limit, cursor ->
+                collectMoviePages<FreshCursor>(query, parentalLevel, collected, favoriteIds,
+                    extractCursor = { FreshCursor(it.addedAt, it.releaseDate.orEmpty(), it.name, it.id) }
+                ) { limit, cursor ->
                     loadMovieFreshPage(query, limit, cursor)
                 }
             }
@@ -821,6 +827,7 @@ class MovieRepositoryImpl @Inject constructor(
         parentalLevel: Int,
         collected: MutableList<Movie>,
         favoriteIds: Set<Long>,
+        extractCursor: (MovieBrowseEntity) -> C,
         loadPage: suspend (limit: Int, cursor: C?) -> List<MovieBrowseEntity>
     ) {
         var cursor: C? = null
@@ -842,18 +849,8 @@ class MovieRepositoryImpl @Inject constructor(
             if (batch.size < CURSOR_BATCH_SIZE) {
                 return
             }
-            @Suppress("UNCHECKED_CAST")
-            cursor = cursorFromQuery(query, batch.last()) as C
+            cursor = extractCursor(batch.last())
         }
-    }
-
-    private fun cursorFromQuery(query: LibraryBrowseQuery, entity: MovieBrowseEntity): Any = when {
-        query.filterBy.type == LibraryFilterType.ALL &&
-            query.sortBy in setOf(LibrarySortBy.LIBRARY, LibrarySortBy.TITLE) -> NameCursor(entity.name, entity.id)
-        query.sortBy == LibrarySortBy.RATING || query.filterBy.type == LibraryFilterType.TOP_RATED ->
-            RatingCursor(entity.rating, entity.name, entity.id)
-        else ->
-            FreshCursor(entity.addedAt, entity.releaseDate.orEmpty(), entity.name, entity.id)
     }
 
     private suspend fun loadMovieNamePage(query: LibraryBrowseQuery, limit: Int, cursor: NameCursor?): List<MovieBrowseEntity> {
@@ -1160,25 +1157,27 @@ class MovieRepositoryImpl @Inject constructor(
             provider.password,
             enableBase64TextCompatibility.toString()
         ).joinToString("\u0000")
-        return xtreamProviderCache.compute(providerId) { _, cached ->
-            if (cached != null && cached.signature == signature) {
-                cached
-            } else {
-                val decryptedPassword = credentialCrypto.decryptIfNeeded(provider.password)
-                CachedXtreamProvider(
-                    signature = signature,
-                    provider = XtreamProvider(
-                        providerId = providerId,
-                        api = xtreamApiService,
-                        serverUrl = provider.serverUrl,
-                        username = provider.username,
-                        password = decryptedPassword,
-                        allowedOutputFormats = provider.toDomain().allowedOutputFormats,
-                        enableBase64TextCompatibility = enableBase64TextCompatibility
+        return requireNotNull(
+            xtreamProviderCache.compute(providerId) { _, cached ->
+                if (cached != null && cached.signature == signature) {
+                    cached
+                } else {
+                    val decryptedPassword = credentialCrypto.decryptIfNeeded(provider.password)
+                    CachedXtreamProvider(
+                        signature = signature,
+                        provider = XtreamProvider(
+                            providerId = providerId,
+                            api = xtreamApiService,
+                            serverUrl = provider.serverUrl,
+                            username = provider.username,
+                            password = decryptedPassword,
+                            allowedOutputFormats = provider.toDomain().allowedOutputFormats,
+                            enableBase64TextCompatibility = enableBase64TextCompatibility
+                        )
                     )
-                )
+                }
             }
-        }!!.provider
+        ) { "Provider cache compute returned null for providerId=$providerId" }.provider
     }
 
     private fun createStalkerProvider(providerId: Long, provider: ProviderEntity): StalkerProvider {

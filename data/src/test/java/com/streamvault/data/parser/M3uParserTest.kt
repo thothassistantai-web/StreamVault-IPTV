@@ -123,6 +123,35 @@ class M3uParserTest {
     }
 
     @Test
+    fun `parse_extgrpDirective_between_extinf_and_url_setsGroupTitle`() {
+        val m3u = """
+            #EXTM3U
+            #EXTINF:-1 tvg-id="cnn",CNN International
+            #EXTGRP:News
+            http://stream.example.com/cnn.m3u8
+        """.trimIndent()
+
+        val entry = parseEntries(m3u).single()
+
+        assertThat(entry.groupTitle).isEqualTo("News")
+    }
+
+    @Test
+    fun `parse_extgrpDirective_overrides_missing_groupTitle_even_with_other_directives`() {
+        val m3u = """
+            #EXTM3U
+            #EXTINF:-1 tvg-id="espn",ESPN
+            #EXTVLCOPT:http-user-agent=CustomAgent
+            #EXTGRP="Sports"
+            http://stream.example.com/espn.m3u8
+        """.trimIndent()
+
+        val entry = parseEntries(m3u).single()
+
+        assertThat(entry.groupTitle).isEqualTo("Sports")
+    }
+
+    @Test
     fun `parse_headerUrlTvg_extractsGuideUrl`() {
         val result = parser.parse(
             """

@@ -404,6 +404,12 @@ class XtreamStreamUrlResolverTest {
             channelId: String
         ): Result<List<StalkerProgramRecord>> = Result.success(emptyList())
 
+        override suspend fun getBulkEpg(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            periodHours: Int
+        ): Result<List<StalkerProgramRecord>> = Result.success(emptyList())
+
         override suspend fun createLink(
             session: StalkerSession,
             profile: StalkerDeviceProfile,

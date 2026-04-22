@@ -485,6 +485,21 @@ class XtreamProvider(
         }
     }
 
+    suspend fun mapLiveStreamsSequence(streams: Sequence<XtreamStream>): Sequence<Channel> {
+        val adultCategoryIds = loadAdultCategoryIds(ContentType.LIVE)
+        return streams.mapNotNull { stream ->
+            runCatching { stream.toChannel(adultCategoryIds) }
+                .onFailure {
+                    Log.w(
+                        TAG,
+                        "Skipping malformed live item ${stream.streamId}: " +
+                            XtreamUrlFactory.sanitizeLogMessage(it.message ?: "mapping failed")
+                    )
+                }
+                .getOrNull()
+        }
+    }
+
     suspend fun mapSeriesListResponse(items: List<XtreamSeriesItem>): List<Series> =
         mapSeriesListSequence(items.asSequence()).toList().also { mapped ->
             if (items.isNotEmpty() && mapped.isEmpty()) {

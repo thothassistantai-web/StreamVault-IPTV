@@ -21,9 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.collectAsState
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +45,7 @@ import coil3.compose.AsyncImage
 import com.streamvault.app.R
 import com.streamvault.app.device.rememberIsTelevisionDevice
 import com.streamvault.app.ui.components.rememberCrossfadeImageModel
+import com.streamvault.app.util.formatPositionMs
 import com.streamvault.app.ui.components.shell.ContentMetadataStrip
 import com.streamvault.app.ui.components.shell.EpisodeRowCard
 import com.streamvault.app.ui.components.shell.ExternalRatingsStrip
@@ -65,6 +63,7 @@ import com.streamvault.app.ui.interaction.TvIconButton
 @Composable
 fun SeriesDetailScreen(
     onEpisodeClick: (Episode) -> Unit,
+    onResumeClick: ((Episode) -> Unit)? = null,
     onBack: () -> Unit,
     viewModel: SeriesDetailViewModel = hiltViewModel()
 ) {
@@ -101,11 +100,13 @@ fun SeriesDetailScreen(
     SeriesDetailContent(
         series = series,
         selectedSeason = uiState.selectedSeason,
+        resumeEpisode = uiState.resumeEpisode,
         unwatchedEpisodeCount = uiState.unwatchedEpisodeCount,
         externalRatings = uiState.externalRatings,
         isLoadingExternalRatings = uiState.isLoadingExternalRatings,
         onSeasonSelected = viewModel::selectSeason,
         onEpisodeClick = onEpisodeClick,
+        onResumeClick = onResumeClick ?: onEpisodeClick,
         onBack = onBack
     )
 }
@@ -114,11 +115,13 @@ fun SeriesDetailScreen(
 private fun SeriesDetailContent(
     series: Series,
     selectedSeason: Season?,
+    resumeEpisode: Episode?,
     unwatchedEpisodeCount: Int,
     externalRatings: ExternalRatings,
     isLoadingExternalRatings: Boolean,
     onSeasonSelected: (Season) -> Unit,
     onEpisodeClick: (Episode) -> Unit,
+    onResumeClick: (Episode) -> Unit,
     onBack: () -> Unit
 ) {
     val isTelevisionDevice = rememberIsTelevisionDevice()
@@ -248,6 +251,33 @@ private fun SeriesDetailContent(
                                 maxLines = 5,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            resumeEpisode?.let { ep ->
+                                val hasProgress = ep.watchProgress > 5000L
+                                TvButton(
+                                    onClick = { onResumeClick(ep) },
+                                    colors = ButtonDefaults.colors(
+                                        containerColor = AppColors.Brand,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Text(
+                                        text = if (hasProgress) {
+                                            stringResource(
+                                                R.string.series_detail_resume,
+                                                ep.seasonNumber,
+                                                ep.episodeNumber,
+                                                formatPositionMs(ep.watchProgress)
+                                            )
+                                        } else {
+                                            stringResource(
+                                                R.string.series_detail_play_episode,
+                                                ep.seasonNumber,
+                                                ep.episodeNumber
+                                            )
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 } else {
@@ -315,6 +345,33 @@ private fun SeriesDetailContent(
                                 maxLines = 5,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            resumeEpisode?.let { ep ->
+                                val hasProgress = ep.watchProgress > 5000L
+                                TvButton(
+                                    onClick = { onResumeClick(ep) },
+                                    colors = ButtonDefaults.colors(
+                                        containerColor = AppColors.Brand,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Text(
+                                        text = if (hasProgress) {
+                                            stringResource(
+                                                R.string.series_detail_resume,
+                                                ep.seasonNumber,
+                                                ep.episodeNumber,
+                                                formatPositionMs(ep.watchProgress)
+                                            )
+                                        } else {
+                                            stringResource(
+                                                R.string.series_detail_play_episode,
+                                                ep.seasonNumber,
+                                                ep.episodeNumber
+                                            )
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }

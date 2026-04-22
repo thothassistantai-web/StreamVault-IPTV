@@ -13,6 +13,7 @@ import com.streamvault.data.local.dao.SeriesDao
 import com.streamvault.data.local.dao.TmdbIdentityDao
 import com.streamvault.data.local.entity.CategoryEntity
 import com.streamvault.data.local.entity.ChannelEntity
+import com.streamvault.data.local.entity.ChannelGuideSyncEntity
 import com.streamvault.data.local.entity.MovieEntity
 import com.streamvault.data.local.entity.SeriesEntity
 import com.streamvault.data.mapper.toDomain
@@ -185,15 +186,19 @@ class SyncManager @Inject constructor(
     private val xtreamLiveStrategy: SyncManagerXtreamLiveStrategy by lazy {
         SyncManagerXtreamLiveStrategy(
             xtreamCatalogApiService = xtreamCatalogApiService,
+            xtreamCatalogHttpService = xtreamCatalogHttpService,
             xtreamAdaptiveSyncPolicy = xtreamAdaptiveSyncPolicy,
             xtreamSupport = xtreamSupport,
             xtreamFetcher = xtreamFetcher,
             catalogStrategySupport = catalogStrategySupport,
+            syncCatalogStore = syncCatalogStore,
             progress = ::progress,
             sanitizeThrowableMessage = ::sanitizeThrowableMessage,
             fullCatalogFallbackWarning = ::fullCatalogFallbackWarning,
             categoryFailureWarning = ::categoryFailureWarning,
-            liveCategorySequentialModeWarning = LIVE_CATEGORY_SEQUENTIAL_MODE_WARNING
+            liveCategorySequentialModeWarning = LIVE_CATEGORY_SEQUENTIAL_MODE_WARNING,
+            stageChannelItems = catalogStager::stageChannelItems,
+            fallbackStageBatchSize = XTREAM_FALLBACK_STAGE_BATCH_SIZE
         )
     }
     private val xtreamMovieStrategy: SyncManagerXtreamMovieStrategy by lazy {
@@ -477,17 +482,29 @@ class SyncManager @Inject constructor(
 
             when (val liveResult = liveSyncResult.catalogResult) {
                 is CatalogStrategyResult.Success -> {
-                    val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
-                        providerId = provider.id,
-                        visibleCategories = liveSyncResult.categories,
-                        visibleChannels = liveResult.items.map { it.toEntity() },
-                        hiddenLiveCategoryIds = hiddenLiveCategoryIds
-                    )
-                    val acceptedCount = syncCatalogStore.replaceLiveCatalog(
-                        providerId = provider.id,
-                        categories = liveCatalog.categories,
-                        channels = liveCatalog.channels
-                    )
+                    val acceptedCount = liveSyncResult.stagedSessionId?.let { sessionId ->
+                        if (hiddenLiveCategoryIds.isNotEmpty()) {
+                            mergeHiddenChannelsIntoStaging(provider.id, sessionId, hiddenLiveCategoryIds)
+                        }
+                        syncCatalogStore.applyStagedLiveCatalog(
+                            provider.id,
+                            sessionId,
+                            liveSyncResult.categories
+                        )
+                        liveSyncResult.stagedAcceptedCount
+                    } ?: run {
+                        val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
+                            providerId = provider.id,
+                            visibleCategories = liveSyncResult.categories,
+                            visibleChannels = liveResult.items.map { it.toEntity() },
+                            hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                        )
+                        syncCatalogStore.replaceLiveCatalog(
+                            providerId = provider.id,
+                            categories = liveCatalog.categories,
+                            channels = liveCatalog.channels
+                        )
+                    }
                     metadata = metadata.copy(
                         lastLiveSync = now,
                         lastLiveSuccess = now,
@@ -1175,10 +1192,23 @@ class SyncManager @Inject constructor(
             return emptyList()
         }
 
+        val guideRequests = channels
+            .mapNotNull(::toStalkerGuideRequest)
+            .distinctBy(StalkerGuideRequest::channelKey)
+        if (guideRequests.isEmpty()) {
+            return listOf("Stalker portal guide sync skipped because no valid guide channel IDs were available.")
+        }
+
         val api = createStalkerSyncProvider(provider)
+        val aliasToChannelKey = buildMap {
+            guideRequests.forEach { request ->
+                request.aliases.forEach { alias -> putIfAbsent(alias, request.channelKey) }
+            }
+        }
         val failedChannels = mutableListOf<String>()
         val insertBuffer = ArrayList<com.streamvault.data.local.entity.ProgramEntity>(STALKER_GUIDE_PROGRAM_BATCH_SIZE)
         var replacedExistingGuide = false
+        val bulkCoveredChannelKeys = linkedSetOf<String>()
 
         suspend fun flushPrograms() {
             if (insertBuffer.isEmpty()) return
@@ -1193,14 +1223,40 @@ class SyncManager @Inject constructor(
             }
         }
 
-        channels.forEachIndexed { index, channel ->
-            val channelKey = channel.epgChannelId?.takeIf { it.isNotBlank() } ?: channel.streamId.toString()
-            val channelName = channel.name.ifBlank { channelKey }
-            progress(provider.id, onProgress, "Downloading portal EPG... ${index + 1} of ${channels.size}")
+        runCatching {
+            requireResult(
+                api.getBulkEpg(),
+                "Failed to load bulk Stalker guide"
+            )
+        }.onSuccess { programs ->
+            programs
+                .asSequence()
+                .mapNotNull { program ->
+                    val resolvedChannelKey = aliasToChannelKey[program.channelId] ?: return@mapNotNull null
+                    bulkCoveredChannelKeys += resolvedChannelKey
+                    program.copy(
+                        providerId = provider.id,
+                        channelId = resolvedChannelKey
+                    ).toEntity()
+                }
+                .forEach { entity ->
+                    insertBuffer += entity
+                    if (insertBuffer.size >= STALKER_GUIDE_PROGRAM_BATCH_SIZE) {
+                        flushPrograms()
+                    }
+                }
+        }.onFailure { error ->
+            Log.d(TAG, "Bulk Stalker portal EPG fetch unavailable for provider ${provider.id}", error)
+        }
+
+        val fallbackGuideRequests = guideRequests.filterNot { request -> request.channelKey in bulkCoveredChannelKeys }
+
+        fallbackGuideRequests.forEachIndexed { index, request ->
+            progress(provider.id, onProgress, "Downloading portal EPG... ${index + 1} of ${fallbackGuideRequests.size}")
             runCatching {
                 requireResult(
-                    api.getEpg(channelKey),
-                    "Failed to load Stalker guide for $channelName"
+                    api.getEpg(request.channelKey),
+                    "Failed to load Stalker guide for ${request.channelName}"
                 )
             }.onSuccess { programs ->
                 programs
@@ -1209,17 +1265,17 @@ class SyncManager @Inject constructor(
                     .forEach { program ->
                         insertBuffer += program.copy(
                             providerId = provider.id,
-                            channelId = channelKey
+                            channelId = request.channelKey
                         ).toEntity()
                         if (insertBuffer.size >= STALKER_GUIDE_PROGRAM_BATCH_SIZE) {
                             flushPrograms()
                         }
                     }
             }.onFailure { error ->
-                failedChannels += channelName
+                failedChannels += request.channelName
                 Log.w(
                     TAG,
-                    "Stalker portal EPG fetch failed for provider ${provider.id} channel $channelKey",
+                    "Stalker portal EPG fetch failed for provider ${provider.id} channel ${request.channelKey}",
                     error
                 )
             }
@@ -1258,6 +1314,41 @@ class SyncManager @Inject constructor(
             )
         }
         return warnings
+    }
+
+    private data class StalkerGuideRequest(
+        val channelKey: String,
+        val channelName: String,
+        val aliases: Set<String>
+    )
+
+    private fun toStalkerGuideRequest(channel: ChannelGuideSyncEntity): StalkerGuideRequest? {
+        val normalizedEpgKey = channel.epgChannelId
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.takeUnless(::isLikelyPlaceholderStalkerGuideKey)
+        val streamKey = channel.streamId.takeIf { it > 0L }?.toString()
+        val channelKey = normalizedEpgKey ?: streamKey ?: return null
+        val aliases = linkedSetOf<String>().apply {
+            normalizedEpgKey?.let(::add)
+            streamKey?.let(::add)
+        }
+        return StalkerGuideRequest(
+            channelKey = channelKey,
+            channelName = channel.name.ifBlank { channelKey },
+            aliases = aliases
+        )
+    }
+
+    private fun isLikelyPlaceholderStalkerGuideKey(value: String): Boolean {
+        return when (value.trim().lowercase()) {
+            "no details available",
+            "n/a",
+            "null",
+            "none",
+            "unknown" -> true
+            else -> false
+        }
     }
 
     private fun summarizeChannelNames(channelNames: List<String>): String {
@@ -1781,7 +1872,7 @@ class SyncManager @Inject constructor(
     private suspend fun loadXtreamLiveFull(
         provider: Provider,
         api: XtreamProvider
-    ): CatalogStrategyResult<Channel> = xtreamLiveStrategy.loadXtreamLiveFull(provider, api)
+    ): CatalogSyncPayload<Channel> = xtreamLiveStrategy.loadXtreamLiveFull(provider, api)
 
     private suspend fun loadXtreamLiveByCategory(
         provider: Provider,
@@ -1937,6 +2028,18 @@ class SyncManager @Inject constructor(
         preferred: List<CategoryEntity>?,
         fallback: List<CategoryEntity>?
     ): List<CategoryEntity>? = catalogStrategySupport.mergePreferredAndFallbackCategories(preferred, fallback)
+
+    private suspend fun mergeHiddenChannelsIntoStaging(
+        providerId: Long,
+        sessionId: Long,
+        hiddenLiveCategoryIds: Set<Long>
+    ) {
+        val hiddenChannels = channelDao.getByProviderSync(providerId)
+            .filter { channel -> channel.categoryId != null && channel.categoryId in hiddenLiveCategoryIds }
+        if (hiddenChannels.isNotEmpty()) {
+            syncCatalogStore.stageChannelBatch(providerId, sessionId, hiddenChannels)
+        }
+    }
 
     private suspend fun mergeVisibleLiveSyncWithHiddenStoredContent(
         providerId: Long,

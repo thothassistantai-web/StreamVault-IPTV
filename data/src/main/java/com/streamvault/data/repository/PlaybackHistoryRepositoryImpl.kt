@@ -11,6 +11,8 @@ import com.streamvault.domain.model.PlaybackHistory
 import com.streamvault.domain.model.PlaybackWatchedStatus
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.repository.PlaybackHistoryRepository
+import com.streamvault.domain.util.DEFAULT_PLAYBACK_COMPLETION_THRESHOLD
+import com.streamvault.domain.util.isPlaybackComplete
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -210,6 +212,13 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
         Result.error("Failed to clear live playback history", e)
     }
 
+    override suspend fun flushPendingProgress(): Result<Unit> = try {
+        flushPendingResumeUpdates()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.error("Failed to flush pending progress", e)
+    }
+
     private suspend fun flushPendingResumeUpdates() {
         val snapshot = pendingResumeUpdates.entries.toList()
         snapshot.forEach { (key, history) ->
@@ -253,7 +262,6 @@ class PlaybackHistoryRepositoryImpl @Inject constructor(
     }
 }
 
-private const val DEFAULT_PLAYBACK_COMPLETION_THRESHOLD = 0.95f
 private const val RESUME_POSITION_FLUSH_INTERVAL_MS = 30_000L
 
 private data class PlaybackKey(
@@ -261,17 +269,6 @@ private data class PlaybackKey(
     val contentType: ContentType,
     val providerId: Long
 )
-
-private fun isPlaybackComplete(
-    progressMs: Long,
-    totalDurationMs: Long,
-    threshold: Float = DEFAULT_PLAYBACK_COMPLETION_THRESHOLD
-): Boolean {
-    if (progressMs <= 0L || totalDurationMs <= 0L) {
-        return false
-    }
-    return progressMs >= (totalDurationMs * threshold).toLong()
-}
 
 private fun PlaybackHistory.playbackKey(): PlaybackKey =
     PlaybackKey(contentId = contentId, contentType = contentType, providerId = providerId)

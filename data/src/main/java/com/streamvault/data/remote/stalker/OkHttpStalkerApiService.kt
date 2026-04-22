@@ -113,6 +113,13 @@ class OkHttpStalkerApiService @Inject constructor(
         profile: StalkerDeviceProfile,
         categoryId: String?
     ): Result<List<StalkerItemRecord>> = runApiCall("Failed to load live channels") {
+        if (categoryId.isNullOrBlank()) {
+            fetchAllLiveChannels(
+                session = session,
+                profile = profile
+            )?.let { return@runApiCall it }
+        }
+
         fetchPagedItems(
             session = session,
             profile = profile,
@@ -305,6 +312,25 @@ class OkHttpStalkerApiService @Inject constructor(
         ).toProgramRecords(channelId)
     }
 
+    override suspend fun getBulkEpg(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        periodHours: Int
+    ): Result<List<StalkerProgramRecord>> = runApiCall("Failed to load bulk EPG") {
+        requestJson(
+            url = session.loadUrl,
+            profile = profile,
+            referer = session.portalReferer,
+            token = session.token,
+            query = mapOf(
+                "type" to "itv",
+                "action" to "get_epg_info",
+                "JsHttpRequest" to "1-xml",
+                "period" to periodHours.coerceAtLeast(1).toString()
+            )
+        ).toProgramRecords()
+    }
+
     override suspend fun createLink(
         session: StalkerSession,
         profile: StalkerDeviceProfile,
@@ -364,6 +390,27 @@ class OkHttpStalkerApiService @Inject constructor(
             items += pagePayload.toItemRecords()
         }
         return items
+    }
+
+    private suspend fun fetchAllLiveChannels(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile
+    ): List<StalkerItemRecord>? {
+        return runCatching {
+            requestJson(
+                url = session.loadUrl,
+                profile = profile,
+                referer = session.portalReferer,
+                token = session.token,
+                query = mapOf(
+                    "type" to "itv",
+                    "action" to "get_all_channels",
+                    "JsHttpRequest" to "1-xml"
+                )
+            ).toItemRecords()
+        }.onFailure { error ->
+            Log.w(TAG, "Stalker get_all_channels failed; falling back to paged live catalog", error)
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
     private suspend fun requestJson(
@@ -656,8 +703,9 @@ class OkHttpStalkerApiService @Inject constructor(
         )
     }
 
-    private fun JsonElement.toProgramRecords(channelId: String): List<StalkerProgramRecord> {
+    private fun JsonElement.toProgramRecords(channelId: String? = null): List<StalkerProgramRecord> {
         return extractListElements().mapNotNull { entry ->
+            val resolvedChannelId = channelId ?: entry.findProgramChannelId() ?: return@mapNotNull null
             val startMillis = entry.findString("start_timestamp")?.toLongOrNull()?.times(1000L)
                 ?: entry.findString("time")?.let(::parseDateTime)
                 ?: return@mapNotNull null
@@ -665,8 +713,8 @@ class OkHttpStalkerApiService @Inject constructor(
                 ?: entry.findString("time_to")?.let(::parseDateTime)
                 ?: startMillis + (entry.findString("duration")?.toLongOrNull()?.times(60_000L) ?: DEFAULT_PROGRAM_DURATION_MILLIS)
             StalkerProgramRecord(
-                id = entry.findString("id") ?: "$channelId:$startMillis",
-                channelId = channelId,
+                id = entry.findString("id") ?: "$resolvedChannelId:$startMillis",
+                channelId = resolvedChannelId,
                 title = entry.findString("name")
                     ?: entry.findString("title")
                     ?: return@mapNotNull null,
@@ -679,6 +727,15 @@ class OkHttpStalkerApiService @Inject constructor(
                 isNowPlaying = entry.findBoolean("now_playing") == true || entry.findString("now_playing") == "1"
             )
         }
+    }
+
+    private fun JsonElement.findProgramChannelId(): String? {
+        val payload = payloadObjectOrNull() ?: return null
+        return payload.findString("ch_id")
+            ?: payload.findString("channel_id")
+            ?: payload.findString("id_channel")
+            ?: payload.findString("xmltv_id")
+            ?: payload.findString("epg_id")
     }
 
     private fun JsonElement.extractListElements(): List<JsonElement> {

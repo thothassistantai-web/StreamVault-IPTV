@@ -177,7 +177,6 @@ class MoviesViewModel @Inject constructor(
                     }
                 }
                 .flatMapLatest { params ->
-                    _previewBatchSize.value = 8
                     _previewBatchSize.flatMapLatest { batchSize ->
                         if (params.query.isBlank()) {
                             val categoryIds = params.providerCategories.take(batchSize).map { it.id }
@@ -466,6 +465,7 @@ class MoviesViewModel @Inject constructor(
     }
 
     fun selectCategory(categoryName: String?) {
+        _previewBatchSize.value = 8
         activeProviderId?.let { providerId ->
             parentalControlManager.retainUnlockedCategory(
                 providerId = providerId,
@@ -510,6 +510,7 @@ class MoviesViewModel @Inject constructor(
     }
 
     fun setSearchQuery(query: String) {
+        _previewBatchSize.value = 8
         setVodSearchQuery(query, _searchQuery, _uiState) { updatedQuery ->
             copy(searchQuery = updatedQuery)
         }

@@ -16,14 +16,14 @@ data class XtreamProviderSetupCommand(
     val password: String,
     val name: String,
     val xtreamFastSyncEnabled: Boolean = true,
-    val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.UPFRONT,
+    val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
     val existingProviderId: Long? = null
 )
 
 data class M3uProviderSetupCommand(
     val url: String,
     val name: String,
-    val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.UPFRONT,
+    val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
     val m3uVodClassificationEnabled: Boolean = false,
     val existingProviderId: Long? = null
 )

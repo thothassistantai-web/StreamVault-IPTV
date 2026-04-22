@@ -45,6 +45,7 @@ import coil3.compose.AsyncImage
 import com.streamvault.app.R
 import com.streamvault.app.device.rememberIsTelevisionDevice
 import com.streamvault.app.ui.components.rememberCrossfadeImageModel
+import com.streamvault.app.util.formatPositionMs
 import com.streamvault.app.ui.components.shell.ContentMetadataStrip
 import com.streamvault.app.ui.components.shell.ExternalRatingsStrip
 import com.streamvault.app.ui.components.shell.StatusPill
@@ -96,6 +97,7 @@ fun MovieDetailScreen(
             MovieDetailContent(
                 movie = movie,
                 hasResume = uiState.hasResume,
+                resumePositionMs = uiState.resumePositionMs,
                 externalRatings = uiState.externalRatings,
                 isLoadingExternalRatings = uiState.isLoadingExternalRatings,
                 onPlay = { onPlay(movie) },
@@ -109,6 +111,7 @@ fun MovieDetailScreen(
 private fun MovieDetailContent(
     movie: Movie,
     hasResume: Boolean,
+    resumePositionMs: Long,
     externalRatings: ExternalRatings,
     isLoadingExternalRatings: Boolean,
     onPlay: () -> Unit,
@@ -191,13 +194,16 @@ private fun MovieDetailContent(
                         MovieDetailHeroText(
                             movie = movie,
                             hasResume = hasResume,
+                            resumePositionMs = resumePositionMs,
                             externalRatings = externalRatings,
                             isLoadingExternalRatings = isLoadingExternalRatings,
                             onPlay = onPlay,
                             playButtonFocusRequester = playButtonFocusRequester,
                             onPlayTrailer = {
                                 resolveTrailerUrl(movie.youtubeTrailer)?.let { trailerUrl ->
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerUrl)))
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerUrl)))
+                                    }
                                 }
                             }
                         )
@@ -211,13 +217,16 @@ private fun MovieDetailContent(
                         MovieDetailHeroText(
                             movie = movie,
                             hasResume = hasResume,
+                            resumePositionMs = resumePositionMs,
                             externalRatings = externalRatings,
                             isLoadingExternalRatings = isLoadingExternalRatings,
                             onPlay = onPlay,
                             playButtonFocusRequester = playButtonFocusRequester,
                             onPlayTrailer = {
                                 resolveTrailerUrl(movie.youtubeTrailer)?.let { trailerUrl ->
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerUrl)))
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerUrl)))
+                                    }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -254,6 +263,7 @@ private fun MoviePoster(
 private fun MovieDetailHeroText(
     movie: Movie,
     hasResume: Boolean,
+    resumePositionMs: Long,
     externalRatings: ExternalRatings,
     isLoadingExternalRatings: Boolean,
     onPlay: () -> Unit,
@@ -313,9 +323,11 @@ private fun MovieDetailHeroText(
                 )
             ) {
                 Text(
-                    stringResource(
-                        if (hasResume) R.string.player_resume else R.string.movie_detail_play
-                    )
+                    text = if (hasResume) {
+                        stringResource(R.string.movie_detail_resume_from, formatPositionMs(resumePositionMs))
+                    } else {
+                        stringResource(R.string.movie_detail_play)
+                    }
                 )
             }
             if (hasTrailer) {

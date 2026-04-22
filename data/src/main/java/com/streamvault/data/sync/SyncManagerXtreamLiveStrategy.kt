@@ -3,6 +3,8 @@ package com.streamvault.data.sync
 import android.util.Log
 import com.streamvault.data.mapper.toEntity
 import com.streamvault.data.remote.dto.XtreamCategory
+import com.streamvault.data.remote.dto.XtreamStream
+import com.streamvault.data.remote.xtream.OkHttpXtreamApiService
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.XtreamProvider
 import com.streamvault.data.remote.xtream.XtreamUrlFactory
@@ -16,15 +18,19 @@ private const val XTREAM_LIVE_STRATEGY_TAG = "SyncManager"
 
 internal class SyncManagerXtreamLiveStrategy(
     private val xtreamCatalogApiService: XtreamApiService,
+    private val xtreamCatalogHttpService: OkHttpXtreamApiService,
     private val xtreamAdaptiveSyncPolicy: XtreamAdaptiveSyncPolicy,
     private val xtreamSupport: SyncManagerXtreamSupport,
     private val xtreamFetcher: SyncManagerXtreamFetcher,
     private val catalogStrategySupport: SyncManagerCatalogStrategySupport,
+    private val syncCatalogStore: SyncCatalogStore,
     private val progress: (Long, ((String) -> Unit)?, String) -> Unit,
     private val sanitizeThrowableMessage: (Throwable?) -> String,
     private val fullCatalogFallbackWarning: (String, Throwable?) -> String,
     private val categoryFailureWarning: (String, String, Throwable) -> String,
-    private val liveCategorySequentialModeWarning: String
+    private val liveCategorySequentialModeWarning: String,
+    private val stageChannelItems: suspend (Long, List<Channel>, MutableSet<Long>, FallbackCategoryCollector, Long?) -> StagedCatalogSnapshot,
+    private val fallbackStageBatchSize: Int
 ) {
     suspend fun syncXtreamLiveCatalog(
         provider: Provider,
@@ -68,16 +74,18 @@ internal class SyncManagerXtreamLiveStrategy(
             ?.filterNot { category -> category.categoryId in hiddenLiveCategoryIds }
             ?.takeIf { it.isNotEmpty() }
 
-        var fullResult: CatalogStrategyResult<Channel> = CatalogStrategyResult.EmptyValid("full")
+        var fullPayload = CatalogSyncPayload<Channel>(
+            catalogResult = CatalogStrategyResult.EmptyValid("full"),
+            categories = null
+        )
         if (hiddenLiveCategoryIds.isEmpty()) {
             progress(provider.id, onProgress, "Downloading Live TV...")
-            fullResult = loadXtreamLiveFull(provider, api)
-            when (fullResult) {
-                is CatalogStrategyResult.Success -> return CatalogSyncPayload(
-                    catalogResult = fullResult,
+            fullPayload = loadXtreamLiveFull(provider, api)
+            when (val fullResult = fullPayload.catalogResult) {
+                is CatalogStrategyResult.Success -> return fullPayload.copy(
                     categories = catalogStrategySupport.mergePreferredAndFallbackCategories(
                         visibleResolvedCategories,
-                        catalogStrategySupport.buildFallbackLiveCategories(provider.id, fullResult.items)
+                        fullPayload.categories ?: catalogStrategySupport.buildFallbackLiveCategories(provider.id, fullResult.items)
                     ),
                     warnings = emptyList(),
                     strategyFeedback = XtreamStrategyFeedback(
@@ -85,11 +93,10 @@ internal class SyncManagerXtreamLiveStrategy(
                         fullCatalogUnsafe = false
                     )
                 )
-                is CatalogStrategyResult.Partial -> return CatalogSyncPayload(
-                    catalogResult = fullResult,
+                is CatalogStrategyResult.Partial -> return fullPayload.copy(
                     categories = catalogStrategySupport.mergePreferredAndFallbackCategories(
                         visibleResolvedCategories,
-                        catalogStrategySupport.buildFallbackLiveCategories(provider.id, fullResult.items)
+                        fullPayload.categories ?: catalogStrategySupport.buildFallbackLiveCategories(provider.id, fullResult.items)
                     ),
                     warnings = emptyList(),
                     strategyFeedback = XtreamStrategyFeedback(
@@ -127,12 +134,12 @@ internal class SyncManagerXtreamLiveStrategy(
                 )
                 else -> null
             },
-            warnings = catalogStrategySupport.strategyWarnings(fullResult),
+            warnings = catalogStrategySupport.strategyWarnings(fullPayload.catalogResult),
             strategyFeedback = XtreamStrategyFeedback(
                 attemptedFullCatalog = true,
-                fullCatalogUnsafe = (fullResult as? CatalogStrategyResult.Failure)?.error?.let(catalogStrategySupport::shouldAvoidFullCatalogStrategy) == true,
+                fullCatalogUnsafe = (fullPayload.catalogResult as? CatalogStrategyResult.Failure)?.error?.let(catalogStrategySupport::shouldAvoidFullCatalogStrategy) == true,
                 segmentedStressDetected = catalogStrategySupport.sawSegmentedStress(
-                    warnings = catalogStrategySupport.strategyWarnings(fullResult),
+                    warnings = catalogStrategySupport.strategyWarnings(fullPayload.catalogResult),
                     result = categoryResult,
                     sequentialWarnings = setOf(liveCategorySequentialModeWarning)
                 )
@@ -143,27 +150,87 @@ internal class SyncManagerXtreamLiveStrategy(
     suspend fun loadXtreamLiveFull(
         provider: Provider,
         api: XtreamProvider
-    ): CatalogStrategyResult<Channel> {
-        var fullChannels: List<Channel>? = null
+    ): CatalogSyncPayload<Channel> {
+        val fallbackCollector = FallbackCategoryCollector(provider.id, ContentType.LIVE)
+        val seenStreamIds = HashSet<Long>()
+        val rawBatch = ArrayList<XtreamStream>(fallbackStageBatchSize)
+        var stagedSessionId: Long? = null
+        var acceptedCount = 0
+        var streamedRawCount = 0
         var fullChannelsFailure: Throwable? = null
+
+        suspend fun flushRawBatch() {
+            if (rawBatch.isEmpty()) return
+            val staged = stageChannelItems(
+                provider.id,
+                api.mapLiveStreamsSequence(rawBatch.asSequence()).toList(),
+                seenStreamIds,
+                fallbackCollector,
+                stagedSessionId
+            )
+            stagedSessionId = staged.sessionId
+            acceptedCount += staged.acceptedCount
+            rawBatch.clear()
+        }
+
         val fullChannelsElapsedMs = measureTimeMillis {
             when (val attempt = xtreamSupport.attemptNonCancellation {
                 xtreamSupport.retryXtreamCatalogTransient(provider.id) {
                     xtreamSupport.executeXtreamRequest(provider.id, XtreamAdaptiveSyncPolicy.Stage.HEAVY) {
-                        api.getLiveStreams().getOrThrow("Live streams")
+                        xtreamCatalogHttpService.streamLiveStreams(
+                            XtreamUrlFactory.buildPlayerApiUrl(
+                                serverUrl = provider.serverUrl,
+                                username = provider.username,
+                                password = provider.password,
+                                action = "get_live_streams"
+                            )
+                        ) { stream ->
+                            rawBatch += stream
+                            streamedRawCount++
+                            if (rawBatch.size >= fallbackStageBatchSize) {
+                                flushRawBatch()
+                            }
+                        }.also {
+                            flushRawBatch()
+                        }
                     }
                 }
             }) {
-                is Attempt.Success -> fullChannels = attempt.value
-                is Attempt.Failure -> fullChannelsFailure = attempt.error
+                is Attempt.Success -> Unit
+                is Attempt.Failure -> {
+                    fullChannelsFailure = attempt.error
+                    stagedSessionId?.let { sessionId ->
+                        syncCatalogStore.discardStagedImport(provider.id, sessionId)
+                        stagedSessionId = null
+                    }
+                }
             }
         }
-        if (!fullChannels.isNullOrEmpty()) {
+
+        if (streamedRawCount > 0) {
             Log.i(
                 XTREAM_LIVE_STRATEGY_TAG,
-                "Xtream live full catalog succeeded for provider ${provider.id} in ${fullChannelsElapsedMs}ms with ${fullChannels!!.size} items."
+                "Xtream live full catalog succeeded for provider ${provider.id} in ${fullChannelsElapsedMs}ms " +
+                    "with $acceptedCount accepted items from $streamedRawCount raw items."
             )
-            return CatalogStrategyResult.Success("full", fullChannels!!)
+            if (acceptedCount == 0) {
+                return CatalogSyncPayload(
+                    catalogResult = CatalogStrategyResult.EmptyValid(
+                        strategyName = "full",
+                        warnings = listOf("Live full catalog returned raw items but none were usable after mapping.")
+                    ),
+                    categories = null
+                )
+            }
+            return CatalogSyncPayload(
+                catalogResult = CatalogStrategyResult.Success(
+                    strategyName = "full",
+                    items = emptyList()
+                ),
+                categories = fallbackCollector.entities().takeIf { it.isNotEmpty() },
+                stagedSessionId = stagedSessionId,
+                stagedAcceptedCount = acceptedCount
+            )
         }
         return if (fullChannelsFailure != null) {
             xtreamSupport.logXtreamCatalogFallback(
@@ -171,14 +238,17 @@ internal class SyncManagerXtreamLiveStrategy(
                 section = "live",
                 stage = "full catalog",
                 elapsedMs = fullChannelsElapsedMs,
-                itemCount = fullChannels?.size,
+                itemCount = streamedRawCount,
                 error = fullChannelsFailure,
                 nextStep = "category-bulk"
             )
-            CatalogStrategyResult.Failure(
-                strategyName = "full",
-                error = fullChannelsFailure!!,
-                warnings = listOf(fullCatalogFallbackWarning("Live TV", fullChannelsFailure))
+            CatalogSyncPayload(
+                catalogResult = CatalogStrategyResult.Failure(
+                    strategyName = "full",
+                    error = fullChannelsFailure!!,
+                    warnings = listOf(fullCatalogFallbackWarning("Live TV", fullChannelsFailure))
+                ),
+                categories = null
             )
         } else {
             xtreamSupport.logXtreamCatalogFallback(
@@ -186,13 +256,16 @@ internal class SyncManagerXtreamLiveStrategy(
                 section = "live",
                 stage = "full catalog",
                 elapsedMs = fullChannelsElapsedMs,
-                itemCount = fullChannels?.size,
+                itemCount = streamedRawCount,
                 error = null,
                 nextStep = "category-bulk"
             )
-            CatalogStrategyResult.EmptyValid(
-                strategyName = "full",
-                warnings = listOf("Live full catalog returned an empty valid result.")
+            CatalogSyncPayload(
+                catalogResult = CatalogStrategyResult.EmptyValid(
+                    strategyName = "full",
+                    warnings = listOf("Live full catalog returned an empty valid result.")
+                ),
+                categories = null
             )
         }
     }

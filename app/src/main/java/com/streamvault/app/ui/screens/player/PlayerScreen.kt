@@ -149,8 +149,9 @@ fun PlayerScreen(
         ?.collectAsState(initial = mainActivity.isInPictureInPictureMode)
         ?.value
         ?: false
-    val playbackState by viewModel.playerEngine.playbackState.collectAsStateWithLifecycle()
-    val isPlaying by viewModel.playerEngine.isPlaying.collectAsStateWithLifecycle()
+    val playerEngine by viewModel.activePlayerEngine.collectAsStateWithLifecycle()
+    val playbackState by playerEngine.playbackState.collectAsStateWithLifecycle()
+    val isPlaying by playerEngine.isPlaying.collectAsStateWithLifecycle()
     val showControls by viewModel.showControls.collectAsStateWithLifecycle()
     val videoFormat by viewModel.videoFormat.collectAsStateWithLifecycle()
     val playerError by viewModel.playerError.collectAsStateWithLifecycle()
@@ -768,7 +769,7 @@ fun PlayerScreen(
     ) {
         // ExoPlayer Video Surface
         PlayerRenderView(
-            playerEngine = viewModel.playerEngine,
+            playerEngine = playerEngine,
             resizeMode = aspectRatio.toPlayerSurfaceResizeMode(),
             surfaceType = PlayerRenderSurfaceType.SURFACE_VIEW,
             modifier = Modifier.fillMaxSize()
@@ -864,7 +865,7 @@ fun PlayerScreen(
         }
 
         PlayerControlsOverlayHost(
-            playerEngine = viewModel.playerEngine,
+            playerEngine = playerEngine,
             visible = showControls,
             title = playbackTitle.ifBlank { title },
             contentType = contentType,

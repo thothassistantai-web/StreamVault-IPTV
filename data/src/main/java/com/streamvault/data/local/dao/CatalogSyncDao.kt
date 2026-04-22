@@ -802,4 +802,15 @@ interface CatalogSyncDao {
         """
     )
     suspend fun deleteStaleSeriesForStage(providerId: Long, sessionId: Long)
+
+    // ── FTS bulk rebuild (call once after each bulk catalog write, outside the transaction) ──
+
+    @Query("INSERT INTO channels_fts(channels_fts) VALUES('rebuild')")
+    suspend fun rebuildChannelFts()
+
+    @Query("INSERT INTO movies_fts(movies_fts) VALUES('rebuild')")
+    suspend fun rebuildMovieFts()
+
+    @Query("INSERT INTO series_fts(series_fts) VALUES('rebuild')")
+    suspend fun rebuildSeriesFts()
 }

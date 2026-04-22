@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamvault.domain.model.ContentType
+import com.streamvault.domain.model.Episode
 import com.streamvault.domain.model.ExternalRatings
 import com.streamvault.domain.model.ExternalRatingsLookup
 import com.streamvault.domain.model.Result
@@ -13,6 +14,7 @@ import com.streamvault.domain.repository.ExternalRatingsRepository
 import com.streamvault.domain.repository.PlaybackHistoryRepository
 import com.streamvault.domain.repository.SeriesRepository
 import com.streamvault.domain.repository.ProviderRepository
+import com.streamvault.domain.util.isPlaybackComplete
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -64,6 +66,7 @@ class SeriesDetailViewModel @Inject constructor(
                                 isLoading = false,
                                 series = result.data,
                                 selectedSeason = result.data.seasons.firstOrNull(),
+                                resumeEpisode = findResumeEpisode(result.data),
                                 error = null
                             )
                         }
@@ -126,12 +129,29 @@ class SeriesDetailViewModel @Inject constructor(
     fun selectSeason(season: Season) {
         _uiState.update { it.copy(selectedSeason = season) }
     }
+
+    private fun findResumeEpisode(series: Series): Episode? {
+        val ordered = series.seasons
+            .sortedBy { it.seasonNumber }
+            .flatMap { season -> season.episodes.sortedBy { it.episodeNumber } }
+        // Prefer the most-recently-watched in-progress episode
+        val inProgress = ordered
+            .filter { ep ->
+                ep.watchProgress > 5000L &&
+                    !isPlaybackComplete(ep.watchProgress, ep.durationSeconds.toLong() * 1000L)
+            }
+            .maxByOrNull { it.lastWatchedAt }
+        if (inProgress != null) return inProgress
+        // Fall back to the first episode that has never been started
+        return ordered.firstOrNull { ep -> ep.lastWatchedAt == 0L }
+    }
 }
 
 data class SeriesDetailUiState(
     val isLoading: Boolean = false,
     val series: Series? = null,
     val selectedSeason: Season? = null,
+    val resumeEpisode: Episode? = null,
     val unwatchedEpisodeCount: Int = 0,
     val error: String? = null,
     val isLoadingExternalRatings: Boolean = false,

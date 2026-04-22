@@ -8,6 +8,7 @@ import com.streamvault.app.cast.CastManager
 import com.streamvault.app.cast.CastMediaRequest
 import com.streamvault.app.cast.CastStartResult
 import com.streamvault.app.di.MainPlayerEngine
+import com.streamvault.app.player.LivePreviewHandoffManager
 import com.streamvault.app.ui.model.orderedByRequestedRawIds
 import com.streamvault.app.util.isPlaybackComplete
 import com.streamvault.app.tv.LauncherRecommendationsManager
@@ -46,6 +47,7 @@ import com.streamvault.domain.repository.EpgRepository
 import com.streamvault.domain.repository.MovieRepository
 import com.streamvault.domain.repository.PlaybackHistoryRepository
 import com.streamvault.domain.repository.SeriesRepository
+import com.streamvault.player.Media3PlayerEngine
 import com.streamvault.player.PlaybackState
 import com.streamvault.player.PlayerEngine
 import com.streamvault.player.PlayerError
@@ -72,7 +74,7 @@ import okhttp3.Request
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModel @Inject constructor(
     @param:MainPlayerEngine
-    val playerEngine: PlayerEngine,
+    private val mainPlayerEngine: PlayerEngine,
     private val epgRepository: EpgRepository,
     internal val channelRepository: ChannelRepository,
     internal val movieRepository: MovieRepository,
@@ -91,6 +93,7 @@ class PlayerViewModel @Inject constructor(
     internal val castManager: CastManager,
     private val xtreamStreamUrlResolver: XtreamStreamUrlResolver,
     private val seekThumbnailProvider: SeekThumbnailProvider,
+    private val livePreviewHandoffManager: LivePreviewHandoffManager,
     private val okHttpClient: OkHttpClient
 ) : ViewModel() {
     companion object {
@@ -104,6 +107,11 @@ class PlayerViewModel @Inject constructor(
         private const val LOW_BANDWIDTH_THRESHOLD_BPS = 500_000L
         private const val LOW_BANDWIDTH_DURATION_SECONDS = 30
     }
+
+    private val activePlayerEngineFlow = MutableStateFlow(mainPlayerEngine)
+    val activePlayerEngine: StateFlow<PlayerEngine> = activePlayerEngineFlow.asStateFlow()
+    val playerEngine: PlayerEngine
+        get() = activePlayerEngineFlow.value
 
     internal val showControlsFlow = MutableStateFlow(false)
     val showControls: StateFlow<Boolean> = showControlsFlow.asStateFlow()
@@ -294,6 +302,25 @@ class PlayerViewModel @Inject constructor(
 
     val castConnectionState: StateFlow<CastConnectionState> = castManager.connectionState
 
+    private fun setActivePlayerEngine(engine: PlayerEngine) {
+        if (activePlayerEngineFlow.value === engine) return
+        activePlayerEngineFlow.value = engine
+    }
+
+    private fun <T> activeEngineState(
+        initialValue: T,
+        selector: (PlayerEngine) -> StateFlow<T>
+    ): StateFlow<T> = activePlayerEngineFlow
+        .flatMapLatest(selector)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), initialValue)
+
+    private fun <T> activeEngineFlowState(
+        initialValue: T,
+        selector: (PlayerEngine) -> Flow<T>
+    ): StateFlow<T> = activePlayerEngineFlow
+        .flatMapLatest(selector)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), initialValue)
+
     internal fun logRepositoryFailure(operation: String, result: com.streamvault.domain.model.Result<Unit>) {
         if (result is com.streamvault.domain.model.Result.Error) {
             android.util.Log.w("PlayerVM", "$operation failed: ${result.message}", result.exception)
@@ -369,14 +396,14 @@ class PlayerViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            playerEngine.error.collect { error ->
+            activePlayerEngineFlow.flatMapLatest { it.error }.collect { error ->
                 if (error != null) {
                     handlePlaybackError(error)
                 }
             }
         }
         viewModelScope.launch {
-            playerEngine.playbackState.collect { state ->
+            activePlayerEngineFlow.flatMapLatest { it.playbackState }.collect { state ->
                 _playerDiagnostics.update { it.copy(playbackStateLabel = state.name.replace('_', ' ')) }
                 if (state == PlaybackState.ENDED && lastObservedPlaybackState != PlaybackState.ENDED) {
                     handlePlaybackEnded()
@@ -401,13 +428,13 @@ class PlayerViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            playerEngine.retryStatus.collect { status ->
+            activePlayerEngineFlow.flatMapLatest { it.retryStatus }.collect { status ->
                 status ?: return@collect
                 showRetryNotice(status)
             }
         }
         viewModelScope.launch {
-            playerEngine.audioFocusDenied.collect {
+            activePlayerEngineFlow.flatMapLatest { it.audioFocusDenied }.collect {
                 showPlayerNotice(
                     message = "Waiting for audio \u2014 unmute device and press Play",
                     durationMs = 8_000L
@@ -432,7 +459,8 @@ class PlayerViewModel @Inject constructor(
                     foregroundColorArgb = textColor,
                     backgroundColorArgb = backgroundColor
                 )
-            }.collect(playerEngine::setSubtitleStyle)
+            }.combine(activePlayerEngineFlow) { style, engine -> engine to style }
+                .collect { (engine, style) -> engine.setSubtitleStyle(style) }
         }
         viewModelScope.launch {
             combine(
@@ -458,7 +486,9 @@ class PlayerViewModel @Inject constructor(
             preferencesRepository.zapAutoRevert.collect { zapAutoRevertEnabled = it }
         }
         viewModelScope.launch {
-            preferencesRepository.playerMediaSessionEnabled.collect(playerEngine::setMediaSessionEnabled)
+            preferencesRepository.playerMediaSessionEnabled
+                .combine(activePlayerEngineFlow) { enabled, engine -> engine to enabled }
+                .collect { (engine, enabled) -> engine.setMediaSessionEnabled(enabled) }
         }
         viewModelScope.launch {
             combine(
@@ -478,21 +508,25 @@ class PlayerViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            playerEngine.timeshiftState.collect(::applyTimeshiftState)
+            activePlayerEngineFlow.flatMapLatest { it.timeshiftState }.collect(::applyTimeshiftState)
         }
         viewModelScope.launch {
-            preferencesRepository.playerDecoderMode.collect { mode ->
-                preferredDecoderMode = mode
-                if (!hasRetriedWithSoftwareDecoder) {
-                    playerEngine.setDecoderMode(mode)
-                    updateDecoderMode(mode)
+            preferencesRepository.playerDecoderMode
+                .combine(activePlayerEngineFlow) { mode, engine -> engine to mode }
+                .collect { (engine, mode) ->
+                    preferredDecoderMode = mode
+                    if (!hasRetriedWithSoftwareDecoder) {
+                        engine.setDecoderMode(mode)
+                        if (engine === playerEngine) {
+                            updateDecoderMode(mode)
+                        }
+                    }
                 }
-            }
         }
         viewModelScope.launch {
             var consecutiveLowBandwidthSeconds = 0
             var noticeShown = false
-            playerEngine.playerStats.collect { stats ->
+            activePlayerEngineFlow.flatMapLatest { it.playerStats }.collect { stats ->
                 if (!playerEngine.isPlaying.value || currentContentType != ContentType.LIVE) {
                     consecutiveLowBandwidthSeconds = 0
                     noticeShown = false
@@ -688,31 +722,25 @@ class PlayerViewModel @Inject constructor(
     )
     
     val playerError: StateFlow<PlayerError?> by lazy(LazyThreadSafetyMode.NONE) {
-        playerEngine.error
-            .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), null)
+        activeEngineFlowState(initialValue = null) { it.error }
     }
 
-    val videoFormat: StateFlow<VideoFormat> = playerEngine.videoFormat
-    
-    val playerStats = playerEngine.playerStats
+    val videoFormat: StateFlow<VideoFormat> = activeEngineState(VideoFormat(0, 0)) { it.videoFormat }
+
+    val playerStats: StateFlow<com.streamvault.player.PlayerStats> =
+        activeEngineState(com.streamvault.player.PlayerStats()) { it.playerStats }
     val availableAudioTracks: StateFlow<List<com.streamvault.player.PlayerTrack>> by lazy(LazyThreadSafetyMode.NONE) {
-        playerEngine.availableAudioTracks
-            .map { tracks -> tracks as? List<com.streamvault.player.PlayerTrack> ?: emptyList() }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        activeEngineState(emptyList()) { it.availableAudioTracks }
     }
     val availableSubtitleTracks: StateFlow<List<com.streamvault.player.PlayerTrack>> by lazy(LazyThreadSafetyMode.NONE) {
-        playerEngine.availableSubtitleTracks
-            .map { tracks -> tracks as? List<com.streamvault.player.PlayerTrack> ?: emptyList() }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        activeEngineState(emptyList()) { it.availableSubtitleTracks }
     }
     val availableVideoQualities: StateFlow<List<com.streamvault.player.PlayerTrack>> by lazy(LazyThreadSafetyMode.NONE) {
-        playerEngine.availableVideoTracks
-            .map { tracks -> tracks as? List<com.streamvault.player.PlayerTrack> ?: emptyList() }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        activeEngineState(emptyList()) { it.availableVideoTracks }
     }
-    val isMuted: StateFlow<Boolean> = playerEngine.isMuted
-    val mediaTitle: StateFlow<String?> = playerEngine.mediaTitle
-    val playbackSpeed: StateFlow<Float> = playerEngine.playbackSpeed
+    val isMuted: StateFlow<Boolean> = activeEngineState(false) { it.isMuted }
+    val mediaTitle: StateFlow<String?> = activeEngineState<String?>(null) { it.mediaTitle }
+    val playbackSpeed: StateFlow<Float> = activeEngineState(1f) { it.playbackSpeed }
 
     val preventStandbyDuringPlayback: StateFlow<Boolean> by lazy(LazyThreadSafetyMode.NONE) {
         preferencesRepository.preventStandbyDuringPlayback
@@ -1088,6 +1116,73 @@ class PlayerViewModel @Inject constructor(
         )
     }
 
+    private suspend fun applyPlaybackPreferences() {
+        playerEngine.setMuted(preferencesRepository.playerMuted.first())
+        playerEngine.setPlaybackSpeed(
+            if (currentContentType == ContentType.LIVE) {
+                1f
+            } else {
+                preferencesRepository.playerPlaybackSpeed.first()
+            }
+        )
+        playerEngine.setPreferredAudioLanguage(
+            resolvePreferredAudioLanguage(
+                preferredAudioLanguage = preferencesRepository.preferredAudioLanguage.first(),
+                appLanguage = preferencesRepository.appLanguage.first()
+            )
+        )
+        playerEngine.setNetworkQualityPreferences(
+            wifiMaxHeight = preferencesRepository.playerWifiMaxVideoHeight.first(),
+            ethernetMaxHeight = preferencesRepository.playerEthernetMaxVideoHeight.first()
+        )
+    }
+
+    private suspend fun tryAdoptPreviewHandoff(
+        requestVersion: Long,
+        internalChannelId: Long,
+        providerId: Long
+    ): Boolean {
+        if (currentContentType != ContentType.LIVE) return false
+
+        val session = livePreviewHandoffManager.consumeFullscreenHandoff(
+            channelId = internalChannelId,
+            providerId = providerId.takeIf { it > 0L }
+        ) ?: return false
+
+        val adoptedEngine = session.engine
+        return runCatching {
+            // Media3 requires a globally unique session ID. Release the main engine's
+            // session before the adopted live engine enables its own replacement.
+            mainPlayerEngine.setMediaSessionEnabled(false)
+            setActivePlayerEngine(adoptedEngine)
+            (adoptedEngine as? Media3PlayerEngine)?.let {
+                it.bypassAudioFocus = false
+                it.enableMediaSession = preferencesRepository.playerMediaSessionEnabled.first()
+                it.constrainResolutionForMultiView = false
+            }
+            applyPlaybackPreferences()
+            if (!isActivePlaybackSession(requestVersion)) {
+                setActivePlayerEngine(mainPlayerEngine)
+                adoptedEngine.release()
+                false
+            } else {
+                currentResolvedPlaybackUrl = session.streamInfo.url
+                probePassedPlaybackKeys.add(playbackProbeCacheKey(session.streamInfo.url))
+                playerEngine.play()
+                startTokenRenewalMonitoring(session.streamInfo.expirationTime)
+                maybeStartLiveTimeshift(session.streamInfo)
+                true
+            }
+        }.getOrElse {
+            livePreviewHandoffManager.clear(adoptedEngine)
+            if (playerEngine === adoptedEngine) {
+                setActivePlayerEngine(mainPlayerEngine)
+            }
+            adoptedEngine.release()
+            false
+        }
+    }
+
     internal suspend fun preparePlayer(
         streamInfo: com.streamvault.domain.model.StreamInfo,
         requestVersion: Long
@@ -1121,24 +1216,7 @@ class PlayerViewModel @Inject constructor(
             return false
         }
         probePassedPlaybackKeys.add(playbackProbeCacheKey(streamInfo.url))
-        playerEngine.setMuted(preferencesRepository.playerMuted.first())
-        playerEngine.setPlaybackSpeed(
-            if (currentContentType == ContentType.LIVE) {
-                1f
-            } else {
-                preferencesRepository.playerPlaybackSpeed.first()
-            }
-        )
-        playerEngine.setPreferredAudioLanguage(
-            resolvePreferredAudioLanguage(
-                preferredAudioLanguage = preferencesRepository.preferredAudioLanguage.first(),
-                appLanguage = preferencesRepository.appLanguage.first()
-            )
-        )
-        playerEngine.setNetworkQualityPreferences(
-            wifiMaxHeight = preferencesRepository.playerWifiMaxVideoHeight.first(),
-            ethernetMaxHeight = preferencesRepository.playerEthernetMaxVideoHeight.first()
-        )
+        applyPlaybackPreferences()
         if (!isActivePlaybackSession(requestVersion)) return false
         currentResolvedPlaybackUrl = streamInfo.url
         playerEngine.prepare(streamInfo)
@@ -1306,6 +1384,9 @@ class PlayerViewModel @Inject constructor(
 
         if (!hasArchiveRequest) {
             viewModelScope.launch {
+                if (tryAdoptPreviewHandoff(requestVersion, internalChannelId, providerId)) {
+                    return@launch
+                }
                 val streamInfo = resolvePlaybackStreamInfo(streamUrl, internalChannelId, providerId, currentContentType)
                 if (!isActivePlaybackSession(requestVersion, streamUrl)) return@launch
                 if (streamInfo == null) {
@@ -1314,6 +1395,24 @@ class PlayerViewModel @Inject constructor(
                     return@launch
                 }
                 if (!preparePlayer(streamInfo, requestVersion)) return@launch
+
+                // Check for resume position after the player is fully prepared (VOD only).
+                // Doing this after preparePlayer ensures pause() acts on the live player instance,
+                // not a stale one that may have already been replaced by prepareInternal().
+                if (showResumePrompt && currentContentType != ContentType.LIVE && currentContentId != -1L && currentProviderId != -1L) {
+                    val history = playbackHistoryRepository.getPlaybackHistory(currentContentId, currentContentType, currentProviderId)
+                    if (isActivePlaybackSession(requestVersion, streamUrl)) {
+                        if (history != null && history.resumePositionMs > 5000L && !isPlaybackComplete(history.resumePositionMs, history.totalDurationMs)) {
+                            playerEngine.pause()
+                            _resumePrompt.value = ResumePromptState(
+                                show = true,
+                                positionMs = history.resumePositionMs,
+                                title = currentTitle
+                            )
+                        }
+                    }
+                }
+
                 maybeStartLiveTimeshift(streamInfo)
             }
         }
@@ -1338,22 +1437,6 @@ class PlayerViewModel @Inject constructor(
             }
         } else {
             _playerDiagnostics.update { it.copy(providerName = "", providerSourceLabel = "") }
-        }
-        
-        // 1. Check for Resume Position for VODs
-        if (showResumePrompt && currentContentType != ContentType.LIVE && currentContentId != -1L && currentProviderId != -1L) {
-            viewModelScope.launch {
-                val history = playbackHistoryRepository.getPlaybackHistory(currentContentId, currentContentType, currentProviderId)
-                if (!isActivePlaybackSession(requestVersion, streamUrl)) return@launch
-                if (history != null && history.resumePositionMs > 5000L && !isPlaybackComplete(history.resumePositionMs, history.totalDurationMs)) {
-                    playerEngine.pause()
-                    _resumePrompt.value = ResumePromptState(
-                        show = true,
-                        positionMs = history.resumePositionMs,
-                        title = currentTitle
-                    )
-                }
-            }
         }
         
         // Load playlist if context changed
@@ -1537,7 +1620,10 @@ class PlayerViewModel @Inject constructor(
             playerEngine.pause()
         }
         if (currentContentType != ContentType.LIVE) {
-            viewModelScope.launch { persistPlaybackProgress() }
+            viewModelScope.launch {
+                persistPlaybackProgress()
+                playbackHistoryRepository.flushPendingProgress()
+            }
         }
     }
 
@@ -1552,7 +1638,10 @@ class PlayerViewModel @Inject constructor(
 
     fun onPlayerScreenDisposed() {
         if (currentContentType != ContentType.LIVE) {
-            viewModelScope.launch { persistPlaybackProgress() }
+            viewModelScope.launch {
+                persistPlaybackProgress()
+                playbackHistoryRepository.flushPendingProgress()
+            }
         }
         playerEngine.stopLiveTimeshift()
     }
@@ -1562,6 +1651,7 @@ class PlayerViewModel @Inject constructor(
             viewModelScope.launch { persistPlaybackProgress() }
         }
         playerEngine.stopLiveTimeshift()
+        livePreviewHandoffManager.clear(playerEngine)
         playerEngine.release()
     }
 
@@ -2807,6 +2897,10 @@ class PlayerViewModel @Inject constructor(
         recentChannelsJob?.cancel()
         lastVisitedCategoryJob?.cancel()
         seekThumbnailProvider.clearCache()
+        livePreviewHandoffManager.clear(playerEngine)
         playerEngine.release()
+        if (mainPlayerEngine !== playerEngine) {
+            mainPlayerEngine.release()
+        }
     }
 }

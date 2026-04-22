@@ -67,6 +67,7 @@ internal class SyncCatalogStore(
                 categories?.let { applyCategories(providerId, sessionId, "LIVE") }
                 applyChannels(providerId, sessionId)
             }
+            catalogSyncDao.rebuildChannelFts()
             return limitedChannels.size
         } finally {
             clearSession(providerId, sessionId)
@@ -83,6 +84,7 @@ internal class SyncCatalogStore(
                 categories?.let { applyCategories(providerId, sessionId, "MOVIE") }
                 applyMovies(providerId, sessionId)
             }
+            catalogSyncDao.rebuildMovieFts()
             movieDao.restoreWatchProgress(providerId)
             return acceptedCount
         } finally {
@@ -100,7 +102,21 @@ internal class SyncCatalogStore(
                 categories?.let { applyCategories(providerId, sessionId, "SERIES") }
                 applySeries(providerId, sessionId)
             }
+            catalogSyncDao.rebuildSeriesFts()
             return acceptedCount
+        } finally {
+            clearSession(providerId, sessionId)
+        }
+    }
+
+    suspend fun applyStagedLiveCatalog(providerId: Long, sessionId: Long, categories: List<CategoryEntity>?) {
+        try {
+            transactionRunner.inTransaction {
+                categories?.let { stageCategories(providerId, sessionId, it) }
+                categories?.let { applyCategories(providerId, sessionId, "LIVE") }
+                applyChannels(providerId, sessionId)
+            }
+            catalogSyncDao.rebuildChannelFts()
         } finally {
             clearSession(providerId, sessionId)
         }
@@ -113,6 +129,7 @@ internal class SyncCatalogStore(
                 categories?.let { applyCategories(providerId, sessionId, "MOVIE") }
                 applyMovies(providerId, sessionId)
             }
+            catalogSyncDao.rebuildMovieFts()
             movieDao.restoreWatchProgress(providerId)
         } finally {
             clearSession(providerId, sessionId)
@@ -126,6 +143,7 @@ internal class SyncCatalogStore(
                 categories?.let { applyCategories(providerId, sessionId, "SERIES") }
                 applySeries(providerId, sessionId)
             }
+            catalogSyncDao.rebuildSeriesFts()
         } finally {
             clearSession(providerId, sessionId)
         }
@@ -194,7 +212,9 @@ internal class SyncCatalogStore(
                 applyMovies(providerId, sessionId)
             }
         }
+        if (includeLive) { catalogSyncDao.rebuildChannelFts() }
         if (includeMovies) {
+            catalogSyncDao.rebuildMovieFts()
             movieDao.restoreWatchProgress(providerId)
         }
     }
@@ -245,105 +265,20 @@ internal class SyncCatalogStore(
     }
 
     private suspend fun applyChannels(providerId: Long, sessionId: Long) {
-        val stagedByStreamId = catalogSyncDao.getChannelStages(providerId, sessionId)
-            .associateBy { it.streamId }
-        val changed = channelDao.getByProviderSync(providerId)
-            .mapNotNull { current ->
-                val stage = stagedByStreamId[current.streamId] ?: return@mapNotNull null
-                if (current.syncFingerprint == stage.syncFingerprint) return@mapNotNull null
-                current.copy(
-                    name = stage.name,
-                    logoUrl = stage.logoUrl,
-                    groupTitle = stage.groupTitle,
-                    categoryId = stage.categoryId,
-                    categoryName = stage.categoryName,
-                    streamUrl = stage.streamUrl,
-                    epgChannelId = stage.epgChannelId,
-                    number = stage.number,
-                    catchUpSupported = stage.catchUpSupported,
-                    catchUpDays = stage.catchUpDays,
-                    catchUpSource = stage.catchUpSource,
-                    isAdult = stage.isAdult,
-                    logicalGroupId = stage.logicalGroupId,
-                    errorCount = stage.errorCount,
-                    syncFingerprint = stage.syncFingerprint
-                )
-            }
-        if (changed.isNotEmpty()) {
-            channelDao.updateAll(changed)
-        }
+        catalogSyncDao.updateChangedChannelsFromStage(providerId, sessionId)
         catalogSyncDao.insertMissingChannelsFromStage(providerId, sessionId)
         catalogSyncDao.deleteStaleChannelsForStage(providerId, sessionId)
     }
 
     private suspend fun applyMovies(providerId: Long, sessionId: Long) {
-        val stagedByStreamId = catalogSyncDao.getMovieStages(providerId, sessionId)
-            .associateBy { it.streamId }
-        val changed = movieDao.getByProviderSync(providerId)
-            .mapNotNull { current ->
-                val stage = stagedByStreamId[current.streamId] ?: return@mapNotNull null
-                if (current.syncFingerprint == stage.syncFingerprint) return@mapNotNull null
-                current.copy(
-                    name = stage.name,
-                    posterUrl = stage.posterUrl,
-                    backdropUrl = stage.backdropUrl,
-                    categoryId = stage.categoryId,
-                    categoryName = stage.categoryName,
-                    streamUrl = stage.streamUrl,
-                    containerExtension = stage.containerExtension,
-                    plot = stage.plot,
-                    cast = stage.cast,
-                    director = stage.director,
-                    genre = stage.genre,
-                    releaseDate = stage.releaseDate,
-                    duration = stage.duration,
-                    durationSeconds = stage.durationSeconds,
-                    rating = stage.rating,
-                    year = stage.year,
-                    tmdbId = stage.tmdbId,
-                    youtubeTrailer = stage.youtubeTrailer,
-                    isAdult = stage.isAdult,
-                    syncFingerprint = stage.syncFingerprint
-                )
-            }
-        if (changed.isNotEmpty()) {
-            movieDao.updateAll(changed)
-        }
+        catalogSyncDao.updateChangedMoviesFromStage(providerId, sessionId)
         catalogSyncDao.insertMissingMoviesFromStage(providerId, sessionId)
         catalogSyncDao.deleteStaleMoviesForStage(providerId, sessionId)
         refreshMovieTmdbIdentities(providerId)
     }
 
     private suspend fun applySeries(providerId: Long, sessionId: Long) {
-        val stagedBySeriesId = catalogSyncDao.getSeriesStages(providerId, sessionId)
-            .associateBy { it.seriesId }
-        val changed = seriesDao.getByProviderSync(providerId)
-            .mapNotNull { current ->
-                val stage = stagedBySeriesId[current.seriesId] ?: return@mapNotNull null
-                if (current.syncFingerprint == stage.syncFingerprint) return@mapNotNull null
-                current.copy(
-                    name = stage.name,
-                    posterUrl = stage.posterUrl,
-                    backdropUrl = stage.backdropUrl,
-                    categoryId = stage.categoryId,
-                    categoryName = stage.categoryName,
-                    plot = stage.plot,
-                    cast = stage.cast,
-                    director = stage.director,
-                    genre = stage.genre,
-                    releaseDate = stage.releaseDate,
-                    rating = stage.rating,
-                    tmdbId = stage.tmdbId,
-                    youtubeTrailer = stage.youtubeTrailer,
-                    episodeRunTime = stage.episodeRunTime,
-                    lastModified = stage.lastModified,
-                    isAdult = stage.isAdult,
-                    syncFingerprint = stage.syncFingerprint
-                )
-            }
-        if (changed.isNotEmpty()) {
-            seriesDao.updateAll(changed)
-        }
+        catalogSyncDao.updateChangedSeriesFromStage(providerId, sessionId)
         catalogSyncDao.insertMissingSeriesFromStage(providerId, sessionId)
         catalogSyncDao.deleteStaleSeriesForStage(providerId, sessionId)
         refreshSeriesTmdbIdentities(providerId)

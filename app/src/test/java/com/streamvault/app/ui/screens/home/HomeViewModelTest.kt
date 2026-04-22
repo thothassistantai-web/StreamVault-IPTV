@@ -2,6 +2,7 @@ package com.streamvault.app.ui.screens.home
 
 import android.app.Application
 import androidx.lifecycle.ViewModel
+import com.streamvault.app.player.LivePreviewHandoffManager
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.app.ui.screens.multiview.MultiViewManager
 import com.streamvault.data.preferences.PreferencesRepository
@@ -51,6 +52,7 @@ class HomeViewModelTest {
     private val syncManager: SyncManager = mock()
     private val tvInputChannelSyncManager: TvInputChannelSyncManager = mock()
     private val multiViewManager = MultiViewManager()
+    private val livePreviewHandoffManager: LivePreviewHandoffManager = mock()
     private val playerEngine: PlayerEngine = mock()
     private val playerEngineProvider: InjectProvider<PlayerEngine> = mock()
     private val application: Application = mock()
@@ -126,6 +128,7 @@ class HomeViewModelTest {
             syncManager = syncManager,
             tvInputChannelSyncManager = tvInputChannelSyncManager,
             multiViewManager = multiViewManager,
+            livePreviewHandoffManager = livePreviewHandoffManager,
             playerEngineProvider = playerEngineProvider
         ).also(createdViewModels::add)
 

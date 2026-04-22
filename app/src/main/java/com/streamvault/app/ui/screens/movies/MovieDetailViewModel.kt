@@ -45,42 +45,48 @@ class MovieDetailViewModel @Inject constructor(
 
     private fun loadMovieDetails() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            try {
+                _uiState.update { it.copy(isLoading = true) }
 
-            val provider = providerRepository.getActiveProvider().first()
-            if (provider == null) {
-                _uiState.update { it.copy(isLoading = false, error = "No active provider") }
-                return@launch
-            }
+                val provider = providerRepository.getActiveProvider().first()
+                if (provider == null) {
+                    _uiState.update { it.copy(isLoading = false, error = "No active provider") }
+                    return@launch
+                }
 
-            val playbackHistory = playbackHistoryRepository.getPlaybackHistory(
-                contentId = movieId,
-                contentType = ContentType.MOVIE,
-                providerId = provider.id
-            )
+                val playbackHistory = playbackHistoryRepository.getPlaybackHistory(
+                    contentId = movieId,
+                    contentType = ContentType.MOVIE,
+                    providerId = provider.id
+                )
 
-            when (val result = movieRepository.getMovieDetails(provider.id, movieId)) {
-                is Result.Success -> _uiState.update {
-                    val movie = result.data
-                    val movieDurationMs = movie.durationSeconds.takeIf { it > 0 }?.times(1000L) ?: 0L
-                    val resumePositionMs = playbackHistory?.resumePositionMs ?: movie.watchProgress
-                    val hasResume = resumePositionMs > 5000L && !isPlaybackComplete(
-                        progressMs = resumePositionMs,
-                        totalDurationMs = playbackHistory?.totalDurationMs?.takeIf { it > 0L } ?: movieDurationMs
-                    )
-                    it.copy(isLoading = false, movie = result.data, error = null)
-                        .copy(
-                            hasResume = hasResume,
-                            resumePositionMs = if (hasResume) resumePositionMs else 0L
+                when (val result = movieRepository.getMovieDetails(provider.id, movieId)) {
+                    is Result.Success -> _uiState.update {
+                        val movie = result.data
+                        val movieDurationMs = movie.durationSeconds.takeIf { it > 0 }?.times(1000L) ?: 0L
+                        val resumePositionMs = playbackHistory?.resumePositionMs ?: movie.watchProgress
+                        val hasResume = resumePositionMs > 5000L && !isPlaybackComplete(
+                            progressMs = resumePositionMs,
+                            totalDurationMs = playbackHistory?.totalDurationMs?.takeIf { it > 0L } ?: movieDurationMs
                         )
-                }.also {
-                    loadExternalRatings(result.data)
+                        it.copy(isLoading = false, movie = result.data, error = null)
+                            .copy(
+                                hasResume = hasResume,
+                                resumePositionMs = if (hasResume) resumePositionMs else 0L
+                            )
+                    }.also {
+                        loadExternalRatings(result.data)
+                    }
+                    is Result.Error -> _uiState.update {
+                        it.copy(isLoading = false, error = result.message)
+                    }
+                    is Result.Loading -> _uiState.update {
+                        it.copy(isLoading = true)
+                    }
                 }
-                is Result.Error -> _uiState.update {
-                    it.copy(isLoading = false, error = result.message)
-                }
-                is Result.Loading -> _uiState.update {
-                    it.copy(isLoading = true)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isLoading = false, error = e.message ?: "Failed to load movie details")
                 }
             }
         }

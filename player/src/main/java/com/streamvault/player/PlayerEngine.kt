@@ -103,6 +103,7 @@ interface PlayerEngine {
         surfaceType: PlayerRenderSurfaceType = PlayerRenderSurfaceType.AUTO
     ): View
     fun bindRenderView(renderView: View, resizeMode: PlayerSurfaceResizeMode)
+    fun clearRenderBinding()
     fun releaseRenderView(renderView: View)
 }
 

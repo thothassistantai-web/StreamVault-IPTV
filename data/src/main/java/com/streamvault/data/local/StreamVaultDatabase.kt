@@ -45,7 +45,7 @@ import com.streamvault.data.local.entity.*
         ProgramReminderEntity::class,
         RecordingStorageEntity::class
     ],
-    version = 39,
+    version = 40,
     exportSchema = true   // ← was false; schema JSON now tracked in version control
 )
 @TypeConverters(RoomEnumConverters::class)
@@ -1849,6 +1849,28 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                     ON providers(server_url, username, stalker_mac_address)
                     """.trimIndent()
                 )
+            }
+        }
+
+        /**
+         * Migration 39 → 40: Drop per-row FTS triggers.
+         * The triggers (channels_ai/ad/au, movies_ai/ad/au, series_ai/ad/au) fired for every
+         * individual row INSERT/DELETE/UPDATE and serialised 52k+ writes through the FTS index
+         * one row at a time, causing minute-long first-sync freezes on large providers.
+         * FTS is now rebuilt in bulk via INSERT INTO table_fts(table_fts) VALUES('rebuild')
+         * once per sync, after each catalog transaction commits.
+         */
+        val MIGRATION_39_40 = object : Migration(39, 40) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("DROP TRIGGER IF EXISTS channels_ai")
+                database.execSQL("DROP TRIGGER IF EXISTS channels_ad")
+                database.execSQL("DROP TRIGGER IF EXISTS channels_au")
+                database.execSQL("DROP TRIGGER IF EXISTS movies_ai")
+                database.execSQL("DROP TRIGGER IF EXISTS movies_ad")
+                database.execSQL("DROP TRIGGER IF EXISTS movies_au")
+                database.execSQL("DROP TRIGGER IF EXISTS series_ai")
+                database.execSQL("DROP TRIGGER IF EXISTS series_ad")
+                database.execSQL("DROP TRIGGER IF EXISTS series_au")
             }
         }
     }

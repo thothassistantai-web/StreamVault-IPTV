@@ -130,6 +130,7 @@ class Media3PlayerEngine @Inject constructor(
     private var retryJob: Job? = null
     private var retryGeneration = 0L
     private var currentBufferIsLive: Boolean? = null
+    private var audioCodecUnsupportedReported = false
 
     private val _playbackState = MutableStateFlow(PlaybackState.IDLE)
     override val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
@@ -483,6 +484,10 @@ class Media3PlayerEngine @Inject constructor(
         viewBinder.bind(renderView, getOrCreatePlayer(), resizeMode)
     }
 
+    override fun clearRenderBinding() {
+        viewBinder.attachPlayer(null)
+    }
+
     override fun releaseRenderView(renderView: android.view.View) {
         viewBinder.release(renderView)
     }
@@ -548,6 +553,7 @@ class Media3PlayerEngine @Inject constructor(
         lastMediaId = mediaId
         playbackStarted = false
         prepareStartMs = System.currentTimeMillis()
+        audioCodecUnsupportedReported = false
         _error.tryEmit(null)
         _mediaTitle.value = null
         trackController.resetSelections()
@@ -615,17 +621,13 @@ class Media3PlayerEngine @Inject constructor(
     }
 
     private fun recreatePlayer() {
-        val existing = exoPlayer
-        if (existing != null) {
-            val currentViewPosition = existing.currentPosition
-            val playWhenReady = existing.playWhenReady
-            mediaSession?.release()
-            mediaSession = null
-            exoPlayer?.release()
-            exoPlayer = null
-            viewBinder.attachPlayer(null)
-            lastStreamInfo?.let { prepareInternal(it, preserveRetryState = true, seekPositionMs = currentViewPosition, autoPlay = playWhenReady) }
-        }
+        val existing = exoPlayer ?: return
+        mediaSession?.release()
+        mediaSession = null
+        existing.release()
+        exoPlayer = null
+        viewBinder.attachPlayer(null)
+        // The caller (prepareInternal) will create a fresh player and set it up fully.
     }
 
     private fun getOrCreatePlayer(): ExoPlayer {
@@ -874,6 +876,30 @@ class Media3PlayerEngine @Inject constructor(
 
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 trackController.onTracksChanged(tracks)
+                // Detect the silent failure: the stream contains audio groups but no track
+                // is decodable on this device (e.g. EAC3/AC3 without passthrough or a
+                // software decoder). ExoPlayer simply skips the audio renderer without
+                // throwing an error, resulting in mute playback with no user feedback.
+                if (!audioCodecUnsupportedReported) {
+                    val hasAudioGroups = tracks.groups.any {
+                        it.mediaTrackGroup.type == C.TRACK_TYPE_AUDIO && it.length > 0
+                    }
+                    if (hasAudioGroups && trackController.availableAudioTracks.value.isEmpty()) {
+                        audioCodecUnsupportedReported = true
+                        val mimeTypes = tracks.groups
+                            .filter { it.mediaTrackGroup.type == C.TRACK_TYPE_AUDIO }
+                            .flatMap { g -> (0 until g.length).mapNotNull { g.mediaTrackGroup.getFormat(it).sampleMimeType } }
+                            .distinct()
+                            .joinToString()
+                        Log.w(TAG, "audio-codec-unsupported mimeTypes=$mimeTypes target=${PlaybackLogSanitizer.sanitizeUrl(lastStreamInfo?.url.orEmpty())}")
+                        _error.tryEmit(
+                            PlayerError.DecoderError(
+                                "No compatible audio decoder for this stream ($mimeTypes). " +
+                                    "The audio codec is not supported on this device."
+                            )
+                        )
+                    }
+                }
             }
         }
     }

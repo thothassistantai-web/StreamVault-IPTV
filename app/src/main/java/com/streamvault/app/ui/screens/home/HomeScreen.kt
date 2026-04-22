@@ -1120,7 +1120,10 @@ fun HomeScreen(
                                                     showPinDialog = true
                                                 } else if (isProMode) {
                                                     if (uiState.previewChannelId == channel.id) {
-                                                        viewModel.clearPreview()
+                                                        val handedOff = viewModel.beginPreviewHandoff(channel)
+                                                        if (!handedOff) {
+                                                            viewModel.clearPreview()
+                                                        }
                                                         onChannelClick(
                                                             channel,
                                                             uiState.selectedCategory,
