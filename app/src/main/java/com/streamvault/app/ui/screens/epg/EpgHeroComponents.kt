@@ -36,6 +36,8 @@ import com.streamvault.app.R
 import com.streamvault.app.ui.components.ChannelLogoBadge
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.model.guideLookupKey
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createTimeFormat
 import com.streamvault.app.ui.theme.FocusBorder
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
@@ -44,9 +46,7 @@ import com.streamvault.app.ui.theme.SurfaceElevated
 import com.streamvault.app.ui.theme.SurfaceHighlight
 import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Program
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 internal data class GuideHeroSelection(
     val channel: Channel,
@@ -128,7 +128,8 @@ internal fun ImmersiveGuideHero(
     isRefreshing: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val format = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val appTimeFormat = LocalAppTimeFormat.current
+    val format = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
     val currentTime = System.currentTimeMillis()
     val lastUpdatedLabel = remember(lastUpdatedAt, currentTime) {
         lastUpdatedAt?.let { updatedAt ->

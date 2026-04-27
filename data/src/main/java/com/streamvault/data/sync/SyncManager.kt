@@ -98,6 +98,21 @@ private const val XTREAM_AVOID_FULL_CATALOG_COOLDOWN_MILLIS = 6 * 60 * 60 * 1000
 private const val XTREAM_MOVIE_REQUEST_TIMEOUT_MILLIS = 60_000L
 private const val XTREAM_SERIES_REQUEST_TIMEOUT_MILLIS = 60_000L
 private const val STALKER_GUIDE_PROGRAM_BATCH_SIZE = 500
+/**
+ * Maximum number of programs we will accept from a single per-channel `get_epg_info`
+ * call before treating the response as a portal that ignores `ch_id` and returns the
+ * full bulk EPG. Probed real-world portals return at most ~150 programs/channel for a
+ * 6h period; 5 000 leaves ample headroom while still catching multi-megabyte payloads.
+ */
+private const val STALKER_PER_CHANNEL_RECORD_SANITY_CAP = 5_000
+
+/**
+ * Sentinel exception raised inside the streamed per-channel EPG callback when we detect
+ * that the portal is returning the bulk payload regardless of the requested `ch_id`.
+ * Caught and converted into a warning by [SyncManager.syncStalkerPortalEpg].
+ */
+private class StalkerBrokenPerChannelEpgException(channelName: String) :
+    RuntimeException("Stalker portal returned bulk-shaped EPG for per-channel request ($channelName)")
 
 enum class SyncRepairSection {
     LIVE,
@@ -882,22 +897,11 @@ class SyncManager @Inject constructor(
         if (force || ContentCachePolicy.shouldRefresh(metadata.lastLiveSuccess, ContentCachePolicy.CATALOG_TTL_MILLIS, now)) {
             progress(provider.id, onProgress, "Downloading Live TV...")
             val hiddenLiveCategoryIds = preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE).first()
-            val liveCatalogResult = loadStalkerLiveCatalog(api, provider, onProgress)
-            val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
-                providerId = provider.id,
-                visibleCategories = liveCatalogResult.categories,
-                visibleChannels = liveCatalogResult.channels.map { it.toEntity() },
-                hiddenLiveCategoryIds = hiddenLiveCategoryIds
-            )
-            val acceptedCount = syncCatalogStore.replaceLiveCatalog(
-                providerId = provider.id,
-                categories = liveCatalog.categories,
-                channels = liveCatalog.channels
-            )
+            val liveCatalogResult = syncStalkerLiveCatalogStaged(api, provider, hiddenLiveCategoryIds, onProgress)
             metadata = metadata.copy(
                 lastLiveSync = now,
                 lastLiveSuccess = now,
-                liveCount = acceptedCount
+                liveCount = liveCatalogResult.acceptedCount
             )
             syncMetadataRepository.updateMetadata(metadata)
             warnings += liveCatalogResult.warnings
@@ -1224,60 +1228,82 @@ class SyncManager @Inject constructor(
         }
 
         runCatching {
-            requireResult(
-                api.getBulkEpg(),
-                "Failed to load bulk Stalker guide"
-            )
-        }.onSuccess { programs ->
-            programs
-                .asSequence()
-                .mapNotNull { program ->
-                    val resolvedChannelKey = aliasToChannelKey[program.channelId] ?: return@mapNotNull null
-                    bulkCoveredChannelKeys += resolvedChannelKey
-                    program.copy(
-                        providerId = provider.id,
-                        channelId = resolvedChannelKey
-                    ).toEntity()
+            // Stream the bulk EPG payload program-by-program; the previous buffered API
+            // could materialise >30 MB JSON trees on certain Stalker portals which led to
+            // OOM crashes when re-entering content screens.
+            api.streamBulkEpg(periodHours = 6) { program ->
+                val resolvedChannelKey = aliasToChannelKey[program.channelId] ?: return@streamBulkEpg
+                if (program.endTime <= program.startTime) return@streamBulkEpg
+                bulkCoveredChannelKeys += resolvedChannelKey
+                insertBuffer += program.copy(
+                    providerId = provider.id,
+                    channelId = resolvedChannelKey
+                ).toEntity()
+                if (insertBuffer.size >= STALKER_GUIDE_PROGRAM_BATCH_SIZE) {
+                    flushPrograms()
                 }
-                .forEach { entity ->
-                    insertBuffer += entity
-                    if (insertBuffer.size >= STALKER_GUIDE_PROGRAM_BATCH_SIZE) {
-                        flushPrograms()
-                    }
+            }.let { result ->
+                if (result is com.streamvault.domain.model.Result.Error) {
+                    throw result.exception ?: IllegalStateException(result.message)
                 }
+            }
         }.onFailure { error ->
             Log.d(TAG, "Bulk Stalker portal EPG fetch unavailable for provider ${provider.id}", error)
         }
 
         val fallbackGuideRequests = guideRequests.filterNot { request -> request.channelKey in bulkCoveredChannelKeys }
 
+        // Some portals ignore `ch_id` and return the entire bulk EPG for every per-channel
+        // request. After the first per-channel call we sample the response shape; if it
+        // looks like the portal is repeatedly emitting the bulk payload we abort the
+        // per-channel loop to avoid downloading the same multi-megabyte payload N times.
+        var ignorePerChannelGuide = false
+
         fallbackGuideRequests.forEachIndexed { index, request ->
+            if (ignorePerChannelGuide) return@forEachIndexed
             progress(provider.id, onProgress, "Downloading portal EPG... ${index + 1} of ${fallbackGuideRequests.size}")
             runCatching {
-                requireResult(
-                    api.getEpg(request.channelKey),
-                    "Failed to load Stalker guide for ${request.channelName}"
-                )
-            }.onSuccess { programs ->
-                programs
-                    .asSequence()
-                    .filter { program -> program.endTime > program.startTime }
-                    .forEach { program ->
-                        insertBuffer += program.copy(
-                            providerId = provider.id,
-                            channelId = request.channelKey
-                        ).toEntity()
-                        if (insertBuffer.size >= STALKER_GUIDE_PROGRAM_BATCH_SIZE) {
-                            flushPrograms()
-                        }
+                var perChannelRecordCount = 0
+                val foreignChannelIds = HashSet<String>()
+                val streamResult = api.streamEpg(request.channelKey) { program ->
+                    if (program.endTime <= program.startTime) return@streamEpg
+                    if (program.channelId != request.channelKey) {
+                        foreignChannelIds += program.channelId
                     }
+                    insertBuffer += program.copy(
+                        providerId = provider.id,
+                        channelId = request.channelKey
+                    ).toEntity()
+                    perChannelRecordCount++
+                    if (perChannelRecordCount >= STALKER_PER_CHANNEL_RECORD_SANITY_CAP || foreignChannelIds.size > 1) {
+                        // Bail out of this single response — the portal is clearly returning
+                        // the bulk payload again. The outer loop will then disable any
+                        // remaining per-channel calls.
+                        throw StalkerBrokenPerChannelEpgException(request.channelName)
+                    }
+                    if (insertBuffer.size >= STALKER_GUIDE_PROGRAM_BATCH_SIZE) {
+                        flushPrograms()
+                    }
+                }
+                if (streamResult is com.streamvault.domain.model.Result.Error) {
+                    throw streamResult.exception ?: IllegalStateException(streamResult.message)
+                }
             }.onFailure { error ->
-                failedChannels += request.channelName
-                Log.w(
-                    TAG,
-                    "Stalker portal EPG fetch failed for provider ${provider.id} channel ${request.channelKey}",
-                    error
-                )
+                if (error is StalkerBrokenPerChannelEpgException) {
+                    ignorePerChannelGuide = true
+                    Log.w(
+                        TAG,
+                        "Stalker portal returned bulk-shaped payload for per-channel EPG request " +
+                            "(${request.channelKey}); skipping remaining per-channel guide calls."
+                    )
+                } else {
+                    failedChannels += request.channelName
+                    Log.w(
+                        TAG,
+                        "Stalker portal EPG fetch failed for provider ${provider.id} channel ${request.channelKey}",
+                        error
+                    )
+                }
             }
         }
 
@@ -1495,19 +1521,12 @@ class SyncManager @Inject constructor(
                 progress(provider.id, onProgress, "Retrying Live TV...")
                 val api = createStalkerSyncProvider(provider)
                 val hiddenLiveCategoryIds = preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE).first()
-                val liveCatalogResult = loadStalkerLiveCatalog(api, provider, onProgress)
-                val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
-                    providerId = provider.id,
-                    visibleCategories = liveCatalogResult.categories,
-                    visibleChannels = liveCatalogResult.channels.map { it.toEntity() },
-                    hiddenLiveCategoryIds = hiddenLiveCategoryIds
-                )
-                val acceptedCount = syncCatalogStore.replaceLiveCatalog(provider.id, liveCatalog.categories, liveCatalog.channels)
+                val liveCatalogResult = syncStalkerLiveCatalogStaged(api, provider, hiddenLiveCategoryIds, onProgress)
                 val metadata = (syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id))
                     .copy(
                         lastLiveSync = now,
                         lastLiveSuccess = now,
-                        liveCount = acceptedCount
+                        liveCount = liveCatalogResult.acceptedCount
                     )
                 syncMetadataRepository.updateMetadata(metadata)
             }
@@ -2252,6 +2271,121 @@ class SyncManager @Inject constructor(
         val channels: List<Channel>,
         val warnings: List<String> = emptyList()
     )
+
+    private data class StagedStalkerLiveCatalogResult(
+        val acceptedCount: Int,
+        val warnings: List<String> = emptyList()
+    )
+
+    private suspend fun syncStalkerLiveCatalogStaged(
+        api: StalkerProvider,
+        provider: Provider,
+        hiddenLiveCategoryIds: Set<Long>,
+        onProgress: ((String) -> Unit)?
+    ): StagedStalkerLiveCatalogResult {
+        val warnings = mutableListOf<String>()
+        var categoriesErrorMessage: String? = null
+        val preferredCategories = when (val categoriesResult = api.getLiveCategories()) {
+            is com.streamvault.domain.model.Result.Success -> categoriesResult.data
+                .map { it.toEntity(provider.id) }
+                .filterNot { category -> category.categoryId in hiddenLiveCategoryIds }
+            is com.streamvault.domain.model.Result.Error -> {
+                Log.w(
+                    TAG,
+                    "Stalker live categories failed for provider ${provider.id}; streaming bulk live channels with fallback categories: ${categoriesResult.message}",
+                    categoriesResult.exception
+                )
+                warnings += "Live categories failed; recovered using bulk live channels."
+                categoriesErrorMessage = categoriesResult.message
+                null
+            }
+            is com.streamvault.domain.model.Result.Loading -> throw IllegalStateException("Unexpected loading state")
+        }
+
+        progress(provider.id, onProgress, "Loading live channels...")
+        val fallbackCollector = FallbackCategoryCollector(provider.id, ContentType.LIVE)
+        val seenStreamIds = HashSet<Long>()
+        val batch = ArrayList<Channel>(XTREAM_FALLBACK_STAGE_BATCH_SIZE)
+        var stagedSessionId: Long? = null
+        var acceptedCount = 0
+
+        suspend fun flushBatch() {
+            if (batch.isEmpty()) return
+            val staged = catalogStager.stageChannelItems(
+                providerId = provider.id,
+                items = batch,
+                seenStreamIds = seenStreamIds,
+                fallbackCollector = fallbackCollector,
+                sessionId = stagedSessionId
+            )
+            stagedSessionId = staged.sessionId
+            acceptedCount += staged.acceptedCount
+            batch.clear()
+        }
+
+        try {
+            when (val streamResult = api.streamLiveStreams { channel ->
+                if (channel.categoryId != null && channel.categoryId in hiddenLiveCategoryIds) {
+                    return@streamLiveStreams
+                }
+                batch += channel
+                if (batch.size >= XTREAM_FALLBACK_STAGE_BATCH_SIZE) {
+                    flushBatch()
+                }
+            }) {
+                is com.streamvault.domain.model.Result.Success -> flushBatch()
+                is com.streamvault.domain.model.Result.Error -> {
+                    val profileDiagnostic = stalkerCatalogAccessDiagnostic(
+                        api = api,
+                        primaryMessage = categoriesErrorMessage.orEmpty(),
+                        fallbackMessage = streamResult.message
+                    )
+                    throw IllegalStateException(
+                        buildString {
+                            append(streamResult.message.ifBlank { "Failed to load live channels" })
+                            profileDiagnostic?.let {
+                                append(' ')
+                                append(it)
+                            }
+                        },
+                        streamResult.exception
+                    )
+                }
+                is com.streamvault.domain.model.Result.Loading -> throw IllegalStateException("Unexpected loading state")
+            }
+
+            val sessionId = stagedSessionId
+            if (acceptedCount == 0 || sessionId == null) {
+                throw IllegalStateException("Stalker bulk live catalog returned no usable channels.")
+            }
+
+            if (hiddenLiveCategoryIds.isNotEmpty()) {
+                mergeHiddenChannelsIntoStaging(provider.id, sessionId, hiddenLiveCategoryIds)
+            }
+            val hiddenCategories = if (hiddenLiveCategoryIds.isNotEmpty()) {
+                categoryDao.getByProviderAndTypeSync(provider.id, ContentType.LIVE.name)
+                    .filter { category -> category.categoryId in hiddenLiveCategoryIds }
+            } else {
+                emptyList()
+            }
+            val categories = (
+                mergePreferredAndFallbackCategories(
+                    preferredCategories,
+                    fallbackCollector.entities().takeIf { it.isNotEmpty() }
+                ).orEmpty() + hiddenCategories
+            )
+                .distinctBy { it.categoryId to it.type }
+                .takeIf { it.isNotEmpty() }
+            syncCatalogStore.applyStagedLiveCatalog(provider.id, sessionId, categories)
+            return StagedStalkerLiveCatalogResult(acceptedCount, warnings)
+        } catch (error: CancellationException) {
+            stagedSessionId?.let { syncCatalogStore.discardStagedImport(provider.id, it) }
+            throw error
+        } catch (error: Exception) {
+            stagedSessionId?.let { syncCatalogStore.discardStagedImport(provider.id, it) }
+            throw error
+        }
+    }
 
     private suspend fun loadStalkerLiveCatalog(
         api: StalkerProvider,

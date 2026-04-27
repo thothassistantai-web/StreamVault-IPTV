@@ -65,5 +65,12 @@ enum class StreamType {
 enum class DecoderMode {
     AUTO,
     HARDWARE,
-    SOFTWARE
+    SOFTWARE,
+    COMPATIBILITY
+}
+
+enum class PlayerSurfaceMode {
+    AUTO,
+    SURFACE_VIEW,
+    TEXTURE_VIEW
 }

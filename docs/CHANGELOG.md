@@ -1,6 +1,39 @@
 ﻿# Changelog
 
 All notable product changes are recorded in this document.
+
+## [1.0.9] - 2026-04-25
+
+### Added
+
+#### Player
+- A/V sync offset controls — global and per-channel overrides; accessible from the channel info overlay (live) and player controls overlay (VOD).
+- Compatibility Mode — improved decoder/surface fallback for stalled video playback.
+- Video Surface selection — choose Auto, SurfaceView, or TextureView in Playback settings for device-specific rendering issues.
+- Time format preference (System default, 12-hour, 24-hour) in Settings.
+- Sleep timers — Stop Playback After and Allow Standby After Idle, with presets, countdowns, and warning overlays; defaults saved in Playback settings.
+- Auto-Play Next Episode for series — 10-second **Up Next** countdown with Play Now and Cancel; toggle in Playback settings (on by default).
+
+#### VOD
+- Infinite scroll preference for Movies and Series — auto-load more rows and posters while browsing, or keep a manual Load More button.
+
+### Fixed
+
+- Fixed excessive live TV buffering from 1.0.8 — minimum buffer threshold reduced to 8 seconds (was effectively 30 seconds).
+- Fixed inconsistent AM/PM and 24-hour timestamps — selected time format now applied consistently across Guide, Player overlays, Home, History, Dashboard, and Settings.
+- Fixed EPG guide cutting off at 60 channels per category — additional channels now load automatically on scroll.
+- Fixed a crash when opening Settings → EPG Sources on some devices by making the EPG source and provider list item keys unique.
+- Fixed background EPG sync from stalling Live TV category loading after provider add.
+- Fixed Stalker live sync loading large `get_all_channels` catalogs in a streaming, batched path to avoid out-of-memory crashes.
+- Fixed Stalker live sync when portal category requests fail — the app now stages bulk live channels first and recovers fallback categories instead of leaving Live TV empty.
+- Fixed Stalker native EPG fallback on portals that ignore per-channel `ch_id` requests and keep returning the full bulk guide — sync now detects the broken response shape and stops repeating the large download loop.
+- Fixed modern VOD/series shelves to load on demand in smaller visible batches, with paged Stalker category loading and throttled Xtream category previews.
+- Fixed Stalker series details using local numeric IDs instead of provider-native series IDs, which broke series info loading on portals that use composite IDs.
+- Fixed Stalker series titles being overwritten by season-shell or numeric fallback names when detail payloads omitted the real title.
+- Fixed shell-only Stalker series seasons to follow up with derived `season_id` requests and use explicit episode commands when the portal provides them.
+- Fixed shell-based Stalker episode playback on stricter portals by passing the episode number into `create_link` instead of always using `series=0`.
+
+---
 ## [1.0.8] - 2026-04-22
 
 ### Added

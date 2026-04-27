@@ -16,16 +16,17 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.streamvault.data.local.dao.ChannelPreferenceDao
 import com.streamvault.data.local.dao.SearchHistoryDao
-import com.streamvault.data.local.entity.ChannelPreferenceEntity
 import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.ActiveLiveSource
+import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveChannelObservedQuality
 import com.streamvault.domain.model.LiveVariantPreferenceMode
+import com.streamvault.domain.model.PlayerSurfaceMode
 import com.streamvault.domain.model.SearchHistoryScope
 import com.streamvault.domain.manager.ParentalPinVerifier
 import com.streamvault.domain.manager.ParentalControlSessionState
@@ -46,6 +47,17 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 @Singleton
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_preferences")
 
+private fun sanitizePlaybackTimerMinutes(minutes: Int): Int = when (minutes) {
+    0, 15, 30, 45, 60, 90, 120 -> minutes
+    in Int.MIN_VALUE..7 -> 0
+    in 8..22 -> 15
+    in 23..37 -> 30
+    in 38..52 -> 45
+    in 53..75 -> 60
+    in 76..105 -> 90
+    else -> 120
+}
+
 @Singleton
 class PreferencesRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -53,6 +65,8 @@ class PreferencesRepository @Inject constructor(
     private val searchHistoryDao: SearchHistoryDao
 ) : ParentalControlSessionStore, ParentalPinVerifier {
     companion object {
+        private const val AUDIO_VIDEO_OFFSET_MIN_MS = -2_000
+        private const val AUDIO_VIDEO_OFFSET_MAX_MS = 2_000
         private const val PIN_SALT_BYTES = 16
         private const val PIN_HASH_ITERATIONS = 120_000
         private const val PIN_HASH_KEY_BITS = 256
@@ -73,6 +87,7 @@ class PreferencesRepository @Inject constructor(
         val PARENTAL_PIN_SALT = stringPreferencesKey("parental_pin_salt")
         val DEFAULT_CATEGORY_ID = longPreferencesKey("default_category_id")
         val APP_LANGUAGE = stringPreferencesKey("app_language")
+        val APP_TIME_FORMAT = stringPreferencesKey("app_time_format")
         val LIVE_TV_CHANNEL_MODE = stringPreferencesKey("live_tv_channel_mode")
         val SHOW_LIVE_SOURCE_SWITCHER = booleanPreferencesKey("show_live_source_switcher")
         val SHOW_ALL_CHANNELS_CATEGORY = booleanPreferencesKey("show_all_channels_category")
@@ -86,6 +101,7 @@ class PreferencesRepository @Inject constructor(
         val LIVE_VARIANT_SELECTIONS = stringPreferencesKey("live_variant_selections")
         val LIVE_VARIANT_OBSERVATIONS = stringPreferencesKey("live_variant_observations")
         val VOD_VIEW_MODE = stringPreferencesKey("vod_view_mode")
+        val VOD_INFINITE_SCROLL = booleanPreferencesKey("vod_infinite_scroll")
         val GUIDE_DENSITY = stringPreferencesKey("guide_density")
         val GUIDE_CHANNEL_MODE = stringPreferencesKey("guide_channel_mode")
         val GUIDE_DEFAULT_CATEGORY_ID = longPreferencesKey("guide_default_category_id")
@@ -100,7 +116,9 @@ class PreferencesRepository @Inject constructor(
         val PLAYER_MUTED = booleanPreferencesKey("player_muted")
         val PLAYER_MEDIA_SESSION_ENABLED = booleanPreferencesKey("player_media_session_enabled")
         val PLAYER_DECODER_MODE = stringPreferencesKey("player_decoder_mode")
+        val PLAYER_SURFACE_MODE = stringPreferencesKey("player_surface_mode")
         val PLAYER_PLAYBACK_SPEED = stringPreferencesKey("player_playback_speed")
+        val PLAYER_AUDIO_VIDEO_OFFSET_MS = intPreferencesKey("player_av_offset_ms")
         val PREFERRED_AUDIO_LANGUAGE = stringPreferencesKey("preferred_audio_language")
         val PLAYER_SUBTITLE_TEXT_SCALE = stringPreferencesKey("player_subtitle_text_scale")
         val PLAYER_SUBTITLE_TEXT_COLOR = intPreferencesKey("player_subtitle_text_color")
@@ -113,6 +131,8 @@ class PreferencesRepository @Inject constructor(
         val PLAYER_ETHERNET_MAX_VIDEO_HEIGHT = intPreferencesKey("player_ethernet_max_video_height")
         val PLAYER_TIMESHIFT_ENABLED = booleanPreferencesKey("player_timeshift_enabled")
         val PLAYER_TIMESHIFT_DEPTH_MINUTES = intPreferencesKey("player_timeshift_depth_minutes")
+        val DEFAULT_STOP_PLAYBACK_TIMER_MINUTES = intPreferencesKey("default_stop_playback_timer_minutes")
+        val DEFAULT_IDLE_STANDBY_TIMER_MINUTES = intPreferencesKey("default_idle_standby_timer_minutes")
         val LAST_SPEED_TEST_MEGABITS = stringPreferencesKey("last_speed_test_megabits")
         val LAST_SPEED_TEST_TIMESTAMP = longPreferencesKey("last_speed_test_timestamp")
         val LAST_SPEED_TEST_TRANSPORT = stringPreferencesKey("last_speed_test_transport")
@@ -125,6 +145,7 @@ class PreferencesRepository @Inject constructor(
         val XTREAM_TEXT_IMPORT_GENERATION = longPreferencesKey("xtream_text_import_generation")
         val ZAP_AUTO_REVERT = booleanPreferencesKey("zap_auto_revert")
         val PREVENT_STANDBY_DURING_PLAYBACK = booleanPreferencesKey("prevent_standby_during_playback")
+        val AUTO_PLAY_NEXT_EPISODE = booleanPreferencesKey("auto_play_next_episode")
         val AUTO_CHECK_APP_UPDATES = booleanPreferencesKey("auto_check_app_updates")
         val AUTO_DOWNLOAD_APP_UPDATES = booleanPreferencesKey("auto_download_app_updates")
         val RECORDING_WIFI_ONLY = booleanPreferencesKey("recording_wifi_only")
@@ -244,11 +265,22 @@ class PreferencesRepository @Inject constructor(
             ?: DecoderMode.AUTO
     }
 
+    val playerSurfaceMode: Flow<PlayerSurfaceMode> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PLAYER_SURFACE_MODE]
+            ?.let { saved -> PlayerSurfaceMode.entries.firstOrNull { it.name == saved } }
+            ?: PlayerSurfaceMode.AUTO
+    }
+
     val playerPlaybackSpeed: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.PLAYER_PLAYBACK_SPEED]
             ?.toFloatOrNull()
             ?.coerceIn(0.5f, 2f)
             ?: 1f
+    }
+
+    val playerAudioVideoOffsetMs: Flow<Int> = context.dataStore.data.map { preferences ->
+        (preferences[PreferencesKeys.PLAYER_AUDIO_VIDEO_OFFSET_MS] ?: 0)
+            .coerceIn(AUDIO_VIDEO_OFFSET_MIN_MS, AUDIO_VIDEO_OFFSET_MAX_MS)
     }
 
     val preferredAudioLanguage: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -308,6 +340,14 @@ class PreferencesRepository @Inject constructor(
             in 23..45 -> 30
             else -> 60
         }
+    }
+
+    val defaultStopPlaybackTimerMinutes: Flow<Int> = context.dataStore.data.map { preferences ->
+        sanitizePlaybackTimerMinutes(preferences[PreferencesKeys.DEFAULT_STOP_PLAYBACK_TIMER_MINUTES] ?: 0)
+    }
+
+    val defaultIdleStandbyTimerMinutes: Flow<Int> = context.dataStore.data.map { preferences ->
+        sanitizePlaybackTimerMinutes(preferences[PreferencesKeys.DEFAULT_IDLE_STANDBY_TIMER_MINUTES] ?: 0)
     }
 
     val lastSpeedTestMegabits: Flow<Double?> = context.dataStore.data.map { preferences ->
@@ -434,6 +474,10 @@ class PreferencesRepository @Inject constructor(
         preferences[PreferencesKeys.PREVENT_STANDBY_DURING_PLAYBACK] ?: true
     }
 
+    val autoPlayNextEpisode: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.AUTO_PLAY_NEXT_EPISODE] ?: true
+    }
+
     val autoCheckAppUpdates: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.AUTO_CHECK_APP_UPDATES] ?: true
     }
@@ -544,6 +588,12 @@ class PreferencesRepository @Inject constructor(
     suspend fun setPreventStandbyDuringPlayback(prevent: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PREVENT_STANDBY_DURING_PLAYBACK] = prevent
+        }
+    }
+
+    suspend fun setAutoPlayNextEpisode(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.AUTO_PLAY_NEXT_EPISODE] = enabled
         }
     }
 
@@ -692,9 +742,22 @@ class PreferencesRepository @Inject constructor(
         }
     }
 
+    suspend fun setPlayerSurfaceMode(mode: PlayerSurfaceMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYER_SURFACE_MODE] = mode.name
+        }
+    }
+
     suspend fun setPlayerPlaybackSpeed(speed: Float) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PLAYER_PLAYBACK_SPEED] = speed.coerceIn(0.5f, 2f).toString()
+        }
+    }
+
+    suspend fun setPlayerAudioVideoOffsetMs(offsetMs: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYER_AUDIO_VIDEO_OFFSET_MS] =
+                offsetMs.coerceIn(AUDIO_VIDEO_OFFSET_MIN_MS, AUDIO_VIDEO_OFFSET_MAX_MS)
         }
     }
 
@@ -789,6 +852,18 @@ class PreferencesRepository @Inject constructor(
                 in 23..45 -> 30
                 else -> 60
             }
+        }
+    }
+
+    suspend fun setDefaultStopPlaybackTimerMinutes(minutes: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.DEFAULT_STOP_PLAYBACK_TIMER_MINUTES] = sanitizePlaybackTimerMinutes(minutes)
+        }
+    }
+
+    suspend fun setDefaultIdleStandbyTimerMinutes(minutes: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.DEFAULT_IDLE_STANDBY_TIMER_MINUTES] = sanitizePlaybackTimerMinutes(minutes)
         }
     }
 
@@ -998,6 +1073,16 @@ class PreferencesRepository @Inject constructor(
         }
     }
 
+    val appTimeFormat: Flow<AppTimeFormat> = context.dataStore.data.map { preferences ->
+        AppTimeFormat.fromStorage(preferences[PreferencesKeys.APP_TIME_FORMAT])
+    }
+
+    suspend fun setAppTimeFormat(format: AppTimeFormat) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_TIME_FORMAT] = format.storageValue
+        }
+    }
+
     val liveTvChannelMode: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.LIVE_TV_CHANNEL_MODE]
     }
@@ -1173,6 +1258,16 @@ class PreferencesRepository @Inject constructor(
     suspend fun setVodViewMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.VOD_VIEW_MODE] = mode
+        }
+    }
+
+    val vodInfiniteScroll: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.VOD_INFINITE_SCROLL] ?: false
+    }
+
+    suspend fun setVodInfiniteScroll(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.VOD_INFINITE_SCROLL] = enabled
         }
     }
 
@@ -1413,17 +1508,26 @@ class PreferencesRepository @Inject constructor(
     }
 
     suspend fun setAspectRatioForChannel(channelId: Long, ratio: String) {
-        channelPreferenceDao.upsert(
-            ChannelPreferenceEntity(
-                channelId = channelId,
-                aspectRatio = ratio,
-                updatedAt = System.currentTimeMillis()
-            )
-        )
+        channelPreferenceDao.setAspectRatio(channelId, ratio)
         val key = stringPreferencesKey("aspect_ratio_$channelId")
         context.dataStore.edit { preferences ->
             preferences.remove(key)
         }
+    }
+
+    fun observeAudioVideoOffsetForChannel(channelId: Long): Flow<Int?> =
+        channelPreferenceDao.observeAudioVideoOffset(channelId)
+            .map { offset -> offset?.coerceIn(AUDIO_VIDEO_OFFSET_MIN_MS, AUDIO_VIDEO_OFFSET_MAX_MS) }
+
+    suspend fun setAudioVideoOffsetForChannel(channelId: Long, offsetMs: Int) {
+        channelPreferenceDao.setAudioVideoOffset(
+            channelId = channelId,
+            offsetMs = offsetMs.coerceIn(AUDIO_VIDEO_OFFSET_MIN_MS, AUDIO_VIDEO_OFFSET_MAX_MS)
+        )
+    }
+
+    suspend fun clearAudioVideoOffsetForChannel(channelId: Long) {
+        channelPreferenceDao.setAudioVideoOffset(channelId = channelId, offsetMs = null)
     }
 
     suspend fun clearAllRecentData() {

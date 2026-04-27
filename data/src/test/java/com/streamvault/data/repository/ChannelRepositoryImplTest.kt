@@ -145,6 +145,43 @@ class ChannelRepositoryImplTest {
     }
 
     @Test
+    fun `offset pages keep group numbering relative to full list`() = runTest {
+        whenever(channelDao.getByProviderWithoutErrorsBrowsePageOffset(7L, 60, 60)).thenReturn(
+            listOf(
+                ChannelBrowseEntity(
+                    id = 61L,
+                    streamId = 161L,
+                    name = "Sixty One",
+                    streamUrl = "https://stream/61",
+                    number = 1,
+                    providerId = 7L
+                ),
+                ChannelBrowseEntity(
+                    id = 62L,
+                    streamId = 162L,
+                    name = "Sixty Two",
+                    streamUrl = "https://stream/62",
+                    number = 2,
+                    providerId = 7L
+                )
+            )
+        )
+        whenever(preferencesRepository.liveChannelNumberingMode).thenReturn(flowOf(ChannelNumberingMode.GROUP))
+        whenever(parentalControlManager.unlockedCategoriesForProvider(7L)).thenReturn(flowOf(emptySet()))
+
+        val repository = createRepository()
+
+        val result = repository.getChannelsWithoutErrorsPageOffset(
+            providerId = 7L,
+            categoryId = com.streamvault.domain.repository.ChannelRepository.ALL_CHANNELS_ID,
+            limit = 60,
+            offset = 60
+        )
+
+        assertThat(result.map { it.number }).containsExactly(61, 62).inOrder()
+    }
+
+    @Test
     fun `searchChannels returns empty list when sqlite throws for malformed fts query`() = runTest {
         whenever(channelDao.search(eq(7L), any(), any())).thenReturn(
             flow { throw SQLiteException("malformed MATCH expression") }

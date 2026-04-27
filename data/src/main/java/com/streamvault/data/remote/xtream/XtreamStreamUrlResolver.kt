@@ -127,7 +127,8 @@ class XtreamStreamUrlResolver @Inject constructor(
                     )
                 }
                 val playbackInfo = when (
-                    val resolvedResult = getOrCreateStalkerProvider(resolvedProvider).resolvePlaybackInfo(token.kind, token.cmd)
+                    val resolvedResult = getOrCreateStalkerProvider(resolvedProvider)
+                        .resolvePlaybackInfo(token.kind, token.cmd, token.seriesNumber)
                 ) {
                     is com.streamvault.domain.model.Result.Success -> resolvedResult.data
                     else -> return null

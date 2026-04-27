@@ -62,6 +62,15 @@ data class StalkerItemRecord(
     val isSeries: Boolean = false
 )
 
+data class StalkerPagedItems(
+    val items: List<StalkerItemRecord>,
+    val page: Int,
+    val totalPages: Int,
+    val pageSize: Int
+) {
+    val isComplete: Boolean get() = page >= totalPages
+}
+
 data class StalkerSeriesDetails(
     val series: StalkerItemRecord,
     val seasons: List<StalkerSeasonRecord>
@@ -113,6 +122,12 @@ interface StalkerApiService {
         categoryId: String?
     ): Result<List<StalkerItemRecord>>
 
+    suspend fun streamLiveStreams(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        onItem: suspend (StalkerItemRecord) -> Unit
+    ): Result<Int>
+
     suspend fun getVodCategories(
         session: StalkerSession,
         profile: StalkerDeviceProfile
@@ -124,6 +139,13 @@ interface StalkerApiService {
         categoryId: String?
     ): Result<List<StalkerItemRecord>>
 
+    suspend fun getVodStreamsPage(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        categoryId: String?,
+        page: Int
+    ): Result<StalkerPagedItems>
+
     suspend fun getSeriesCategories(
         session: StalkerSession,
         profile: StalkerDeviceProfile
@@ -134,6 +156,13 @@ interface StalkerApiService {
         profile: StalkerDeviceProfile,
         categoryId: String?
     ): Result<List<StalkerItemRecord>>
+
+    suspend fun getSeriesPage(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        categoryId: String?,
+        page: Int
+    ): Result<StalkerPagedItems>
 
     suspend fun getSeriesDetails(
         session: StalkerSession,
@@ -160,10 +189,38 @@ interface StalkerApiService {
         periodHours: Int = 6
     ): Result<List<StalkerProgramRecord>>
 
+    /**
+     * Streams the bulk Stalker EPG payload one program at a time.
+     *
+     * Many portals return a single very large JSON body for `get_epg_info` regardless of `period`/`ch_id`.
+     * Building a full Gson tree of that payload is what causes the EPG OOM on TV devices, so this path
+     * walks the response with `JsonReader` and emits records via [onProgram] without ever holding the
+     * full payload in memory.
+     */
+    suspend fun streamBulkEpg(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        periodHours: Int = 6,
+        onProgram: suspend (StalkerProgramRecord) -> Unit
+    ): Result<Int>
+
+    /**
+     * Streams a per-channel Stalker EPG response. Mirrors [streamBulkEpg]; the [channelId] is forwarded
+     * as the portal's `ch_id` query parameter.
+     */
+    suspend fun streamEpg(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        channelId: String,
+        periodHours: Int = 6,
+        onProgram: suspend (StalkerProgramRecord) -> Unit
+    ): Result<Int>
+
     suspend fun createLink(
         session: StalkerSession,
         profile: StalkerDeviceProfile,
         kind: StalkerStreamKind,
-        cmd: String
+        cmd: String,
+        seriesNumber: Int? = null
     ): Result<String>
 }

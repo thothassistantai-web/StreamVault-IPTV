@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.FilterInputStream
@@ -61,6 +62,7 @@ class EpgRepositoryImpl @Inject constructor(
 
     companion object {
         private const val MAX_EPG_SIZE_BYTES = NetworkTimeoutConfig.EPG_MAX_SIZE_BYTES
+        private const val EPG_PROGRAM_BATCH_SIZE = 500
         private const val NOW_AND_NEXT_LOOKBACK_MS = 60L * 60L * 1000L
         private const val NOW_AND_NEXT_LOOKAHEAD_MS = 2L * 60L * 60L * 1000L
         private const val NOW_AND_NEXT_REFRESH_INTERVAL_MS = 60L * 1000L
@@ -215,7 +217,16 @@ class EpgRepositoryImpl @Inject constructor(
         withContext(Dispatchers.IO) {
             providerRefreshMutex(providerId).withLock {
                 val stagingProviderId = -providerId
-                val batch = ArrayList<ProgramEntity>(500)
+                val batch = ArrayList<ProgramEntity>(EPG_PROGRAM_BATCH_SIZE)
+                suspend fun flushBatch() {
+                    if (batch.isEmpty()) return
+                    val rows = batch.toList()
+                    batch.clear()
+                    transactionRunner.inTransaction {
+                        programDao.insertAll(rows)
+                    }
+                    yield()
+                }
                 try {
                     val request = Request.Builder()
                         .url(epgUrl)
@@ -238,49 +249,45 @@ class EpgRepositoryImpl @Inject constructor(
 
                     transactionRunner.inTransaction {
                         programDao.deleteByProvider(stagingProviderId)
+                    }
 
-                        body.byteStream().use { rawStream ->
-                            val alreadyDecompressed = contentEncoding?.contains("gzip", ignoreCase = true) == true
-                            // Decompress Content-Encoding: gzip manually since we requested
-                            // Accept-Encoding: identity to disable OkHttp's transparent decompression.
-                            val httpStream: InputStream = if (alreadyDecompressed) {
-                                GZIPInputStream(rawStream)
-                            } else {
-                                rawStream
+                    body.byteStream().use { rawStream ->
+                        val alreadyDecompressed = contentEncoding?.contains("gzip", ignoreCase = true) == true
+                        // Decompress Content-Encoding: gzip manually since we requested
+                        // Accept-Encoding: identity to disable OkHttp's transparent decompression.
+                        val httpStream: InputStream = if (alreadyDecompressed) {
+                            GZIPInputStream(rawStream)
+                        } else {
+                            rawStream
+                        }
+                        // Cap total bytes read even when Content-Length is absent (chunked transfer)
+                        val limitedStream = object : FilterInputStream(httpStream) {
+                            private var bytesRead = 0L
+                            override fun read(): Int {
+                                if (bytesRead >= MAX_EPG_SIZE_BYTES) throw IOException("EPG response too large (>200 MB)")
+                                return super.read().also { if (it >= 0) bytesRead++ }
                             }
-                            // Cap total bytes read even when Content-Length is absent (chunked transfer)
-                            val limitedStream = object : FilterInputStream(httpStream) {
-                                private var bytesRead = 0L
-                                override fun read(): Int {
-                                    if (bytesRead >= MAX_EPG_SIZE_BYTES) throw IOException("EPG response too large (>200 MB)")
-                                    return super.read().also { if (it >= 0) bytesRead++ }
-                                }
-                                override fun read(b: ByteArray, off: Int, len: Int): Int {
-                                    if (bytesRead >= MAX_EPG_SIZE_BYTES) throw IOException("EPG response too large (>200 MB)")
-                                    return super.read(b, off, len).also { if (it > 0) bytesRead += it }
-                                }
-                            }
-                            val xmlInput: InputStream = if (alreadyDecompressed) {
-                                limitedStream
-                            } else {
-                                xmltvParser.maybeDecompressGzip(epgUrl, limitedStream)
-                            }
-                            xmlInput.use {
-                                xmltvParser.parseStreaming(xmlInput) { program ->
-                                    batch.add(program.copy(providerId = stagingProviderId).toEntity())
-                                    if (batch.size >= 500) {
-                                        programDao.insertAll(batch.toList())
-                                        batch.clear()
-                                    }
-                                }
+                            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                                if (bytesRead >= MAX_EPG_SIZE_BYTES) throw IOException("EPG response too large (>200 MB)")
+                                return super.read(b, off, len).also { if (it > 0) bytesRead += it }
                             }
                         }
-
-                        if (batch.isNotEmpty()) {
-                            programDao.insertAll(batch.toList())
-                            batch.clear()
+                        val xmlInput: InputStream = if (alreadyDecompressed) {
+                            limitedStream
+                        } else {
+                            xmltvParser.maybeDecompressGzip(epgUrl, limitedStream)
+                        }
+                        xmlInput.use {
+                            xmltvParser.parseStreaming(xmlInput) { program ->
+                                batch.add(program.copy(providerId = stagingProviderId).toEntity())
+                                if (batch.size >= EPG_PROGRAM_BATCH_SIZE) {
+                                    flushBatch()
+                                }
+                            }
                         }
                     }
+
+                    flushBatch()
 
                     transactionRunner.inTransaction {
                         programDao.deleteByProvider(providerId)

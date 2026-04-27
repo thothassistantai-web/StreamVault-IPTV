@@ -102,8 +102,9 @@ object NetworkModule {
     @MainPlayerEngine
     fun provideMainPlayerEngine(
         @ApplicationContext context: Context,
-        okHttpClient: OkHttpClient
-    ): PlayerEngine = Media3PlayerEngine(context, okHttpClient)
+        okHttpClient: OkHttpClient,
+        playbackCompatibilityRepository: com.streamvault.domain.repository.PlaybackCompatibilityRepository
+    ): PlayerEngine = Media3PlayerEngine(context, okHttpClient, playbackCompatibilityRepository)
 
     /**
      * Factory binding for preview and multiview playback.
@@ -113,8 +114,9 @@ object NetworkModule {
     @AuxiliaryPlayerEngine
     fun provideAuxiliaryPlayerEngine(
         @ApplicationContext context: Context,
-        okHttpClient: OkHttpClient
-    ): PlayerEngine = Media3PlayerEngine(context, okHttpClient).apply {
+        okHttpClient: OkHttpClient,
+        playbackCompatibilityRepository: com.streamvault.domain.repository.PlaybackCompatibilityRepository
+    ): PlayerEngine = Media3PlayerEngine(context, okHttpClient, playbackCompatibilityRepository).apply {
         enableMediaSession = false
         bypassAudioFocus = true
     }

@@ -17,6 +17,7 @@ import com.streamvault.domain.model.Series
 import com.streamvault.domain.provider.IptvProvider
 import com.streamvault.domain.util.ChannelNormalizer
 import java.net.URI
+import java.util.Base64
 import java.util.Locale
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,6 +27,15 @@ data class StalkerPlaybackInfo(
     val headers: Map<String, String> = emptyMap(),
     val userAgent: String? = null
 )
+
+data class StalkerPagedResult<T>(
+    val items: List<T>,
+    val page: Int,
+    val totalPages: Int,
+    val pageSize: Int
+) {
+    val isComplete: Boolean get() = page >= totalPages
+}
 
 class StalkerProvider(
     override val providerId: Long,
@@ -102,6 +112,24 @@ class StalkerProvider(
             items.mapNotNull(::toChannel)
         }
 
+    suspend fun streamLiveStreams(onChannel: suspend (Channel) -> Unit): Result<Int> {
+        return when (val authResult = ensureAuthenticated()) {
+            is Result.Success -> {
+                val (session, _) = authResult.data
+                val result = api.streamLiveStreams(session, currentDeviceProfile()) { item ->
+                    toChannel(item)?.let { channel -> onChannel(channel) }
+                }
+                when (result) {
+                    is Result.Success -> Result.success(result.data)
+                    is Result.Error -> Result.error(result.message, result.exception)
+                    is Result.Loading -> Result.error("Unexpected loading state")
+                }
+            }
+            is Result.Error -> Result.error(authResult.message, authResult.exception)
+            is Result.Loading -> Result.error("Unexpected loading state")
+        }
+    }
+
     override suspend fun getVodCategories(): Result<List<Category>> =
         mapCategories(ContentType.MOVIE) { session, profile ->
             api.getVodCategories(session, profile)
@@ -112,6 +140,18 @@ class StalkerProvider(
             api.getVodStreams(session, profile, rawCategoryId)
         }.mapData { items ->
             items.mapNotNull(::toMovie)
+        }
+
+    suspend fun getVodStreamsPage(categoryId: Long?, page: Int): Result<StalkerPagedResult<Movie>> =
+        mapPagedItems(ContentType.MOVIE, categoryId) { session, profile, rawCategoryId ->
+            api.getVodStreamsPage(session, profile, rawCategoryId, page)
+        }.mapData { paged ->
+            StalkerPagedResult(
+                items = paged.items.mapNotNull(::toMovie),
+                page = paged.page,
+                totalPages = paged.totalPages,
+                pageSize = paged.pageSize
+            )
         }
 
     override suspend fun getVodInfo(vodId: Long): Result<Movie> {
@@ -138,11 +178,34 @@ class StalkerProvider(
             items.mapNotNull(::toSeries)
         }
 
-    override suspend fun getSeriesInfo(seriesId: Long): Result<Series> {
+    suspend fun getSeriesListPage(categoryId: Long?, page: Int): Result<StalkerPagedResult<Series>> =
+        mapPagedItems(ContentType.SERIES, categoryId) { session, profile, rawCategoryId ->
+            api.getSeriesPage(session, profile, rawCategoryId, page)
+        }.mapData { paged ->
+            StalkerPagedResult(
+                items = paged.items.mapNotNull(::toSeries),
+                page = paged.page,
+                totalPages = paged.totalPages,
+                pageSize = paged.pageSize
+            )
+        }
+
+    suspend fun isWildcardCategory(type: ContentType, categoryId: Long): Boolean {
+        val normalizedType = when (type) {
+            ContentType.SERIES_EPISODE -> ContentType.SERIES
+            else -> type
+        }
+        return resolveRawCategoryId(normalizedType, categoryId)?.trim() == "*" ||
+            categoryId == syntheticCategoryId(normalizedType, "*")
+    }
+
+    override suspend fun getSeriesInfo(seriesId: Long): Result<Series> = getSeriesInfo(seriesId.toString())
+
+    suspend fun getSeriesInfo(providerSeriesId: String): Result<Series> {
         return when (val authResult = ensureAuthenticated()) {
             is Result.Success -> {
                 val (session, _) = authResult.data
-                when (val detailsResult = api.getSeriesDetails(session, currentDeviceProfile(), seriesId.toString())) {
+                when (val detailsResult = api.getSeriesDetails(session, currentDeviceProfile(), providerSeriesId)) {
                     is Result.Success -> Result.success(detailsResult.data.toSeries())
                     is Result.Error -> Result.error(detailsResult.message, detailsResult.exception)
                     is Result.Loading -> Result.error("Unexpected loading state")
@@ -183,6 +246,47 @@ class StalkerProvider(
         }
     }
 
+    /**
+     * Streams the bulk EPG payload one program at a time. Use this in place of [getBulkEpg]
+     * when the caller can flush programs incrementally; it avoids materialising the full
+     * portal response (which can exceed 30 MB on some Stalker servers).
+     */
+    suspend fun streamBulkEpg(
+        periodHours: Int = 6,
+        onProgram: suspend (Program) -> Unit
+    ): Result<Int> {
+        return when (val authResult = ensureAuthenticated()) {
+            is Result.Success -> {
+                val (session, _) = authResult.data
+                api.streamBulkEpg(session, currentDeviceProfile(), periodHours) { record ->
+                    onProgram(record.toProgram())
+                }
+            }
+            is Result.Error -> Result.error(authResult.message, authResult.exception)
+            is Result.Loading -> Result.error("Unexpected loading state")
+        }
+    }
+
+    /**
+     * Streams a per-channel EPG payload. Mirrors [getEpg] but does not buffer the result.
+     */
+    suspend fun streamEpg(
+        channelId: String,
+        periodHours: Int = 6,
+        onProgram: suspend (Program) -> Unit
+    ): Result<Int> {
+        return when (val authResult = ensureAuthenticated()) {
+            is Result.Success -> {
+                val (session, _) = authResult.data
+                api.streamEpg(session, currentDeviceProfile(), channelId, periodHours) { record ->
+                    onProgram(record.toProgram())
+                }
+            }
+            is Result.Error -> Result.error(authResult.message, authResult.exception)
+            is Result.Loading -> Result.error("Unexpected loading state")
+        }
+    }
+
     override suspend fun getShortEpg(channelId: String, limit: Int): Result<List<Program>> {
         return when (val authResult = ensureAuthenticated()) {
             is Result.Success -> {
@@ -198,7 +302,11 @@ class StalkerProvider(
         }
     }
 
-    suspend fun resolvePlaybackInfo(kind: StalkerStreamKind, cmd: String): Result<StalkerPlaybackInfo> {
+    suspend fun resolvePlaybackInfo(
+        kind: StalkerStreamKind,
+        cmd: String,
+        seriesNumber: Int? = null
+    ): Result<StalkerPlaybackInfo> {
         return when (val authResult = ensureAuthenticated()) {
             is Result.Success -> {
                 val (session, _) = authResult.data
@@ -215,7 +323,7 @@ class StalkerProvider(
                             )
                         )
                     }
-                when (val linkResult = api.createLink(session, profile, kind, cmd)) {
+                when (val linkResult = api.createLink(session, profile, kind, cmd, seriesNumber)) {
                     is Result.Success -> Result.success(
                         StalkerPlaybackInfo(
                             url = repairCreateLinkUrl(kind, linkResult.data, directUrl),
@@ -232,8 +340,12 @@ class StalkerProvider(
         }
     }
 
-    suspend fun resolvePlaybackUrl(kind: StalkerStreamKind, cmd: String): Result<String> =
-        resolvePlaybackInfo(kind, cmd).mapData(StalkerPlaybackInfo::url)
+    suspend fun resolvePlaybackUrl(
+        kind: StalkerStreamKind,
+        cmd: String,
+        seriesNumber: Int? = null
+    ): Result<String> =
+        resolvePlaybackInfo(kind, cmd, seriesNumber).mapData(StalkerPlaybackInfo::url)
 
     override suspend fun buildStreamUrl(streamId: Long, containerExtension: String?): String {
         throw UnsupportedOperationException("Stalker stream URLs require a command token context.")
@@ -284,6 +396,22 @@ class StalkerProvider(
         categoryId: Long?,
         loader: suspend (StalkerSession, StalkerDeviceProfile, String?) -> Result<List<StalkerItemRecord>>
     ): Result<List<StalkerItemRecord>> {
+        return when (val authResult = ensureAuthenticated()) {
+            is Result.Success -> {
+                val (session, _) = authResult.data
+                val rawCategoryId = resolveRawCategoryId(type, categoryId)
+                loader(session, currentDeviceProfile(), rawCategoryId)
+            }
+            is Result.Error -> Result.error(authResult.message, authResult.exception)
+            is Result.Loading -> Result.error("Unexpected loading state")
+        }
+    }
+
+    private suspend fun mapPagedItems(
+        type: ContentType,
+        categoryId: Long?,
+        loader: suspend (StalkerSession, StalkerDeviceProfile, String?) -> Result<StalkerPagedItems>
+    ): Result<StalkerPagedItems> {
         return when (val authResult = ensureAuthenticated()) {
             is Result.Success -> {
                 val (session, _) = authResult.data
@@ -562,17 +690,24 @@ class StalkerProvider(
             isAdult = item.isAdult || AdultContentClassifier.isAdultCategoryName(category.name),
             isUserProtected = false,
             lastModified = item.addedAt,
-            seriesId = item.id.toLongOrNull() ?: numericId
+            seriesId = item.id.toLongOrNull() ?: numericId,
+            providerSeriesId = item.id
         )
     }
 
     private fun StalkerSeriesDetails.toSeries(): Series {
-        val baseSeries = toSeries(series) ?: Series(
-            id = 0L,
-            name = series.name.ifBlank { "Series ${series.id}" },
-            providerId = providerId,
-            seriesId = series.id.toLongOrNull() ?: stableItemId(ContentType.SERIES, series.id)
-        )
+        val mappedSeries = toSeries(series)
+        val baseSeries = if (mappedSeries != null) {
+            mappedSeries.copy(name = series.name)
+        } else {
+            Series(
+                id = 0L,
+                name = series.name,
+                providerId = providerId,
+                seriesId = series.id.toLongOrNull() ?: stableItemId(ContentType.SERIES, series.id),
+                providerSeriesId = series.id
+            )
+        }
         val mappedSeasons = seasons
             .sortedBy { it.seasonNumber }
             .map { season ->
@@ -610,7 +745,8 @@ class StalkerProvider(
                 kind = StalkerStreamKind.EPISODE,
                 itemId = numericId,
                 cmd = resolvedCmd,
-                containerExtension = containerExtension
+                containerExtension = containerExtension,
+                seriesNumber = seasonShellEpisodeSelector(resolvedCmd, episodeNumber)
             )
         } ?: directStreamUrl.orEmpty()
         return Episode(
@@ -631,6 +767,26 @@ class StalkerProvider(
             isUserProtected = false,
             episodeId = id.toLongOrNull() ?: numericId
         )
+    }
+
+    private fun seasonShellEpisodeSelector(cmd: String, episodeNumber: Int): Int? {
+        if (episodeNumber <= 0) {
+            return null
+        }
+        val decoded = runCatching {
+            String(Base64.getDecoder().decode(cmd.trim()), Charsets.UTF_8)
+        }.getOrNull() ?: return null
+        val normalized = decoded.lowercase(Locale.ROOT)
+        if (!normalized.contains("\"type\":\"series\"")) {
+            return null
+        }
+        if (!normalized.contains("\"season_num\"") && !normalized.contains("\"season_id\"")) {
+            return null
+        }
+        if (normalized.contains("\"episode_number\"") || normalized.contains("\"series_number\"")) {
+            return null
+        }
+        return episodeNumber
     }
 
     private fun StalkerProgramRecord.toProgram(): Program =

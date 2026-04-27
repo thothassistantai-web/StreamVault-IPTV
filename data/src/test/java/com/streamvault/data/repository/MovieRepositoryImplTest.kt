@@ -20,6 +20,7 @@ import com.streamvault.data.remote.stalker.StalkerProviderProfile
 import com.streamvault.data.remote.stalker.StalkerSession
 import com.streamvault.data.remote.stalker.StalkerCategoryRecord
 import com.streamvault.data.remote.stalker.StalkerItemRecord
+import com.streamvault.data.remote.stalker.StalkerPagedItems
 import com.streamvault.data.remote.dto.XtreamCategory
 import com.streamvault.data.remote.dto.XtreamStream
 import com.streamvault.data.remote.stalker.StalkerApiService
@@ -271,16 +272,21 @@ class MovieRepositoryImplTest {
         whenever(stalkerApiService.getVodCategories(any(), any())).thenReturn(
             Result.success(listOf(StalkerCategoryRecord(id = "42", name = "Action")))
         )
-        whenever(stalkerApiService.getVodStreams(any(), any(), anyOrNull())).thenReturn(
+        whenever(stalkerApiService.getVodStreamsPage(any(), any(), anyOrNull(), eq(1))).thenReturn(
             Result.success(
-                listOf(
-                    StalkerItemRecord(
-                        id = "101",
-                        name = "Movie",
-                        categoryId = "42",
-                        cmd = "ffmpeg http://example.com/movie.mp4",
-                        containerExtension = "mp4"
-                    )
+                StalkerPagedItems(
+                    items = listOf(
+                        StalkerItemRecord(
+                            id = "101",
+                            name = "Movie",
+                            categoryId = "42",
+                            cmd = "ffmpeg http://example.com/movie.mp4",
+                            containerExtension = "mp4"
+                        )
+                    ),
+                    page = 1,
+                    totalPages = 1,
+                    pageSize = 1
                 )
             )
         )
@@ -289,7 +295,60 @@ class MovieRepositoryImplTest {
 
         repository.getMoviesByCategory(7L, 42L).first()
 
-        verify(movieDao).replaceCategory(eq(7L), eq(42L), any())
+        verify(movieDao).upsertCategoryPage(eq(7L), any())
+        verify(movieDao, never()).replaceCategory(eq(7L), eq(42L), any())
+    }
+
+    @Test
+    fun `stalker movie preview loads only first page`() = runTest {
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
+        whenever(movieDao.getCountByCategory(7L, 42L)).thenReturn(flowOf(0), flowOf(18))
+        whenever(movieDao.getByCategoryPreview(7L, 42L, 18)).thenReturn(flowOf(emptyList()))
+        whenever(movieCategoryHydrationDao.get(7L, 42L)).thenReturn(null)
+        whenever(categoryDao.getByProviderAndType(7L, ContentType.MOVIE.name)).thenReturn(
+            flowOf(listOf(com.streamvault.data.local.entity.CategoryEntity(providerId = 7L, categoryId = 42L, name = "Action", type = ContentType.MOVIE)))
+        )
+        whenever(providerDao.getById(7L)).thenReturn(
+            ProviderEntity(
+                id = 7L,
+                name = "Stalker",
+                type = ProviderType.STALKER_PORTAL,
+                serverUrl = "http://example.com",
+                stalkerMacAddress = "00:11:22:33:44:55",
+                status = ProviderStatus.ACTIVE
+            )
+        )
+        whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        whenever(stalkerApiService.getVodCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "42", name = "Action")))
+        )
+        whenever(stalkerApiService.getVodStreamsPage(any(), any(), anyOrNull(), eq(1))).thenReturn(
+            Result.success(
+                StalkerPagedItems(
+                    items = (1..18).map { index ->
+                        StalkerItemRecord(id = "10$index", name = "Movie $index", categoryId = "42")
+                    },
+                    page = 1,
+                    totalPages = 2,
+                    pageSize = 50
+                )
+            )
+        )
+
+        val repository = createRepository()
+
+        repository.getCategoryPreviewRows(7L, listOf(42L), 18).first()
+
+        verify(stalkerApiService).getVodStreamsPage(any(), any(), anyOrNull(), eq(1))
+        verify(stalkerApiService, never()).getVodStreamsPage(any(), any(), anyOrNull(), eq(2))
     }
 
     @Test

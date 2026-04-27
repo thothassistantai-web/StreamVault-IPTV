@@ -450,7 +450,8 @@ fun FullEpgScreen(
                                 topNavVisible = isFirstRow
                                 focusedChannel = channel
                                 focusedProgram = program
-                            }
+                            },
+                            onRequestMoreChannels = viewModel::requestMoreChannels
                         )
                     }
                 }

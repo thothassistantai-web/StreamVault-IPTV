@@ -48,6 +48,8 @@ import com.streamvault.domain.repository.MovieRepository
 import com.streamvault.domain.repository.PlaybackHistoryRepository
 import com.streamvault.domain.repository.SeriesRepository
 import com.streamvault.player.Media3PlayerEngine
+import com.streamvault.player.AUDIO_VIDEO_OFFSET_MAX_MS
+import com.streamvault.player.AUDIO_VIDEO_OFFSET_MIN_MS
 import com.streamvault.player.PlaybackState
 import com.streamvault.player.PlayerEngine
 import com.streamvault.player.PlayerError
@@ -94,7 +96,7 @@ class PlayerViewModel @Inject constructor(
     private val xtreamStreamUrlResolver: XtreamStreamUrlResolver,
     private val seekThumbnailProvider: SeekThumbnailProvider,
     private val livePreviewHandoffManager: LivePreviewHandoffManager,
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
 ) : ViewModel() {
     companion object {
         private const val MUTE_TOGGLE_DEBOUNCE_MS = 250L
@@ -102,10 +104,13 @@ class PlayerViewModel @Inject constructor(
         private const val MAX_UPCOMING_PROGRAM_ITEMS = 24
         private const val PLAYER_EPG_REFRESH_INTERVAL_MS = 30_000L
         private const val MIN_WATCHED_FOR_AUTO_PLAY_MS = 5_000L
+        private const val AUTO_PLAY_COUNTDOWN_SECONDS = 10
         private const val TOKEN_RENEWAL_LEAD_MS = 60_000L
         private const val TOKEN_RENEWAL_CHECK_INTERVAL_MS = 10_000L
         private const val LOW_BANDWIDTH_THRESHOLD_BPS = 500_000L
         private const val LOW_BANDWIDTH_DURATION_SECONDS = 30
+        private val PLAYBACK_TIMER_PRESETS_MINUTES = setOf(0, 15, 30, 45, 60, 90, 120)
+        private const val TIMER_TICK_MS = 1_000L
     }
 
     private val activePlayerEngineFlow = MutableStateFlow(mainPlayerEngine)
@@ -145,6 +150,9 @@ class PlayerViewModel @Inject constructor(
 
     private val _nextEpisode = MutableStateFlow<Episode?>(null)
     val nextEpisode: StateFlow<Episode?> = _nextEpisode.asStateFlow()
+
+    private val _autoPlayCountdown = MutableStateFlow<Int?>(null)
+    val autoPlayCountdown: StateFlow<Int?> = _autoPlayCountdown.asStateFlow()
 
     internal val playbackTitleFlow = MutableStateFlow("")
     val playbackTitle: StateFlow<String> = playbackTitleFlow.asStateFlow()
@@ -195,6 +203,9 @@ class PlayerViewModel @Inject constructor(
     val playerNotice: StateFlow<PlayerNoticeState?> = _playerNotice.asStateFlow()
     private val _playerDiagnostics = MutableStateFlow(PlayerDiagnosticsUiState())
     val playerDiagnostics: StateFlow<PlayerDiagnosticsUiState> = _playerDiagnostics.asStateFlow()
+    private val audioVideoOffsetPreviewMs = MutableStateFlow<Int?>(null)
+    private val _audioVideoOffsetUiState = MutableStateFlow(PlayerAudioVideoOffsetUiState())
+    val audioVideoOffsetUiState: StateFlow<PlayerAudioVideoOffsetUiState> = _audioVideoOffsetUiState.asStateFlow()
     private val _seekPreview = MutableStateFlow(SeekPreviewState())
     val seekPreview: StateFlow<SeekPreviewState> = _seekPreview.asStateFlow()
     private val _recordingItems = MutableStateFlow<List<RecordingItem>>(emptyList())
@@ -203,6 +214,10 @@ class PlayerViewModel @Inject constructor(
     val currentChannelRecording: StateFlow<RecordingItem?> = currentChannelFlowRecording.asStateFlow()
     private val _timeshiftUiState = MutableStateFlow(PlayerTimeshiftUiState())
     val timeshiftUiState: StateFlow<PlayerTimeshiftUiState> = _timeshiftUiState.asStateFlow()
+    private val _sleepTimerUiState = MutableStateFlow(SleepTimerUiState())
+    val sleepTimerUiState: StateFlow<SleepTimerUiState> = _sleepTimerUiState.asStateFlow()
+    private val _sleepTimerExitEvent = MutableStateFlow(0)
+    val sleepTimerExitEvent: StateFlow<Int> = _sleepTimerExitEvent.asStateFlow()
 
     internal var channelInfoHideJob: Job? = null
     internal var liveOverlayHideJob: Job? = null
@@ -237,6 +252,8 @@ class PlayerViewModel @Inject constructor(
     private var playerNoticeTimeoutMs: Long = 6_000L
     internal var diagnosticsTimeoutMs: Long = 15_000L
     private var preferredDecoderMode: DecoderMode = DecoderMode.AUTO
+    private var preferredSurfaceMode: com.streamvault.domain.model.PlayerSurfaceMode =
+        com.streamvault.domain.model.PlayerSurfaceMode.AUTO
     private var timeshiftConfig: TimeshiftConfig = TimeshiftConfig()
 
     // Zapping state
@@ -291,19 +308,34 @@ class PlayerViewModel @Inject constructor(
     private var lowBandwidthMonitorJob: Job? = null
     private var progressTrackingJob: Job? = null
     private var tokenRenewalJob: Job? = null
+    private var stopPlaybackTimerJob: Job? = null
+    private var idleStandbyTimerJob: Job? = null
     internal var zapOverlayJob: Job? = null
     private var aspectRatioJob: Job? = null
     internal var zapBufferWatchdogJob: Job? = null
+    private var autoPlayCountdownJob: Job? = null
     internal var zapAutoRevertEnabled: Boolean = true
+    private var autoPlayNextEpisodeEnabled: Boolean = true
     private var isAppInForeground: Boolean = true
     private var shouldResumeAfterForeground: Boolean = false
     private var seekPreviewRequestVersion: Long = 0L
     private var lastMuteToggleAtMs: Long = 0L
+    private var stopPlaybackTimerEndsAtMs: Long = 0L
+    private var idleStandbyTimerEndsAtMs: Long = 0L
+    private var defaultStopPlaybackTimerMinutes: Int = 0
+    private var defaultIdleStandbyTimerMinutes: Int = 0
+    private var playbackTimerDefaultsApplied = false
+    private var sleepTimerExitEmitted = false
 
     val castConnectionState: StateFlow<CastConnectionState> = castManager.connectionState
 
     private fun setActivePlayerEngine(engine: PlayerEngine) {
         if (activePlayerEngineFlow.value === engine) return
+        // Media3 session IDs must be globally unique. Release the outgoing engine's
+        // MediaSession before the incoming engine's session is created by the combine
+        // flow at the bottom of init. Mirrors the explicit release done in the forward
+        // handoff path (mainPlayerEngine.setMediaSessionEnabled(false)) for the reverse.
+        activePlayerEngineFlow.value.setMediaSessionEnabled(false)
         activePlayerEngineFlow.value = engine
     }
 
@@ -486,9 +518,68 @@ class PlayerViewModel @Inject constructor(
             preferencesRepository.zapAutoRevert.collect { zapAutoRevertEnabled = it }
         }
         viewModelScope.launch {
+            preferencesRepository.autoPlayNextEpisode.collect { autoPlayNextEpisodeEnabled = it }
+        }
+        viewModelScope.launch {
+            preferencesRepository.defaultStopPlaybackTimerMinutes.collect {
+                defaultStopPlaybackTimerMinutes = sanitizePlaybackTimerMinutes(it)
+            }
+        }
+        viewModelScope.launch {
+            preferencesRepository.defaultIdleStandbyTimerMinutes.collect {
+                defaultIdleStandbyTimerMinutes = sanitizePlaybackTimerMinutes(it)
+            }
+        }
+        viewModelScope.launch {
             preferencesRepository.playerMediaSessionEnabled
                 .combine(activePlayerEngineFlow) { enabled, engine -> engine to enabled }
                 .collect { (engine, enabled) -> engine.setMediaSessionEnabled(enabled) }
+        }
+        viewModelScope.launch {
+            currentChannelFlow
+                .map { it?.id }
+                .distinctUntilChanged()
+                .collect { audioVideoOffsetPreviewMs.value = null }
+        }
+        viewModelScope.launch {
+            val channelOffsetFlow = currentChannelFlow
+                .map { it?.id?.takeIf { channelId -> channelId > 0L } }
+                .distinctUntilChanged()
+                .flatMapLatest { channelId ->
+                    if (channelId == null) {
+                        flowOf(null)
+                    } else {
+                        preferencesRepository.observeAudioVideoOffsetForChannel(channelId)
+                    }
+                }
+
+            combine(
+                preferencesRepository.playerAudioVideoOffsetMs,
+                channelOffsetFlow,
+                audioVideoOffsetPreviewMs,
+                activePlayerEngineFlow
+            ) { globalOffset, channelOffset, previewOffset, engine ->
+                val effectiveOffset = (previewOffset ?: channelOffset ?: globalOffset)
+                    .coerceIn(AUDIO_VIDEO_OFFSET_MIN_MS, AUDIO_VIDEO_OFFSET_MAX_MS)
+                AudioVideoOffsetSnapshot(
+                    globalOffsetMs = globalOffset,
+                    channelOverrideMs = channelOffset,
+                    previewOffsetMs = previewOffset,
+                    effectiveOffsetMs = effectiveOffset,
+                    engine = engine
+                )
+            }.collect { snapshot ->
+                _audioVideoOffsetUiState.value = PlayerAudioVideoOffsetUiState(
+                    globalOffsetMs = snapshot.globalOffsetMs,
+                    channelOverrideMs = snapshot.channelOverrideMs,
+                    previewOffsetMs = snapshot.previewOffsetMs,
+                    effectiveOffsetMs = snapshot.effectiveOffsetMs
+                )
+                snapshot.engine.setAudioVideoOffsetMs(snapshot.effectiveOffsetMs)
+                _playerDiagnostics.update {
+                    it.copy(audioVideoOffsetMs = snapshot.effectiveOffsetMs)
+                }
+            }
         }
         viewModelScope.launch {
             combine(
@@ -524,9 +615,26 @@ class PlayerViewModel @Inject constructor(
                 }
         }
         viewModelScope.launch {
+            preferencesRepository.playerSurfaceMode
+                .combine(activePlayerEngineFlow) { mode, engine -> engine to mode }
+                .collect { (engine, mode) ->
+                    preferredSurfaceMode = mode
+                    engine.setSurfaceMode(mode)
+                }
+        }
+        viewModelScope.launch {
             var consecutiveLowBandwidthSeconds = 0
             var noticeShown = false
             activePlayerEngineFlow.flatMapLatest { it.playerStats }.collect { stats ->
+                _playerDiagnostics.update {
+                    it.copy(
+                        activeDecoderName = stats.videoDecoderName,
+                        activeDecoderPolicy = stats.activeDecoderPolicy,
+                        renderSurfaceType = stats.renderSurfaceType,
+                        videoStallCount = stats.videoStallCount,
+                        lastVideoFrameAgoMs = stats.lastVideoFrameAgoMs
+                    )
+                }
                 if (!playerEngine.isPlaying.value || currentContentType != ContentType.LIVE) {
                     consecutiveLowBandwidthSeconds = 0
                     noticeShown = false
@@ -859,7 +967,54 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    fun previewAudioVideoOffset(offsetMs: Int) {
+        audioVideoOffsetPreviewMs.value = offsetMs.coerceIn(AUDIO_VIDEO_OFFSET_MIN_MS, AUDIO_VIDEO_OFFSET_MAX_MS)
+    }
+
+    fun adjustAudioVideoOffset(deltaMs: Int) {
+        val current = audioVideoOffsetPreviewMs.value ?: _audioVideoOffsetUiState.value.effectiveOffsetMs
+        previewAudioVideoOffset(current + deltaMs)
+    }
+
+    fun resetAudioVideoOffsetPreview() {
+        previewAudioVideoOffset(0)
+    }
+
+    fun dismissAudioVideoOffsetPreview() {
+        audioVideoOffsetPreviewMs.value = null
+    }
+
+    fun saveAudioVideoOffsetForChannel() {
+        val channelId = currentChannelFlow.value?.id?.takeIf { it > 0L } ?: return
+        val offsetMs = _audioVideoOffsetUiState.value.effectiveOffsetMs
+        viewModelScope.launch {
+            preferencesRepository.setAudioVideoOffsetForChannel(channelId, offsetMs)
+            audioVideoOffsetPreviewMs.value = null
+        }
+    }
+
+    fun saveAudioVideoOffsetAsGlobal() {
+        val offsetMs = _audioVideoOffsetUiState.value.effectiveOffsetMs
+        val channelId = currentChannelFlow.value?.id?.takeIf { it > 0L }
+        viewModelScope.launch {
+            preferencesRepository.setPlayerAudioVideoOffsetMs(offsetMs)
+            if (channelId != null) {
+                preferencesRepository.clearAudioVideoOffsetForChannel(channelId)
+            }
+            audioVideoOffsetPreviewMs.value = null
+        }
+    }
+
+    fun useGlobalAudioVideoOffset() {
+        val channelId = currentChannelFlow.value?.id?.takeIf { it > 0L } ?: return
+        viewModelScope.launch {
+            preferencesRepository.clearAudioVideoOffsetForChannel(channelId)
+            audioVideoOffsetPreviewMs.value = null
+        }
+    }
+
     fun seekTo(positionMs: Long) {
+        notifyUserActivity()
         playerEngine.seekTo(positionMs)
         clearSeekPreview()
     }
@@ -950,6 +1105,7 @@ class PlayerViewModel @Inject constructor(
         _currentSeries.value = null
         _currentEpisode.value = null
         _nextEpisode.value = null
+        cancelAutoPlay()
     }
 
     private fun resolveEpisode(
@@ -978,45 +1134,45 @@ class PlayerViewModel @Inject constructor(
     private fun buildEpisodePlaybackTitle(episode: Episode): String =
         "${episode.title} - S${episode.seasonNumber}E${episode.episodeNumber}"
 
-    private fun loadSeriesEpisodeContext(
+    private suspend fun loadSeriesEpisodeContext(
         requestVersion: Long,
         providerId: Long,
         seriesId: Long,
         episodeId: Long,
         seasonNumber: Int?,
         episodeNumber: Int?
-    ) {
-        viewModelScope.launch {
-            when (val result = seriesRepository.getSeriesDetails(providerId, seriesId)) {
-                is Result.Success -> {
-                    if (!isActivePlaybackSession(requestVersion)) return@launch
-                    val series = result.data.sanitizedForPlayer()
-                    val resolvedEpisode = resolveEpisode(series, episodeId, seasonNumber, episodeNumber)
-                    _currentSeries.value = series
-                    _currentEpisode.value = resolvedEpisode
-                    _nextEpisode.value = resolvedEpisode?.let { findNextEpisode(series, it) }
-                    currentSeriesId = seriesId
-                    currentSeasonNumber = resolvedEpisode?.seasonNumber ?: seasonNumber
-                    currentEpisodeNumber = resolvedEpisode?.episodeNumber ?: episodeNumber
-                    if (resolvedEpisode != null && currentContentType == ContentType.SERIES_EPISODE) {
-                        currentArtworkUrl = resolvedEpisode.coverUrl
-                            ?: currentArtworkUrl
-                            ?: series.posterUrl
-                            ?: series.backdropUrl
-                        currentTitle = buildEpisodePlaybackTitle(resolvedEpisode)
-                        playbackTitleFlow.value = currentTitle
-                    }
+    ): Episode? {
+        return when (val result = seriesRepository.getSeriesDetails(providerId, seriesId)) {
+            is Result.Success -> {
+                if (!isActivePlaybackSession(requestVersion)) return null
+                val series = result.data.sanitizedForPlayer()
+                val resolvedEpisode = resolveEpisode(series, episodeId, seasonNumber, episodeNumber)
+                _currentSeries.value = series
+                _currentEpisode.value = resolvedEpisode
+                _nextEpisode.value = resolvedEpisode?.let { findNextEpisode(series, it) }
+                currentSeriesId = seriesId
+                currentSeasonNumber = resolvedEpisode?.seasonNumber ?: seasonNumber
+                currentEpisodeNumber = resolvedEpisode?.episodeNumber ?: episodeNumber
+                if (resolvedEpisode != null && currentContentType == ContentType.SERIES_EPISODE) {
+                    currentArtworkUrl = resolvedEpisode.coverUrl
+                        ?: currentArtworkUrl
+                        ?: series.posterUrl
+                        ?: series.backdropUrl
+                    currentTitle = buildEpisodePlaybackTitle(resolvedEpisode)
+                    playbackTitleFlow.value = currentTitle
                 }
+                resolvedEpisode
+            }
 
-                else -> {
-                    if (!isActivePlaybackSession(requestVersion)) return@launch
-                    _currentSeries.value = null
-                    _currentEpisode.value = null
-                    _nextEpisode.value = null
-                    currentSeriesId = seriesId
-                    currentSeasonNumber = seasonNumber
-                    currentEpisodeNumber = episodeNumber
-                }
+            else -> {
+                if (!isActivePlaybackSession(requestVersion)) return null
+                _currentSeries.value = null
+                _currentEpisode.value = null
+                _nextEpisode.value = null
+                currentSeriesId = seriesId
+                currentSeasonNumber = seasonNumber
+                currentEpisodeNumber = episodeNumber
+                null
             }
         }
     }
@@ -1066,12 +1222,37 @@ class PlayerViewModel @Inject constructor(
                 val position = playerEngine.currentPosition.value
                 val duration = playerEngine.duration.value
                 if (position > MIN_WATCHED_FOR_AUTO_PLAY_MS || duration > 0L) {
-                    _nextEpisode.value?.let { episode ->
-                        playEpisode(episode, showResumePrompt = false)
+                    val next = _nextEpisode.value ?: return@launch
+                    if (autoPlayNextEpisodeEnabled) {
+                        startAutoPlayCountdown(next)
                     }
                 }
             }
         }
+    }
+
+    private fun startAutoPlayCountdown(episode: Episode) {
+        autoPlayCountdownJob?.cancel()
+        autoPlayCountdownJob = viewModelScope.launch {
+            for (remaining in AUTO_PLAY_COUNTDOWN_SECONDS downTo 1) {
+                _autoPlayCountdown.value = remaining
+                delay(1_000L)
+            }
+            _autoPlayCountdown.value = null
+            playEpisode(episode, showResumePrompt = false)
+        }
+    }
+
+    fun cancelAutoPlay() {
+        autoPlayCountdownJob?.cancel()
+        autoPlayCountdownJob = null
+        _autoPlayCountdown.value = null
+    }
+
+    fun playNextEpisodeNow() {
+        val episode = _nextEpisode.value ?: return
+        cancelAutoPlay()
+        playEpisode(episode, showResumePrompt = false)
     }
 
     private fun currentPlaybackIdentityUrl(): String =
@@ -1135,6 +1316,8 @@ class PlayerViewModel @Inject constructor(
             wifiMaxHeight = preferencesRepository.playerWifiMaxVideoHeight.first(),
             ethernetMaxHeight = preferencesRepository.playerEthernetMaxVideoHeight.first()
         )
+        playerEngine.setSurfaceMode(preferencesRepository.playerSurfaceMode.first())
+        playerEngine.setAudioVideoOffsetMs(_audioVideoOffsetUiState.value.effectiveOffsetMs)
     }
 
     private suspend fun tryAdoptPreviewHandoff(
@@ -1336,6 +1519,7 @@ class PlayerViewModel @Inject constructor(
         currentSeasonNumber = seasonNumber
         currentEpisodeNumber = episodeNumber
         currentStreamClassLabel = if (hasArchiveRequest) "Catch-up" else "Primary"
+        applyDefaultPlaybackTimersIfNeeded()
         if (currentContentType == ContentType.LIVE && currentCombinedProfileId != null) {
             val activeCombinedProfileId = currentCombinedProfileId
             viewModelScope.launch {
@@ -1351,16 +1535,7 @@ class PlayerViewModel @Inject constructor(
         if (!hasArchiveRequest) {
             pendingCatchUpUrls = emptyList()
         }
-        if (currentContentType == ContentType.SERIES_EPISODE && providerId > 0 && currentSeriesId != null) {
-            loadSeriesEpisodeContext(
-                requestVersion = requestVersion,
-                providerId = providerId,
-                seriesId = currentSeriesId ?: -1L,
-                episodeId = internalChannelId,
-                seasonNumber = seasonNumber,
-                episodeNumber = episodeNumber
-            )
-        } else {
+        if (currentContentType != ContentType.SERIES_EPISODE || providerId <= 0 || currentSeriesId == null) {
             clearSeriesEpisodeContext()
         }
         if (currentContentType != ContentType.LIVE) {
@@ -1373,6 +1548,7 @@ class PlayerViewModel @Inject constructor(
         }
         hasRetriedWithSoftwareDecoder = false
         playerEngine.setDecoderMode(preferredDecoderMode)
+        playerEngine.setSurfaceMode(preferredSurfaceMode)
         updateDecoderMode(preferredDecoderMode)
         updateStreamClass(currentStreamClassLabel)
         
@@ -1387,13 +1563,40 @@ class PlayerViewModel @Inject constructor(
                 if (tryAdoptPreviewHandoff(requestVersion, internalChannelId, providerId)) {
                     return@launch
                 }
-                val streamInfo = resolvePlaybackStreamInfo(streamUrl, internalChannelId, providerId, currentContentType)
+                var playbackLogicalUrl = streamUrl
+                var playbackContentId = internalChannelId
+                if (currentContentType == ContentType.SERIES_EPISODE && providerId > 0 && currentSeriesId != null) {
+                    val resolvedEpisode = loadSeriesEpisodeContext(
+                        requestVersion = requestVersion,
+                        providerId = providerId,
+                        seriesId = currentSeriesId ?: -1L,
+                        episodeId = internalChannelId,
+                        seasonNumber = seasonNumber,
+                        episodeNumber = episodeNumber
+                    )
+                    if (!isActivePlaybackSession(requestVersion, streamUrl)) return@launch
+                    resolvedEpisode?.streamUrl
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { refreshedUrl -> playbackLogicalUrl = refreshedUrl }
+                    resolvedEpisode?.id
+                        ?.takeIf { it > 0L }
+                        ?.let { resolvedId -> playbackContentId = resolvedId }
+                }
+                val streamInfo = resolvePlaybackStreamInfo(
+                    playbackLogicalUrl,
+                    playbackContentId,
+                    providerId,
+                    currentContentType
+                )
                 if (!isActivePlaybackSession(requestVersion, streamUrl)) return@launch
                 if (streamInfo == null) {
                     if (!isActivePlaybackSession(requestVersion, streamUrl)) return@launch
                     showPlayerNotice(message = "No playable stream URL was available.", recoveryType = PlayerRecoveryType.SOURCE)
                     return@launch
                 }
+                currentStreamUrl = playbackLogicalUrl
+                currentContentId = playbackContentId
+                if (!isActivePlaybackSession(requestVersion, playbackLogicalUrl)) return@launch
                 if (!preparePlayer(streamInfo, requestVersion)) return@launch
 
                 // Check for resume position after the player is fully prepared (VOD only).
@@ -1401,7 +1604,7 @@ class PlayerViewModel @Inject constructor(
                 // not a stale one that may have already been replaced by prepareInternal().
                 if (showResumePrompt && currentContentType != ContentType.LIVE && currentContentId != -1L && currentProviderId != -1L) {
                     val history = playbackHistoryRepository.getPlaybackHistory(currentContentId, currentContentType, currentProviderId)
-                    if (isActivePlaybackSession(requestVersion, streamUrl)) {
+                    if (isActivePlaybackSession(requestVersion, playbackLogicalUrl)) {
                         if (history != null && history.resumePositionMs > 5000L && !isPlaybackComplete(history.resumePositionMs, history.totalDurationMs)) {
                             playerEngine.pause()
                             _resumePrompt.value = ResumePromptState(
@@ -1644,6 +1847,7 @@ class PlayerViewModel @Inject constructor(
             }
         }
         playerEngine.stopLiveTimeshift()
+        clearPlaybackTimers()
     }
 
     fun handOffPlaybackToMultiView() {
@@ -2476,6 +2680,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun play() {
+        notifyUserActivity()
         if (currentContentType == ContentType.LIVE &&
             timeshiftConfig.enabled &&
             timeshiftUiState.value.engineState.status == LiveTimeshiftStatus.PAUSED_BEHIND_LIVE
@@ -2487,6 +2692,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun pause() {
+        notifyUserActivity()
         if (currentContentType == ContentType.LIVE && timeshiftConfig.enabled) {
             playerEngine.pauseTimeshift()
         } else {
@@ -2494,9 +2700,180 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun seekForward() = playerEngine.seekForward()
-    fun seekBackward() = playerEngine.seekBackward()
-    fun seekToLiveEdge() = playerEngine.seekToLiveEdge()
+    fun setStopPlaybackTimer(minutes: Int) {
+        val normalized = sanitizePlaybackTimerMinutes(minutes)
+        if (normalized == 0) {
+            disableStopPlaybackTimer()
+            return
+        }
+        stopPlaybackTimerEndsAtMs = SystemClock.elapsedRealtime() + normalized * 60_000L
+        sleepTimerExitEmitted = false
+        updateSleepTimerState(stopMinutes = normalized)
+        startStopPlaybackTimerJob(normalized)
+        showPlayerNotice(message = "Playback will stop in ${formatTimerMinutesNotice(normalized)}.")
+    }
+
+    fun setIdleStandbyTimer(minutes: Int) {
+        val normalized = sanitizePlaybackTimerMinutes(minutes)
+        if (normalized == 0) {
+            disableIdleStandbyTimer()
+            return
+        }
+        idleStandbyTimerEndsAtMs = SystemClock.elapsedRealtime() + normalized * 60_000L
+        sleepTimerExitEmitted = false
+        updateSleepTimerState(idleMinutes = normalized)
+        startIdleStandbyTimerJob(normalized)
+        showPlayerNotice(message = "Idle standby will be allowed after ${formatTimerMinutesNotice(normalized)} without activity.")
+    }
+
+    fun extendStopPlaybackTimer(minutes: Int = 30) {
+        val current = _sleepTimerUiState.value
+        if (!current.stopTimerActive) return
+        stopPlaybackTimerEndsAtMs += minutes * 60_000L
+        sleepTimerExitEmitted = false
+        updateSleepTimerState(stopMinutes = current.stopTimerMinutes)
+    }
+
+    fun extendIdleStandbyTimer(minutes: Int = 30) {
+        val current = _sleepTimerUiState.value
+        if (!current.idleTimerActive) return
+        idleStandbyTimerEndsAtMs += minutes * 60_000L
+        sleepTimerExitEmitted = false
+        updateSleepTimerState(idleMinutes = current.idleTimerMinutes)
+    }
+
+    fun disableStopPlaybackTimer() {
+        stopPlaybackTimerJob?.cancel()
+        stopPlaybackTimerJob = null
+        stopPlaybackTimerEndsAtMs = 0L
+        _sleepTimerUiState.update { it.copy(stopTimerMinutes = 0, stopRemainingMs = 0L) }
+    }
+
+    fun disableIdleStandbyTimer() {
+        idleStandbyTimerJob?.cancel()
+        idleStandbyTimerJob = null
+        idleStandbyTimerEndsAtMs = 0L
+        _sleepTimerUiState.update { it.copy(idleTimerMinutes = 0, idleRemainingMs = 0L) }
+    }
+
+    fun notifyUserActivity() {
+        val current = _sleepTimerUiState.value
+        if (!current.idleTimerActive) return
+        idleStandbyTimerEndsAtMs = SystemClock.elapsedRealtime() + current.idleTimerMinutes * 60_000L
+        updateSleepTimerState(idleMinutes = current.idleTimerMinutes)
+    }
+
+    fun consumeSleepTimerExitEvent() {
+        _sleepTimerExitEvent.value = 0
+    }
+
+    private fun applyDefaultPlaybackTimersIfNeeded() {
+        if (playbackTimerDefaultsApplied) return
+        playbackTimerDefaultsApplied = true
+        sleepTimerExitEmitted = false
+        viewModelScope.launch {
+            val stopMinutes = sanitizePlaybackTimerMinutes(preferencesRepository.defaultStopPlaybackTimerMinutes.first())
+            val idleMinutes = sanitizePlaybackTimerMinutes(preferencesRepository.defaultIdleStandbyTimerMinutes.first())
+            if (!playbackTimerDefaultsApplied || _sleepTimerUiState.value.stopTimerActive || _sleepTimerUiState.value.idleTimerActive) {
+                return@launch
+            }
+            if (stopMinutes > 0) {
+                setStopPlaybackTimer(stopMinutes)
+            }
+            if (idleMinutes > 0) {
+                setIdleStandbyTimer(idleMinutes)
+            }
+        }
+    }
+
+    private fun startStopPlaybackTimerJob(minutes: Int) {
+        stopPlaybackTimerJob?.cancel()
+        stopPlaybackTimerJob = viewModelScope.launch {
+            while (true) {
+                val remainingMs = updateSleepTimerState(stopMinutes = minutes).stopRemainingMs
+                if (remainingMs <= 0L) {
+                    expirePlaybackTimer()
+                    return@launch
+                }
+                delay(TIMER_TICK_MS)
+            }
+        }
+    }
+
+    private fun startIdleStandbyTimerJob(minutes: Int) {
+        idleStandbyTimerJob?.cancel()
+        idleStandbyTimerJob = viewModelScope.launch {
+            while (true) {
+                val remainingMs = updateSleepTimerState(idleMinutes = minutes).idleRemainingMs
+                if (remainingMs <= 0L) {
+                    expirePlaybackTimer()
+                    return@launch
+                }
+                delay(TIMER_TICK_MS)
+            }
+        }
+    }
+
+    private fun updateSleepTimerState(
+        stopMinutes: Int = _sleepTimerUiState.value.stopTimerMinutes,
+        idleMinutes: Int = _sleepTimerUiState.value.idleTimerMinutes
+    ): SleepTimerUiState {
+        val now = SystemClock.elapsedRealtime()
+        val next = _sleepTimerUiState.value.copy(
+            stopTimerMinutes = stopMinutes,
+            stopRemainingMs = if (stopPlaybackTimerEndsAtMs > 0L) (stopPlaybackTimerEndsAtMs - now).coerceAtLeast(0L) else 0L,
+            idleTimerMinutes = idleMinutes,
+            idleRemainingMs = if (idleStandbyTimerEndsAtMs > 0L) (idleStandbyTimerEndsAtMs - now).coerceAtLeast(0L) else 0L
+        )
+        _sleepTimerUiState.value = next
+        return next
+    }
+
+    private fun expirePlaybackTimer() {
+        if (sleepTimerExitEmitted) return
+        sleepTimerExitEmitted = true
+        stopPlaybackTimerJob?.cancel()
+        idleStandbyTimerJob?.cancel()
+        stopPlaybackTimerJob = null
+        idleStandbyTimerJob = null
+        stopPlaybackTimerEndsAtMs = 0L
+        idleStandbyTimerEndsAtMs = 0L
+        _sleepTimerUiState.value = SleepTimerUiState()
+        _sleepTimerExitEvent.value += 1
+    }
+
+    private fun clearPlaybackTimers() {
+        stopPlaybackTimerJob?.cancel()
+        idleStandbyTimerJob?.cancel()
+        stopPlaybackTimerJob = null
+        idleStandbyTimerJob = null
+        stopPlaybackTimerEndsAtMs = 0L
+        idleStandbyTimerEndsAtMs = 0L
+        playbackTimerDefaultsApplied = false
+        sleepTimerExitEmitted = false
+        _sleepTimerUiState.value = SleepTimerUiState()
+    }
+
+    private fun sanitizePlaybackTimerMinutes(minutes: Int): Int =
+        minutes.takeIf { it in PLAYBACK_TIMER_PRESETS_MINUTES } ?: 0
+
+    private fun formatTimerMinutesNotice(minutes: Int): String =
+        if (minutes == 1) "1 minute" else "$minutes minutes"
+
+    fun seekForward() {
+        notifyUserActivity()
+        playerEngine.seekForward()
+    }
+
+    fun seekBackward() {
+        notifyUserActivity()
+        playerEngine.seekBackward()
+    }
+
+    fun seekToLiveEdge() {
+        notifyUserActivity()
+        playerEngine.seekToLiveEdge()
+    }
 
     fun playEpisode(episode: Episode, showResumePrompt: Boolean = true) {
         prepare(

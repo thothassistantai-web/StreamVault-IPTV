@@ -73,6 +73,53 @@ class OkHttpStalkerApiServiceTest {
     }
 
     @Test
+    fun createLink_uses_episode_number_as_series_selector_for_stalker_shell_episode() = runTest {
+        var requestedSeries: String? = null
+        val service = OkHttpStalkerApiService(
+            okHttpClient = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    requestedSeries = request.url.queryParameter("series")
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(
+                            """{"js":{"cmd":"ffmpeg http://cdn.example.com/series/episode11.mkv"}}"""
+                                .toResponseBody("application/json".toMediaType())
+                        )
+                        .build()
+                }
+                .build(),
+            json = Json { ignoreUnknownKeys = true }
+        )
+
+        val result = service.createLink(
+            session = StalkerSession(
+                loadUrl = "https://portal.example.com/server/load.php",
+                portalReferer = "https://portal.example.com/c/",
+                token = "token-123"
+            ),
+            profile = buildStalkerDeviceProfile(
+                portalUrl = "https://portal.example.com/c",
+                macAddress = "00:1A:79:12:34:56",
+                deviceProfile = "MAG250",
+                timezone = "UTC",
+                locale = "en"
+            ),
+            kind = StalkerStreamKind.EPISODE,
+            cmd = "eyJzZXJpZXNfaWQiOjUzOTk5LCJzZWFzb25fbnVtIjoxLCJ0eXBlIjoic2VyaWVzIn0=",
+            seriesNumber = 11
+        )
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        assertThat(requestedSeries).isEqualTo("11")
+        val success = result as Result.Success
+        assertThat(success.data).isEqualTo("http://cdn.example.com/series/episode11.mkv")
+    }
+
+    @Test
     fun authenticate_reads_json_from_callback_wrapper_and_control_char_noise() = runTest {
         val service = OkHttpStalkerApiService(
             okHttpClient = fakeClient(
@@ -225,6 +272,45 @@ class OkHttpStalkerApiServiceTest {
     }
 
     @Test
+    fun streamLiveStreams_emits_bulk_channels_from_js_data_without_list_materialization() = runTest {
+        val service = OkHttpStalkerApiService(
+            okHttpClient = fakeClient(
+                "get_all_channels" to """
+                    {"js":{"data":[
+                        {"id":"100","name":"News","tv_genre_id":"10","cmd":"ffmpeg http://example.com/news.ts"},
+                        {"id":"101","name":"Sports","tv_genre_id":"11","cmd":"ffmpeg http://example.com/sports.ts"}
+                    ]}}
+                """.trimIndent()
+            ),
+            json = Json { ignoreUnknownKeys = true }
+        )
+        val streamed = mutableListOf<StalkerItemRecord>()
+
+        val result = service.streamLiveStreams(
+            session = StalkerSession(
+                loadUrl = "https://portal.example.com/server/load.php",
+                portalReferer = "https://portal.example.com/c/",
+                token = "token-123"
+            ),
+            profile = buildStalkerDeviceProfile(
+                portalUrl = "https://portal.example.com/c",
+                macAddress = "00:1A:79:12:34:56",
+                deviceProfile = "MAG250",
+                timezone = "UTC",
+                locale = "en"
+            )
+        ) { item ->
+            streamed += item
+        }
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        val success = result as Result.Success
+        assertThat(success.data).isEqualTo(2)
+        assertThat(streamed.map { it.name }).containsExactly("News", "Sports").inOrder()
+        assertThat(streamed.map { it.categoryId }).containsExactly("10", "11").inOrder()
+    }
+
+    @Test
     fun getLiveStreams_falls_back_to_paged_get_ordered_list_when_all_channels_is_unavailable() = runTest {
         val requestedUrls = mutableListOf<String>()
         val service = OkHttpStalkerApiService(
@@ -286,6 +372,60 @@ class OkHttpStalkerApiServiceTest {
     }
 
     @Test
+    fun getSeriesPage_requests_only_requested_page_and_reports_total_pages() = runTest {
+        val requestedUrls = mutableListOf<String>()
+        val service = OkHttpStalkerApiService(
+            okHttpClient = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    requestedUrls += request.url.toString()
+                    val page = request.url.queryParameter("p")
+                    check(page == "3") { "Unexpected page '$page'" }
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(
+                            """
+                                {"js":{"total_items":"45","max_page_items":"15","data":[{"id":"300","name":"Drama","category_id":"147"}]}}
+                            """.trimIndent().toResponseBody("application/json".toMediaType())
+                        )
+                        .build()
+                }
+                .build(),
+            json = Json { ignoreUnknownKeys = true }
+        )
+
+        val result = service.getSeriesPage(
+            session = StalkerSession(
+                loadUrl = "https://portal.example.com/server/load.php",
+                portalReferer = "https://portal.example.com/c/",
+                token = "token-123"
+            ),
+            profile = buildStalkerDeviceProfile(
+                portalUrl = "https://portal.example.com/c",
+                macAddress = "00:1A:79:12:34:56",
+                deviceProfile = "MAG250",
+                timezone = "UTC",
+                locale = "en"
+            ),
+            categoryId = "147",
+            page = 3
+        )
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        val success = result as Result.Success
+        assertThat(success.data.items.map { it.name }).containsExactly("Drama")
+        assertThat(success.data.page).isEqualTo(3)
+        assertThat(success.data.totalPages).isEqualTo(3)
+        assertThat(success.data.isComplete).isTrue()
+        assertThat(requestedUrls).containsExactly(
+            "https://portal.example.com/server/load.php?type=series&action=get_ordered_list&JsHttpRequest=1-xml&category=147&p=3"
+        )
+    }
+
+    @Test
     fun getBulkEpg_parses_channel_ids_from_bulk_response_rows() = runTest {
         val service = OkHttpStalkerApiService(
             okHttpClient = fakeClient(
@@ -319,6 +459,102 @@ class OkHttpStalkerApiServiceTest {
         val success = result as Result.Success
         assertThat(success.data.map { it.channelId }).containsExactly("100", "sports-guide-id")
         assertThat(success.data.map { it.title }).containsExactly("Morning News", "Live Sports")
+    }
+
+    @Test
+    fun getSeriesDetails_expands_season_shell_rows_into_episode_placeholders() = runTest {
+        val service = OkHttpStalkerApiService(
+            okHttpClient = fakeClient(
+                "get_ordered_list" to """
+                    {"js":{"total_items":1,"max_page_items":14,"data":[{"id":"55000:1","name":"Season 1","description":"Doc","series":[1,2,3,4],"cmd":"eyJzZXJpZXNfaWQiOjU1MDAwLCJzZWFzb25fbnVtIjoxLCJ0eXBlIjoic2VyaWVzIn0=","screenshot_uri":"https://img.example.com/season1.jpg"}]}}
+                """.trimIndent()
+            ),
+            json = Json { ignoreUnknownKeys = true }
+        )
+
+        val result = service.getSeriesDetails(
+            session = StalkerSession(
+                loadUrl = "https://portal.example.com/server/load.php",
+                portalReferer = "https://portal.example.com/c/",
+                token = "token-123"
+            ),
+            profile = buildStalkerDeviceProfile(
+                portalUrl = "https://portal.example.com/c",
+                macAddress = "00:1A:79:12:34:56",
+                deviceProfile = "MAG250",
+                timezone = "UTC",
+                locale = "en"
+            ),
+            seriesId = "55000:55000"
+        )
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        val success = result as Result.Success
+        assertThat(success.data.series.name).isEmpty()
+        assertThat(success.data.seasons).hasSize(1)
+        val season = success.data.seasons.single()
+        assertThat(season.seasonNumber).isEqualTo(1)
+        assertThat(season.episodes.map { it.episodeNumber }).containsExactly(1, 2, 3, 4).inOrder()
+        assertThat(season.episodes.first().cmd).isEqualTo("eyJzZXJpZXNfaWQiOjU1MDAwLCJzZWFzb25fbnVtIjoxLCJ0eXBlIjoic2VyaWVzIn0=")
+    }
+
+    @Test
+    fun getSeriesDetails_fetches_shell_season_page_for_explicit_episode_cmds() = runTest {
+        val requestedSeasonIds = mutableListOf<String>()
+        val service = OkHttpStalkerApiService(
+            okHttpClient = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    val action = request.url.queryParameter("action").orEmpty()
+                    val seasonId = request.url.queryParameter("season_id").orEmpty()
+                    val body = when {
+                        action != "get_ordered_list" -> error("Unexpected action '$action'")
+                        seasonId == "0" -> """
+                            {"js":{"total_items":1,"max_page_items":14,"data":[{"id":"55000:1","name":"Season 1","description":"Doc","series":[1,2,3,4],"cmd":"eyJzZXJpZXNfaWQiOjU1MDAwLCJzZWFzb25fbnVtIjoxLCJ0eXBlIjoic2VyaWVzIn0=","screenshot_uri":"https://img.example.com/season1.jpg"}]}}
+                        """.trimIndent()
+                        seasonId == "1" -> {
+                            requestedSeasonIds += seasonId
+                            """
+                                {"js":{"total_items":1,"max_page_items":14,"data":[{"id":"episode-1","name":"Episode 1","series_number":"1","season_id":"1","cmd":"ffmpeg http://example.com/episode1.mp4","screenshot_uri":"https://img.example.com/episode1.jpg"}]}}
+                            """.trimIndent()
+                        }
+                        else -> error("Unexpected season_id '$seasonId'")
+                    }
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(body.toResponseBody("application/json".toMediaType()))
+                        .build()
+                }
+                .build(),
+            json = Json { ignoreUnknownKeys = true }
+        )
+
+        val result = service.getSeriesDetails(
+            session = StalkerSession(
+                loadUrl = "https://portal.example.com/server/load.php",
+                portalReferer = "https://portal.example.com/c/",
+                token = "token-123"
+            ),
+            profile = buildStalkerDeviceProfile(
+                portalUrl = "https://portal.example.com/c",
+                macAddress = "00:1A:79:12:34:56",
+                deviceProfile = "MAG250",
+                timezone = "UTC",
+                locale = "en"
+            ),
+            seriesId = "55000:55000"
+        )
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        val success = result as Result.Success
+        assertThat(requestedSeasonIds).containsExactly("1")
+        assertThat(success.data.seasons).hasSize(1)
+        val season = success.data.seasons.single()
+        assertThat(season.episodes).hasSize(1)
+        assertThat(season.episodes.single().cmd).isEqualTo("ffmpeg http://example.com/episode1.mp4")
     }
 
     private fun fakeClient(vararg responses: Pair<String, String>): OkHttpClient {

@@ -1,6 +1,7 @@
 package com.streamvault.app.ui.screens.player.overlay
 
 import android.view.KeyEvent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +31,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +42,8 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -58,7 +65,9 @@ import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.design.requestFocusSafely
 import com.streamvault.app.ui.screens.player.PlayerNoticeAction
 import com.streamvault.app.ui.screens.player.PlayerNoticeState
+import com.streamvault.app.ui.screens.player.PlayerAudioVideoOffsetUiState
 import com.streamvault.app.ui.screens.player.PlayerRecoveryType
+import com.streamvault.app.ui.screens.player.SleepTimerUiState
 import com.streamvault.app.ui.theme.AccentAmber
 import com.streamvault.app.ui.theme.ErrorColor
 import com.streamvault.app.ui.theme.OnBackground
@@ -76,6 +85,8 @@ import com.streamvault.domain.model.Season
 import com.streamvault.player.PlayerError
 import com.streamvault.player.PlayerTrack
 import com.streamvault.player.TrackType
+import com.streamvault.player.AUDIO_VIDEO_OFFSET_MAX_MS
+import com.streamvault.player.AUDIO_VIDEO_OFFSET_MIN_MS
 import java.util.Locale
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.interaction.TvButton
@@ -501,6 +512,270 @@ fun PlayerSpeedSelectionDialog(
 }
 
 @Composable
+fun PlayerSleepTimerDialog(
+    visible: Boolean,
+    title: String,
+    selectedMinutes: Int,
+    onDismiss: () -> Unit,
+    onSelectMinutes: (Int) -> Unit
+) {
+    if (!visible) return
+
+    val firstItemFocusRequester = remember { FocusRequester() }
+    val options = remember { listOf(0, 15, 30, 45, 60, 90, 120) }
+
+    LaunchedEffect(visible) {
+        firstItemFocusRequester.requestFocusSafely(
+            tag = "PlayerSleepTimerDialog",
+            target = "First timer option"
+        )
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.8f))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(min = 300.dp, max = 420.dp)
+                    .background(SurfaceElevated, RoundedCornerShape(12.dp))
+                    .padding(24.dp)
+                    .onPreviewKeyEvent { event ->
+                        if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                        when (event.nativeKeyEvent.keyCode) {
+                            KeyEvent.KEYCODE_DPAD_UP,
+                            KeyEvent.KEYCODE_DPAD_DOWN,
+                            KeyEvent.KEYCODE_DPAD_LEFT,
+                            KeyEvent.KEYCODE_DPAD_RIGHT,
+                            KeyEvent.KEYCODE_DPAD_CENTER,
+                            KeyEvent.KEYCODE_ENTER,
+                            KeyEvent.KEYCODE_NUMPAD_ENTER,
+                            KeyEvent.KEYCODE_BACK -> false
+                            else -> true
+                        }
+                    }
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(options, key = { it }) { minutes ->
+                        TrackSelectionItem(
+                            name = formatTimerPresetLabel(minutes),
+                            isSelected = minutes == selectedMinutes,
+                            onClick = { onSelectMinutes(minutes) },
+                            modifier = if (minutes == options.first()) {
+                                Modifier.focusRequester(firstItemFocusRequester)
+                            } else {
+                                Modifier
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PlayerSleepTimerWarningOverlay(
+    state: SleepTimerUiState,
+    modifier: Modifier = Modifier,
+    onExtendStopTimer: () -> Unit,
+    onDisableStopTimer: () -> Unit,
+    onExtendIdleTimer: () -> Unit,
+    onDisableIdleTimer: () -> Unit
+) {
+    val showStopWarning = state.stopTimerWarningVisible
+    val showIdleWarning = !showStopWarning && state.idleTimerWarningVisible
+    if (!showStopWarning && !showIdleWarning) return
+
+    val message = if (showStopWarning) {
+        stringResource(R.string.player_timer_warning_stop, formatTimerCountdown(state.stopRemainingMs))
+    } else {
+        stringResource(R.string.player_timer_warning_idle, formatTimerCountdown(state.idleRemainingMs))
+    }
+    val onExtend = if (showStopWarning) onExtendStopTimer else onExtendIdleTimer
+    val onDisable = if (showStopWarning) onDisableStopTimer else onDisableIdleTimer
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        colors = SurfaceDefaults.colors(containerColor = SurfaceElevated.copy(alpha = 0.94f)),
+        border = Border(androidx.compose.foundation.BorderStroke(1.dp, Primary.copy(alpha = 0.35f)))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
+            TvButton(onClick = onExtend) {
+                Text(text = stringResource(R.string.player_timer_extend_30))
+            }
+            TvButton(onClick = onDisable) {
+                Text(text = stringResource(R.string.player_timer_disable))
+            }
+        }
+    }
+}
+
+@Composable
+fun PlayerAudioVideoOffsetDialog(
+    visible: Boolean,
+    state: PlayerAudioVideoOffsetUiState,
+    canSaveChannel: Boolean,
+    onDismiss: () -> Unit,
+    onAdjust: (Int) -> Unit,
+    onReset: () -> Unit,
+    onSaveForChannel: () -> Unit,
+    onSaveAsGlobal: () -> Unit,
+    onUseGlobal: () -> Unit
+) {
+    if (!visible) return
+
+    val firstItemFocusRequester = remember { FocusRequester() }
+    val effectiveLabel = remember(state.effectiveOffsetMs) {
+        formatAudioVideoOffsetLabel(state.effectiveOffsetMs)
+    }
+    val sourceLabel = when {
+        state.previewOffsetMs != null -> stringResource(R.string.player_av_sync_preview)
+        state.hasChannelOverride -> stringResource(R.string.player_av_sync_channel)
+        else -> stringResource(R.string.player_av_sync_global)
+    }
+
+    LaunchedEffect(visible) {
+        firstItemFocusRequester.requestFocusSafely(
+            tag = "PlayerAudioVideoOffsetDialog",
+            target = "First A/V sync option"
+        )
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.8f))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(min = 340.dp, max = 460.dp)
+                    .background(SurfaceElevated, RoundedCornerShape(12.dp))
+                    .padding(24.dp)
+                    .onPreviewKeyEvent { event ->
+                        if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                        when (event.nativeKeyEvent.keyCode) {
+                            KeyEvent.KEYCODE_DPAD_UP,
+                            KeyEvent.KEYCODE_DPAD_DOWN,
+                            KeyEvent.KEYCODE_DPAD_LEFT,
+                            KeyEvent.KEYCODE_DPAD_RIGHT,
+                            KeyEvent.KEYCODE_DPAD_CENTER,
+                            KeyEvent.KEYCODE_ENTER,
+                            KeyEvent.KEYCODE_NUMPAD_ENTER,
+                            KeyEvent.KEYCODE_BACK -> false
+                            else -> true
+                        }
+                    }
+            ) {
+                Text(
+                    text = stringResource(R.string.player_av_sync_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White
+                )
+                Text(
+                    text = stringResource(R.string.player_av_sync_value, effectiveLabel, sourceLabel),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 16.dp)
+                )
+
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        TrackSelectionItem(
+                            name = stringResource(R.string.player_av_sync_minus_50),
+                            isSelected = false,
+                            onClick = { onAdjust(-50) },
+                            enabled = state.effectiveOffsetMs > AUDIO_VIDEO_OFFSET_MIN_MS,
+                            modifier = Modifier.focusRequester(firstItemFocusRequester)
+                        )
+                    }
+                    item {
+                        TrackSelectionItem(
+                            name = stringResource(R.string.player_av_sync_plus_50),
+                            isSelected = false,
+                            onClick = { onAdjust(50) },
+                            enabled = state.effectiveOffsetMs < AUDIO_VIDEO_OFFSET_MAX_MS
+                        )
+                    }
+                    item {
+                        TrackSelectionItem(
+                            name = stringResource(R.string.player_av_sync_reset),
+                            isSelected = state.effectiveOffsetMs == 0,
+                            onClick = onReset
+                        )
+                    }
+                    if (canSaveChannel) {
+                        item {
+                            TrackSelectionItem(
+                                name = stringResource(R.string.player_av_sync_save_channel),
+                                isSelected = state.hasChannelOverride && state.previewOffsetMs == null,
+                                onClick = {
+                                    onSaveForChannel()
+                                    onDismiss()
+                                }
+                            )
+                        }
+                    }
+                    item {
+                        TrackSelectionItem(
+                            name = stringResource(R.string.player_av_sync_save_global),
+                            isSelected = false,
+                            onClick = {
+                                onSaveAsGlobal()
+                                onDismiss()
+                            }
+                        )
+                    }
+                    if (canSaveChannel && state.hasChannelOverride) {
+                        item {
+                            TrackSelectionItem(
+                                name = stringResource(R.string.player_av_sync_use_global),
+                                isSelected = false,
+                                onClick = {
+                                    onUseGlobal()
+                                    onDismiss()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun PlayerEpisodeSelectionDialog(
     visible: Boolean,
     seriesTitle: String,
@@ -903,6 +1178,32 @@ private fun formatPlaybackSpeedLabel(speed: Float): String {
     }
 }
 
+@Composable
+private fun formatTimerPresetLabel(minutes: Int): String =
+    if (minutes <= 0) {
+        stringResource(R.string.player_timer_off)
+    } else {
+        androidx.compose.ui.platform.LocalContext.current.resources.getQuantityString(
+            R.plurals.settings_timer_minutes,
+            minutes,
+            minutes
+        )
+    }
+
+private fun formatTimerCountdown(ms: Long): String {
+    val totalSeconds = (ms.coerceAtLeast(0L) + 999L) / 1000L
+    if (totalSeconds < 60L) return "${totalSeconds}s"
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return if (seconds == 0L) "${minutes}m" else "${minutes}m ${seconds}s"
+}
+
+private fun formatAudioVideoOffsetLabel(offsetMs: Int): String = when {
+    offsetMs > 0 -> "+$offsetMs ms"
+    offsetMs < 0 -> "$offsetMs ms"
+    else -> "0 ms"
+}
+
 private fun buildVariantSelectionLabel(variant: LiveChannelVariant): String {
     val metaParts = buildList {
         variant.attributes.resolutionLabel?.let(::add)
@@ -932,10 +1233,11 @@ private fun TrackSelectionItem(
     name: String,
     isSelected: Boolean,
     onClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     TvClickableSurface(
-        onClick = onClick,
+        onClick = { if (enabled) onClick() },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (isSelected) Primary.copy(alpha = 0.2f) else Color.Transparent,
@@ -950,7 +1252,11 @@ private fun TrackSelectionItem(
             Text(
                 text = name,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (isSelected) Primary else Color.White,
+                color = when {
+                    !enabled -> Color.White.copy(alpha = 0.38f)
+                    isSelected -> Primary
+                    else -> Color.White
+                },
                 modifier = Modifier.weight(1f)
             )
             if (isSelected) {
@@ -1094,3 +1400,155 @@ private fun playerNoticeActionLabel(action: PlayerNoticeAction): String =
         PlayerNoticeAction.ALTERNATE_STREAM -> stringResource(R.string.player_try_alternate_stream)
         PlayerNoticeAction.OPEN_GUIDE -> stringResource(R.string.player_open_guide_action)
     }
+
+@Composable
+fun NextEpisodeCountdownOverlay(
+    nextEpisode: Episode,
+    secondsRemaining: Int,
+    totalSeconds: Int = 10,
+    onPlayNow: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val playNowFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        playNowFocusRequester.requestFocusSafely(
+            tag = "NextEpisodeCountdown",
+            target = "Play Now button"
+        )
+    }
+
+    val progress = (secondsRemaining.toFloat() / totalSeconds.toFloat()).coerceIn(0f, 1f)
+    val animatedSweep by animateFloatAsState(
+        targetValue = 360f * progress,
+        animationSpec = tween(durationMillis = 900, easing = LinearEasing),
+        label = "countdown_arc"
+    )
+
+    Box(
+        modifier = modifier
+            .widthIn(max = 360.dp)
+            .background(Color.Black.copy(alpha = 0.90f), RoundedCornerShape(16.dp))
+            .padding(20.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // "UP NEXT" label
+            Text(
+                text = stringResource(R.string.player_up_next),
+                style = MaterialTheme.typography.labelMedium,
+                color = Primary,
+                fontWeight = FontWeight.Bold
+            )
+
+            // Episode info: arc timer + title + thumbnail
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Circular countdown arc
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(60.dp)) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawArc(
+                            color = Color.White.copy(alpha = 0.12f),
+                            startAngle = -90f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            style = Stroke(width = 4.dp.toPx())
+                        )
+                        drawArc(
+                            color = Primary,
+                            startAngle = -90f,
+                            sweepAngle = animatedSweep,
+                            useCenter = false,
+                            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+                    Text(
+                        text = secondsRemaining.toString(),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Title and subtitle
+                Column(modifier = Modifier.weight(1f)) {
+                    val episodeLabel = buildString {
+                        append("S${nextEpisode.seasonNumber}E${nextEpisode.episodeNumber}")
+                        if (nextEpisode.title.isNotBlank()) append(" · ${nextEpisode.title}")
+                    }
+                    Text(
+                        text = episodeLabel,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = stringResource(R.string.player_auto_play_countdown, secondsRemaining),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+
+                // Episode thumbnail
+                if (!nextEpisode.coverUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = nextEpisode.coverUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .width(80.dp)
+                            .height(55.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                    )
+                }
+            }
+
+            // Action buttons
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TvClickableSurface(
+                    onClick = onPlayNow,
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = Primary,
+                        focusedContainerColor = PrimaryLight
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(playNowFocusRequester)
+                ) {
+                    Text(
+                        text = stringResource(R.string.player_auto_play_play_now),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .padding(vertical = 10.dp)
+                            .fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                TvClickableSurface(
+                    onClick = onCancel,
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = SurfaceElevated,
+                        focusedContainerColor = SurfaceHighlight
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.player_auto_play_cancel),
+                        color = Color.White,
+                        modifier = Modifier
+                            .padding(vertical = 10.dp)
+                            .fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
+}

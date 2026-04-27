@@ -436,8 +436,9 @@ class EpgRepositoryImplTest {
     }
 
     @Test
-    fun `refreshEpg keeps staging inserts inside a transaction`() = runTest {
+    fun `refreshEpg stages batches in short transactions outside parser transaction`() = runTest {
         val insertTransactionDepths = mutableListOf<Int>()
+        val parserCallbackTransactionDepths = mutableListOf<Int>()
         var transactionDepth = 0
         var transactionCount = 0
         val trackingTransactionRunner = object : DatabaseTransactionRunner {
@@ -459,6 +460,7 @@ class EpgRepositoryImplTest {
             val onProgram = invocation.getArgument<suspend (Program) -> Unit>(1)
             runBlocking {
                 repeat(600) { index ->
+                    parserCallbackTransactionDepths += transactionDepth
                     onProgram(
                         Program(
                             providerId = 7L,
@@ -485,7 +487,9 @@ class EpgRepositoryImplTest {
         val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
 
         assertThat(result.isSuccess).isTrue()
-        assertThat(transactionCount).isEqualTo(2)
+        assertThat(transactionCount).isEqualTo(4)
+        assertThat(parserCallbackTransactionDepths).hasSize(600)
+        assertThat(parserCallbackTransactionDepths.all { it == 0 }).isTrue()
         assertThat(insertTransactionDepths).isNotEmpty()
         assertThat(insertTransactionDepths.all { it > 0 }).isTrue()
     }

@@ -3,6 +3,7 @@ package com.streamvault.player
 import android.content.Context
 import android.view.View
 import com.streamvault.domain.model.DecoderMode
+import com.streamvault.domain.model.PlayerSurfaceMode
 import com.streamvault.domain.model.DrmScheme
 import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.VideoFormat
@@ -17,6 +18,10 @@ import com.streamvault.player.timeshift.LiveTimeshiftState
 import com.streamvault.player.timeshift.TimeshiftConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+
+const val AUDIO_VIDEO_OFFSET_MIN_MS = -2_000
+const val AUDIO_VIDEO_OFFSET_MAX_MS = 2_000
+const val AUDIO_VIDEO_OFFSET_STEP_MS = 50
 
 const val PLAYER_TRACK_AUTO_ID = "__auto__"
 
@@ -45,7 +50,9 @@ interface PlayerEngine {
     val availableSubtitleTracks: StateFlow<List<PlayerTrack>>
     val availableVideoTracks: StateFlow<List<PlayerTrack>>
     val playbackSpeed: StateFlow<Float>
+    val audioVideoOffsetMs: StateFlow<Int>
     val timeshiftState: StateFlow<LiveTimeshiftState>
+    val renderSurfaceType: StateFlow<PlayerRenderSurfaceType>
 
     /** In-stream metadata title (ICY / HLS). Null when the stream sends nothing. */
     val mediaTitle: StateFlow<String?>
@@ -59,10 +66,12 @@ interface PlayerEngine {
     fun seekForward(ms: Long = 10_000)
     fun seekBackward(ms: Long = 10_000)
     fun setDecoderMode(mode: DecoderMode)
+    fun setSurfaceMode(mode: PlayerSurfaceMode)
     fun setMediaSessionEnabled(enabled: Boolean)
     fun setVolume(volume: Float)
     fun setMuted(muted: Boolean)
     fun setPlaybackSpeed(speed: Float)
+    fun setAudioVideoOffsetMs(offsetMs: Int)
     fun startLiveTimeshift(streamInfo: StreamInfo, channelKey: String, config: TimeshiftConfig)
     fun stopLiveTimeshift()
     fun seekToLiveEdge()
@@ -74,6 +83,7 @@ interface PlayerEngine {
     fun selectAudioTrack(trackId: String)
     fun selectVideoTrack(trackId: String)
     fun selectSubtitleTrack(trackId: String?) // null to disable subtitles
+    fun addExternalSubtitle(subtitleUri: android.net.Uri, language: String)
     fun release()
 
     /** Toggle mute without losing the remembered volume level. */
@@ -130,6 +140,11 @@ enum class PlaybackState {
 data class PlayerStats(
     val videoCodec: String = "Unknown",
     val audioCodec: String = "Unknown",
+    val videoDecoderName: String = "Unknown",
+    val activeDecoderPolicy: String = "AUTO",
+    val renderSurfaceType: String = "SURFACE_VIEW",
+    val videoStallCount: Int = 0,
+    val lastVideoFrameAgoMs: Long = 0,
     val videoBitrate: Int = 0,
     val droppedFrames: Int = 0,
     val width: Int = 0,

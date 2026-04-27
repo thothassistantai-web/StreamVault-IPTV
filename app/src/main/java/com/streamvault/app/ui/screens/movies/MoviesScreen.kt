@@ -66,6 +66,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import com.streamvault.app.ui.components.shell.BrowseSearchLaunchCard
 import com.streamvault.app.ui.components.shell.LoadMoreCard
+import com.streamvault.app.ui.components.shell.InfiniteScrollEffect
 import com.streamvault.app.ui.components.shell.AppNavigationChrome
 import com.streamvault.app.ui.components.shell.AppMessageState
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
@@ -98,6 +99,9 @@ fun MoviesScreen(
     currentRoute: String,
     viewModel: MoviesViewModel = hiltViewModel()
 ) {
+    remember(viewModel) {
+        viewModel.resetPreviewRowsForScreenEntry()
+    }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val initialContentFocusRequester = remember { FocusRequester() }
@@ -399,8 +403,18 @@ private fun MoviesVodContent(
         }
     }
     val openProtectedCategory: (Category) -> Unit = onProtectedCategoryClick
-    val visibleCategoryNames = remember(uiState.categoryNames, categoryByName, uiState.parentalControlLevel, uiState.unlockedCategoryIds) {
-        uiState.categoryNames.filter { name ->
+    val browseCategoryNames = remember(uiState.categoryNames, uiState.providerCategories, uiState.categories, uiState.favoriteCategoryName) {
+        buildList {
+            val names = linkedSetOf<String>()
+            uiState.categoryNames.forEach(names::add)
+            uiState.providerCategories.forEach { names.add(it.name) }
+            uiState.categories.forEach { names.add(it.name) }
+            names.add(uiState.favoriteCategoryName)
+            addAll(names)
+        }
+    }
+    val visibleCategoryNames = remember(browseCategoryNames, categoryByName, uiState.parentalControlLevel, uiState.unlockedCategoryIds) {
+        browseCategoryNames.filter { name ->
             val category = categoryByName[name]
             category == null || !isCategoryHidden(category)
         }
@@ -474,7 +488,16 @@ private fun MoviesVodContent(
     }
 
     if (uiState.selectedCategory == null) {
+        val previewListState = androidx.compose.foundation.lazy.rememberLazyListState()
+        InfiniteScrollEffect(
+            listState = previewListState,
+            enabled = uiState.vodInfiniteScroll,
+            canLoadMore = uiState.hasMorePreviewRows,
+            isLoading = uiState.isLoadingPreviewRows,
+            onLoadMore = onLoadMorePreviewRows
+        )
         LazyColumn(
+            state = previewListState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 28.dp)
         ) {
@@ -511,7 +534,7 @@ private fun MoviesVodContent(
                             VodActionChip(
                                 key = "categories",
                                 label = stringResource(R.string.movies_categories_title),
-                                detail = "${uiState.categoryNames.size} groups",
+                                detail = "${visibleCategoryNames.count { name -> categoryByName[name]?.id != VodBrowseDefaults.FAVORITES_SENTINEL_ID }} groups",
                                 onClick = { showCategoryPicker = true }
                             )
                         )
@@ -670,11 +693,17 @@ private fun MoviesVodContent(
                     }
                 }
             }
-            if (uiState.hasMorePreviewRows && !uiState.isLoadingPreviewRows && catEntries.isNotEmpty()) {
+            if (uiState.hasMorePreviewRows && !uiState.isLoadingPreviewRows && !uiState.vodInfiniteScroll && catEntries.isNotEmpty()) {
                 item(key = "load_more_preview_trigger") {
-                    LaunchedEffect(catEntries.size) {
-                        onLoadMorePreviewRows()
-                    }
+                    LoadMoreCard(
+                        label = stringResource(
+                            R.string.library_load_more,
+                            catEntries.size,
+                            visibleCategoryNames.size
+                        ),
+                        onClick = onLoadMorePreviewRows,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                    )
                 }
             }
         }
@@ -709,7 +738,16 @@ private fun MoviesVodContent(
         )
     }
 
+    val modernGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    InfiniteScrollEffect(
+        gridState = modernGridState,
+        enabled = !uiState.isReorderMode,
+        canLoadMore = uiState.canLoadMoreSelectedCategory,
+        isLoading = uiState.isLoadingSelectedCategory,
+        onLoadMore = onLoadMore
+    )
     LazyVerticalGrid(
+        state = modernGridState,
         columns = GridCells.Adaptive(minSize = 136.dp),
         modifier = Modifier
             .fillMaxSize()
@@ -848,20 +886,6 @@ private fun MoviesVodContent(
                     }
                 )
             }
-
-            if (!uiState.isReorderMode && uiState.canLoadMoreSelectedCategory) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    LoadMoreCard(
-                        label = stringResource(
-                            R.string.library_load_more,
-                            uiState.selectedCategoryLoadedCount,
-                            uiState.selectedCategoryTotalCount
-                        ),
-                        onClick = onLoadMore,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
-                    )
-                }
-            }
         }
     }
 }
@@ -929,8 +953,18 @@ private fun MoviesVodClassicContent(
         }
     }
     val openProtectedCategory: (Category) -> Unit = onProtectedCategoryClick
-    val visibleCategoryNames = remember(uiState.categoryNames, categoryByName, uiState.parentalControlLevel, uiState.unlockedCategoryIds) {
-        uiState.categoryNames.filter { name ->
+    val browseCategoryNames = remember(uiState.categoryNames, uiState.providerCategories, uiState.categories, uiState.favoriteCategoryName) {
+        buildList {
+            val names = linkedSetOf<String>()
+            uiState.categoryNames.forEach(names::add)
+            uiState.providerCategories.forEach { names.add(it.name) }
+            uiState.categories.forEach { names.add(it.name) }
+            names.add(uiState.favoriteCategoryName)
+            addAll(names)
+        }
+    }
+    val visibleCategoryNames = remember(browseCategoryNames, categoryByName, uiState.parentalControlLevel, uiState.unlockedCategoryIds) {
+        browseCategoryNames.filter { name ->
             val category = categoryByName[name]
             category == null || !isCategoryHidden(category)
         }
@@ -1111,7 +1145,16 @@ private fun MoviesVodClassicContent(
                 )
             }
 
+            val classicGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+            InfiniteScrollEffect(
+                gridState = classicGridState,
+                enabled = !uiState.isReorderMode,
+                canLoadMore = uiState.canLoadMoreSelectedCategory,
+                isLoading = uiState.isLoadingSelectedCategory,
+                onLoadMore = onLoadMore
+            )
             LazyVerticalGrid(
+                state = classicGridState,
                 columns = GridCells.Adaptive(minSize = 136.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1173,20 +1216,6 @@ private fun MoviesVodClassicContent(
                                 if (!uiState.isReorderMode) onShowDialog(movie)
                             }
                         )
-                    }
-
-                    if (!uiState.isReorderMode && uiState.canLoadMoreSelectedCategory) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            LoadMoreCard(
-                                label = stringResource(
-                                    R.string.library_load_more,
-                                    uiState.selectedCategoryLoadedCount,
-                                    uiState.selectedCategoryTotalCount
-                                ),
-                                onClick = onLoadMore,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
                     }
                 }
             }

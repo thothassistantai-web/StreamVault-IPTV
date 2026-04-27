@@ -74,7 +74,7 @@ internal fun LazyListScope.epgSourcesSection(
             )
         }
     } else {
-        items(epgSources, key = { it.id }) { source ->
+        items(epgSources, key = { source -> "epg-source-${source.id}" }) { source ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -192,7 +192,7 @@ internal fun LazyListScope.epgSourcesSection(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
         }
-        items(providers, key = { it.id }) { provider ->
+        items(providers, key = { provider -> "epg-provider-${provider.id}" }) { provider ->
             val assignments = uiState.epgSourceAssignments[provider.id].orEmpty()
             val resolutionSummary = uiState.epgResolutionSummaries[provider.id]
             val assignedSourceIds = assignments.map { it.epgSourceId }.toSet()

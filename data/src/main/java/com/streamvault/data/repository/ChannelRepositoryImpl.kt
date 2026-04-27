@@ -7,6 +7,7 @@ import com.streamvault.data.local.dao.FavoriteDao
 import com.streamvault.data.local.entity.CategoryEntity
 import com.streamvault.data.local.entity.ChannelBrowseEntity
 import com.streamvault.data.local.entity.ChannelEntity
+import com.streamvault.data.local.entity.CategoryCount
 import com.streamvault.data.mapper.toDomain
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
@@ -29,6 +30,8 @@ import com.streamvault.domain.model.StreamType
 import com.streamvault.domain.repository.ChannelRepository
 import com.streamvault.domain.util.ChannelNormalizer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
@@ -41,6 +44,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
+@OptIn(ExperimentalCoroutinesApi::class)
 class ChannelRepositoryImpl @Inject constructor(
     private val channelDao: ChannelDao,
     private val categoryDao: CategoryDao,
@@ -72,6 +76,9 @@ class ChannelRepositoryImpl @Inject constructor(
 
     override fun getChannels(providerId: Long): Flow<List<Channel>> =
         observeChannels(channelDao.getByProvider(providerId), providerId)
+
+    override fun getChannelCount(providerId: Long): Flow<Int> =
+        channelDao.getCount(providerId)
 
     override fun getChannelsByCategory(providerId: Long, categoryId: Long): Flow<List<Channel>> =
         observeChannels(channelFlow(providerId, categoryId), providerId)
@@ -105,6 +112,42 @@ class ChannelRepositoryImpl @Inject constructor(
         observeChannels(channelFlowWithoutErrorsPage(providerId, categoryId, limit), providerId)
             .map(::sortChannelsByNumber)
 
+    override suspend fun getChannelsByCategoryPageOffset(
+        providerId: Long,
+        categoryId: Long,
+        limit: Int,
+        offset: Int
+    ): List<Channel> = channelPageOneShot(providerId, categoryId, limit, offset, withoutErrors = false)
+
+    override suspend fun getChannelsWithoutErrorsPageOffset(
+        providerId: Long,
+        categoryId: Long,
+        limit: Int,
+        offset: Int
+    ): List<Channel> = channelPageOneShot(providerId, categoryId, limit, offset, withoutErrors = true)
+
+    private suspend fun channelPageOneShot(
+        providerId: Long,
+        categoryId: Long,
+        limit: Int,
+        offset: Int,
+        withoutErrors: Boolean
+    ): List<Channel> = withContext(Dispatchers.Default) {
+        val settings = currentPresentationSettings()
+        val level = preferencesRepository.parentalControlLevel.first()
+        val unlockedCats = parentalControlManager.unlockedCategoriesForProvider(providerId).first()
+        val entities = if (categoryId == ChannelRepository.ALL_CHANNELS_ID) {
+            if (withoutErrors) channelDao.getByProviderWithoutErrorsBrowsePageOffset(providerId, limit, offset)
+            else channelDao.getByProviderBrowsePageOffset(providerId, limit, offset)
+        } else {
+            if (withoutErrors) channelDao.getByCategoryWithoutErrorsBrowsePageOffset(providerId, categoryId, limit, offset)
+            else channelDao.getByCategoryBrowsePageOffset(providerId, categoryId, limit, offset)
+        }
+        val filtered = applyVisibilityFilter(entities, level, unlockedCats)
+        val presented = buildPresentedChannels(filtered, settings, unlockedCats)
+        applyNumbering(presented, settings.numberingMode, offset)
+    }
+
     override fun searchChannelsByCategory(providerId: Long, categoryId: Long, query: String): Flow<List<Channel>> =
         searchChannelEntities(providerId, categoryId, query, CATEGORY_SEARCH_LIMIT)
             .let { flow -> observeChannels(flow, providerId) }
@@ -113,15 +156,16 @@ class ChannelRepositoryImpl @Inject constructor(
         combine(
             categoryDao.getByProviderAndType(providerId, ContentType.LIVE.name),
             preferencesRepository.liveChannelGroupingMode.flatMapLatest { groupingMode ->
-                if (groupingMode == LiveChannelGroupingMode.GROUPED) {
+                val countFlow: Flow<List<CategoryCount>> = if (groupingMode == LiveChannelGroupingMode.GROUPED) {
                     channelDao.getGroupedCategoryCounts(providerId)
                 } else {
                     channelDao.getCategoryCounts(providerId)
                 }
+                countFlow
             },
             preferencesRepository.parentalControlLevel,
             parentalControlManager.unlockedCategoriesForProvider(providerId)
-        ) { categories: List<CategoryEntity>, categoryCounts, level: Int, unlockedCats: Set<Long> ->
+        ) { categories: List<CategoryEntity>, categoryCounts: List<CategoryCount>, level: Int, unlockedCats: Set<Long> ->
             val countMap = categoryCounts.associate { count -> count.categoryId to count.item_count }
             val mappedCategories = categories.map { entity ->
                 val domain = entity.toDomain().copy(count = countMap[entity.categoryId] ?: 0)
@@ -590,10 +634,11 @@ class ChannelRepositoryImpl @Inject constructor(
 
     private fun applyNumbering(
         channels: List<Channel>,
-        numberingMode: ChannelNumberingMode
+        numberingMode: ChannelNumberingMode,
+        offset: Int = 0
     ): List<Channel> = when (numberingMode) {
         ChannelNumberingMode.GROUP -> channels.mapIndexed { index, channel ->
-            channel.copy(number = index + 1)
+            channel.copy(number = offset + index + 1)
         }
         ChannelNumberingMode.PROVIDER -> channels
         ChannelNumberingMode.HIDDEN -> channels.map { it.copy(number = 0) }

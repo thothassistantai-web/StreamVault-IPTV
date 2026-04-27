@@ -244,7 +244,8 @@ fun SeriesEntity.toDomain() = Series(
     providerId = providerId,
     isAdult = isAdult,
     isUserProtected = isUserProtected,
-    seriesId = seriesId
+    seriesId = seriesId,
+    providerSeriesId = providerSeriesId
 )
 
 fun SeriesBrowseEntity.toDomain() = Series(
@@ -267,12 +268,16 @@ fun SeriesBrowseEntity.toDomain() = Series(
     providerId = providerId,
     isAdult = isAdult,
     isUserProtected = isUserProtected,
-    seriesId = seriesId
+    seriesId = seriesId,
+    providerSeriesId = providerSeriesId
 )
 
 fun Series.toEntity() = SeriesEntity(
     id = id,
     seriesId = seriesId.takeIf { it > 0 } ?: id,
+    providerSeriesId = providerSeriesId?.takeIf { it.isNotBlank() }
+        ?: seriesId.takeIf { it > 0 }?.toString()
+        ?: id.takeIf { it > 0 }?.toString(),
     name = name,
     posterUrl = posterUrl,
     backdropUrl = backdropUrl,

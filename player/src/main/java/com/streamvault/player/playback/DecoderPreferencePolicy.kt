@@ -13,13 +13,13 @@ class DefaultDecoderPreferencePolicy : DecoderPreferencePolicy {
 
     override fun preferredMode(requestedMode: DecoderMode, mediaId: String): DecoderMode {
         return when (requestedMode) {
-            DecoderMode.SOFTWARE -> DecoderMode.SOFTWARE
+            DecoderMode.SOFTWARE, DecoderMode.COMPATIBILITY -> DecoderMode.SOFTWARE
             DecoderMode.HARDWARE, DecoderMode.AUTO -> DecoderMode.HARDWARE
         }
     }
 
     override fun onDecoderInitFailure(requestedMode: DecoderMode, mediaId: String): DecoderMode? {
-        if (requestedMode == DecoderMode.SOFTWARE) return null
+        if (requestedMode == DecoderMode.SOFTWARE || requestedMode == DecoderMode.COMPATIBILITY) return null
         if (!softwareRetriedMediaIds.add(mediaId)) return null
         return DecoderMode.SOFTWARE
     }

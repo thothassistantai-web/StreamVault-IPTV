@@ -54,6 +54,7 @@ import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.doSuspendableAnswer
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.reset
@@ -230,6 +231,18 @@ class SyncManagerTest {
             org.mockito.kotlin.whenever(catalogSyncDao.getChannelStages(any(), any())).thenReturn(emptyList())
             org.mockito.kotlin.whenever(catalogSyncDao.getMovieStages(any(), any())).thenReturn(emptyList())
             org.mockito.kotlin.whenever(catalogSyncDao.getSeriesStages(any(), any())).thenReturn(emptyList())
+            // Default stubs for the streamed Stalker API methods. The tests in this file
+            // generally don't stress live-stream streaming directly; without these defaults
+            // the unstubbed mock returns null which crashes the `when (val streamResult)`
+            // exhaustiveness check in SyncManager with NoWhenBranchMatchedException.
+            org.mockito.kotlin.whenever(stalkerApiService.streamLiveStreams(any(), any(), any()))
+                .thenReturn(Result.success(0))
+            org.mockito.kotlin.whenever(
+                stalkerApiService.streamBulkEpg(any(), any(), any(), any())
+            ).thenReturn(Result.success(0))
+            org.mockito.kotlin.whenever(
+                stalkerApiService.streamEpg(any(), any(), any(), any(), any())
+            ).thenReturn(Result.success(0))
         }
     }
 
@@ -521,15 +534,13 @@ class SyncManagerTest {
         org.mockito.kotlin.whenever(stalkerApiService.getLiveCategories(any(), any())).thenReturn(
             Result.success(listOf(StalkerCategoryRecord(id = "10", name = "News")))
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getLiveStreams(any(), any(), anyOrNull())).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerItemRecord(
-                        id = "100",
-                        name = "News",
-                        categoryId = "10",
-                        cmd = "ffmpeg http://example.com/live.ts"
-                    )
+        stalkerApiService.stubStreamLiveStreams(
+            listOf(
+                StalkerItemRecord(
+                    id = "100",
+                    name = "News",
+                    categoryId = "10",
+                    cmd = "ffmpeg http://example.com/live.ts"
                 )
             )
         )
@@ -549,9 +560,9 @@ class SyncManagerTest {
         assertThat(metadata?.seriesCount).isEqualTo(0)
         verify(stalkerApiService).getVodCategories(any(), any())
         verify(stalkerApiService).getSeriesCategories(any(), any())
-        verify(stalkerApiService).getLiveStreams(any(), any(), anyOrNull())
+        verify(stalkerApiService).streamLiveStreams(any(), any(), any())
         verify(stalkerApiService, org.mockito.kotlin.times(0)).getLiveStreams(any(), any(), eq("10"))
-        verify(stalkerApiService, org.mockito.kotlin.times(0)).getEpg(any(), any(), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamEpg(any(), any(), any(), any(), any())
         verify(stalkerApiService, org.mockito.kotlin.times(0)).getVodStreams(any(), any(), anyOrNull())
         verify(stalkerApiService, org.mockito.kotlin.times(0)).getSeries(any(), any(), anyOrNull())
     }
@@ -579,16 +590,14 @@ class SyncManagerTest {
         org.mockito.kotlin.whenever(stalkerApiService.getLiveCategories(any(), any())).thenReturn(
             Result.error("Portal returned an empty response for get_genres.")
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getLiveStreams(any(), any(), anyOrNull())).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerItemRecord(
-                        id = "100",
-                        name = "News",
-                        categoryId = "10",
-                        categoryName = "News",
-                        cmd = "ffmpeg http://example.com/live.ts"
-                    )
+        stalkerApiService.stubStreamLiveStreams(
+            listOf(
+                StalkerItemRecord(
+                    id = "100",
+                    name = "News",
+                    categoryId = "10",
+                    categoryName = "News",
+                    cmd = "ffmpeg http://example.com/live.ts"
                 )
             )
         )
@@ -602,7 +611,7 @@ class SyncManagerTest {
         verify(catalogSyncDao, atLeastOnce()).insertCategoryStages(categoryStagesCaptor.capture())
         assertThat(categoryStagesCaptor.allValues.flatten().any { it.type == com.streamvault.domain.model.ContentType.LIVE && it.name == "News" }).isTrue()
         verify(stalkerApiService).getLiveCategories(any(), any())
-        verify(stalkerApiService).getLiveStreams(any(), any(), anyOrNull())
+        verify(stalkerApiService).streamLiveStreams(any(), any(), any())
     }
 
     @Test
@@ -632,9 +641,7 @@ class SyncManagerTest {
         org.mockito.kotlin.whenever(stalkerApiService.getLiveCategories(any(), any())).thenReturn(
             Result.error("Portal returned an empty response for get_genres.")
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getLiveStreams(any(), any(), anyOrNull())).thenReturn(
-            Result.error("Portal returned an empty response for get_ordered_list.")
-        )
+        stalkerApiService.stubStreamLiveStreamsError("Portal returned an empty response for get_ordered_list.")
 
         val result = manager.sync(providerId = 1L, force = false)
 
@@ -668,15 +675,13 @@ class SyncManagerTest {
         org.mockito.kotlin.whenever(stalkerApiService.getLiveCategories(any(), any())).thenReturn(
             Result.success(listOf(StalkerCategoryRecord(id = "10", name = "News")))
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getLiveStreams(any(), any(), anyOrNull())).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerItemRecord(
-                        id = "100",
-                        name = "News",
-                        categoryId = "10",
-                        cmd = "ffmpeg http://example.com/live.ts"
-                    )
+        stalkerApiService.stubStreamLiveStreams(
+            listOf(
+                StalkerItemRecord(
+                    id = "100",
+                    name = "News",
+                    categoryId = "10",
+                    cmd = "ffmpeg http://example.com/live.ts"
                 )
             )
         )
@@ -691,17 +696,16 @@ class SyncManagerTest {
                 )
             )
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("100"))).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerProgramRecord(
-                        id = "p1",
-                        channelId = "100",
-                        title = "Morning News",
-                        description = "Top stories",
-                        startTimeMillis = 1_700_000_000_000L,
-                        endTimeMillis = 1_700_000_360_000L
-                    )
+        stalkerApiService.stubStreamEpg(
+            channelId = "100",
+            programs = listOf(
+                StalkerProgramRecord(
+                    id = "p1",
+                    channelId = "100",
+                    title = "Morning News",
+                    description = "Top stories",
+                    startTimeMillis = 1_700_000_000_000L,
+                    endTimeMillis = 1_700_000_360_000L
                 )
             )
         )
@@ -717,9 +721,9 @@ class SyncManagerTest {
         assertThat(insertedProgramsCaptor.firstValue.first().providerId).isEqualTo(1L)
         val metadata = syncMetadataRepo.getMetadata(1L)
         assertThat(metadata?.epgCount).isEqualTo(1)
-        verify(stalkerApiService).getLiveStreams(any(), any(), anyOrNull())
+        verify(stalkerApiService).streamLiveStreams(any(), any(), any())
         verify(stalkerApiService, org.mockito.kotlin.times(0)).getLiveStreams(any(), any(), eq("10"))
-        verify(stalkerApiService).getEpg(any(), any(), eq("100"))
+        verify(stalkerApiService).streamEpg(any(), any(), eq("100"), any(), any())
     }
 
     @Test
@@ -746,15 +750,13 @@ class SyncManagerTest {
         org.mockito.kotlin.whenever(stalkerApiService.getLiveCategories(any(), any())).thenReturn(
             Result.success(listOf(StalkerCategoryRecord(id = "10", name = "News")))
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getLiveStreams(any(), any(), anyOrNull())).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerItemRecord(
-                        id = "100",
-                        name = "News",
-                        categoryId = "10",
-                        cmd = "ffmpeg http://example.com/live.ts"
-                    )
+        stalkerApiService.stubStreamLiveStreams(
+            listOf(
+                StalkerItemRecord(
+                    id = "100",
+                    name = "News",
+                    categoryId = "10",
+                    cmd = "ffmpeg http://example.com/live.ts"
                 )
             )
         )
@@ -769,19 +771,18 @@ class SyncManagerTest {
                 )
             )
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("100"))).thenReturn(
-            Result.success(
-                (1..505).map { index ->
-                    StalkerProgramRecord(
-                        id = "p$index",
-                        channelId = "100",
-                        title = "Program $index",
-                        description = "Desc $index",
-                        startTimeMillis = 1_700_000_000_000L + index * 60_000L,
-                        endTimeMillis = 1_700_000_030_000L + index * 60_000L
-                    )
-                }
-            )
+        stalkerApiService.stubStreamEpg(
+            channelId = "100",
+            programs = (1..505).map { index ->
+                StalkerProgramRecord(
+                    id = "p$index",
+                    channelId = "100",
+                    title = "Program $index",
+                    description = "Desc $index",
+                    startTimeMillis = 1_700_000_000_000L + index * 60_000L,
+                    endTimeMillis = 1_700_000_030_000L + index * 60_000L
+                )
+            }
         )
         org.mockito.kotlin.whenever(programDao.countByProvider(1L)).thenReturn(505)
 
@@ -823,17 +824,16 @@ class SyncManagerTest {
                 )
             )
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("100"))).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerProgramRecord(
-                        id = "p1",
-                        channelId = "100",
-                        title = "Morning News",
-                        description = "Top stories",
-                        startTimeMillis = 1_700_000_000_000L,
-                        endTimeMillis = 1_700_000_360_000L
-                    )
+        stalkerApiService.stubStreamEpg(
+            channelId = "100",
+            programs = listOf(
+                StalkerProgramRecord(
+                    id = "p1",
+                    channelId = "100",
+                    title = "Morning News",
+                    description = "Top stories",
+                    startTimeMillis = 1_700_000_000_000L,
+                    endTimeMillis = 1_700_000_360_000L
                 )
             )
         )
@@ -842,7 +842,7 @@ class SyncManagerTest {
         val result = manager.retrySection(providerId = 1L, section = SyncRepairSection.EPG)
 
         assertThat(result).isInstanceOf(Result.Success::class.java)
-        verify(stalkerApiService).getEpg(any(), any(), eq("100"))
+        verify(stalkerApiService).streamEpg(any(), any(), eq("100"), any(), any())
         verify(programDao).insertAll(any())
         val metadata = syncMetadataRepo.getMetadata(1L)
         assertThat(metadata?.epgCount).isEqualTo(1)
@@ -876,31 +876,29 @@ class SyncManagerTest {
                 ChannelGuideSyncEntity(streamId = 102L, name = "Sports", epgChannelId = "sports-guide-id")
             )
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("shared-guide-id"))).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerProgramRecord(
-                        id = "p1",
-                        channelId = "shared-guide-id",
-                        title = "Morning News",
-                        description = "Top stories",
-                        startTimeMillis = 1_700_000_000_000L,
-                        endTimeMillis = 1_700_000_360_000L
-                    )
+        stalkerApiService.stubStreamEpg(
+            channelId = "shared-guide-id",
+            programs = listOf(
+                StalkerProgramRecord(
+                    id = "p1",
+                    channelId = "shared-guide-id",
+                    title = "Morning News",
+                    description = "Top stories",
+                    startTimeMillis = 1_700_000_000_000L,
+                    endTimeMillis = 1_700_000_360_000L
                 )
             )
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("sports-guide-id"))).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerProgramRecord(
-                        id = "p2",
-                        channelId = "sports-guide-id",
-                        title = "Live Sports",
-                        description = "Match coverage",
-                        startTimeMillis = 1_700_000_000_000L,
-                        endTimeMillis = 1_700_000_360_000L
-                    )
+        stalkerApiService.stubStreamEpg(
+            channelId = "sports-guide-id",
+            programs = listOf(
+                StalkerProgramRecord(
+                    id = "p2",
+                    channelId = "sports-guide-id",
+                    title = "Live Sports",
+                    description = "Match coverage",
+                    startTimeMillis = 1_700_000_000_000L,
+                    endTimeMillis = 1_700_000_360_000L
                 )
             )
         )
@@ -909,8 +907,8 @@ class SyncManagerTest {
         val result = manager.retrySection(providerId = 1L, section = SyncRepairSection.EPG)
 
         assertThat(result).isInstanceOf(Result.Success::class.java)
-        verify(stalkerApiService, org.mockito.kotlin.times(1)).getEpg(any(), any(), eq("shared-guide-id"))
-        verify(stalkerApiService, org.mockito.kotlin.times(1)).getEpg(any(), any(), eq("sports-guide-id"))
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).streamEpg(any(), any(), eq("shared-guide-id"), any(), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).streamEpg(any(), any(), eq("sports-guide-id"), any(), any())
     }
 
     @Test
@@ -940,31 +938,28 @@ class SyncManagerTest {
                 ChannelGuideSyncEntity(streamId = 102L, name = "Sports", epgChannelId = "sports-guide-id")
             )
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getBulkEpg(any(), any(), eq(6))).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerProgramRecord(
-                        id = "p1",
-                        channelId = "shared-guide-id",
-                        title = "Morning News",
-                        description = "Top stories",
-                        startTimeMillis = 1_700_000_000_000L,
-                        endTimeMillis = 1_700_000_360_000L
-                    )
+        stalkerApiService.stubStreamBulkEpg(
+            programs = listOf(
+                StalkerProgramRecord(
+                    id = "p1",
+                    channelId = "shared-guide-id",
+                    title = "Morning News",
+                    description = "Top stories",
+                    startTimeMillis = 1_700_000_000_000L,
+                    endTimeMillis = 1_700_000_360_000L
                 )
             )
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("sports-guide-id"))).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerProgramRecord(
-                        id = "p2",
-                        channelId = "sports-guide-id",
-                        title = "Live Sports",
-                        description = "Match coverage",
-                        startTimeMillis = 1_700_000_000_000L,
-                        endTimeMillis = 1_700_000_360_000L
-                    )
+        stalkerApiService.stubStreamEpg(
+            channelId = "sports-guide-id",
+            programs = listOf(
+                StalkerProgramRecord(
+                    id = "p2",
+                    channelId = "sports-guide-id",
+                    title = "Live Sports",
+                    description = "Match coverage",
+                    startTimeMillis = 1_700_000_000_000L,
+                    endTimeMillis = 1_700_000_360_000L
                 )
             )
         )
@@ -973,9 +968,9 @@ class SyncManagerTest {
         val result = manager.retrySection(providerId = 1L, section = SyncRepairSection.EPG)
 
         assertThat(result).isInstanceOf(Result.Success::class.java)
-        verify(stalkerApiService, org.mockito.kotlin.times(1)).getBulkEpg(any(), any(), eq(6))
-        verify(stalkerApiService, org.mockito.kotlin.times(0)).getEpg(any(), any(), eq("shared-guide-id"))
-        verify(stalkerApiService, org.mockito.kotlin.times(1)).getEpg(any(), any(), eq("sports-guide-id"))
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).streamBulkEpg(any(), any(), eq(6), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamEpg(any(), any(), eq("shared-guide-id"), any(), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).streamEpg(any(), any(), eq("sports-guide-id"), any(), any())
     }
 
     @Test
@@ -1008,17 +1003,16 @@ class SyncManagerTest {
                 )
             )
         )
-        org.mockito.kotlin.whenever(stalkerApiService.getEpg(any(), any(), eq("100"))).thenReturn(
-            Result.success(
-                listOf(
-                    StalkerProgramRecord(
-                        id = "p1",
-                        channelId = "100",
-                        title = "Morning News",
-                        description = "Top stories",
-                        startTimeMillis = 1_700_000_000_000L,
-                        endTimeMillis = 1_700_000_360_000L
-                    )
+        stalkerApiService.stubStreamEpg(
+            channelId = "100",
+            programs = listOf(
+                StalkerProgramRecord(
+                    id = "p1",
+                    channelId = "100",
+                    title = "Morning News",
+                    description = "Top stories",
+                    startTimeMillis = 1_700_000_000_000L,
+                    endTimeMillis = 1_700_000_360_000L
                 )
             )
         )
@@ -1027,8 +1021,8 @@ class SyncManagerTest {
         val result = manager.retrySection(providerId = 1L, section = SyncRepairSection.EPG)
 
         assertThat(result).isInstanceOf(Result.Success::class.java)
-        verify(stalkerApiService, org.mockito.kotlin.times(1)).getEpg(any(), any(), eq("100"))
-        verify(stalkerApiService, org.mockito.kotlin.times(0)).getEpg(any(), any(), eq("No details available"))
+        verify(stalkerApiService, org.mockito.kotlin.times(1)).streamEpg(any(), any(), eq("100"), any(), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamEpg(any(), any(), eq("No details available"), any(), any())
     }
 
     @Test
@@ -1332,4 +1326,81 @@ class SyncManagerTest {
         tvgLanguage = null, tvgCountry = null,
         catchUp = null, catchUpDays = null, catchUpSource = null, timeshift = null, url = url
     )
+}
+
+
+/**
+ * Stubs the streaming bulk-EPG path used by [SyncManager.syncStalkerPortalEpg].
+ * The test feeds [programs] through the captured callback and reports the count
+ * back as the [Result.success] payload, mirroring the production [streamBulkEpg]
+ * contract. Use this helper instead of mocking the legacy buffered [getBulkEpg].
+ */
+private suspend fun com.streamvault.data.remote.stalker.StalkerApiService.stubStreamBulkEpg(
+    programs: List<com.streamvault.data.remote.stalker.StalkerProgramRecord>,
+    periodHours: Int = 6
+) {
+    org.mockito.kotlin.whenever(
+        streamBulkEpg(
+            org.mockito.kotlin.any(),
+            org.mockito.kotlin.any(),
+            org.mockito.kotlin.eq(periodHours),
+            org.mockito.kotlin.any()
+        )
+    ).doSuspendableAnswer { invocation ->
+        @Suppress("UNCHECKED_CAST")
+        val cb = invocation.arguments[3] as suspend (com.streamvault.data.remote.stalker.StalkerProgramRecord) -> Unit
+        programs.forEach { cb(it) }
+        com.streamvault.domain.model.Result.success(programs.size)
+    }
+}
+
+/** Stubs the streaming live-channel path. Emits [items] through the captured callback. */
+private suspend fun com.streamvault.data.remote.stalker.StalkerApiService.stubStreamLiveStreams(
+    items: List<com.streamvault.data.remote.stalker.StalkerItemRecord>
+) {
+    org.mockito.kotlin.whenever(
+        streamLiveStreams(
+            org.mockito.kotlin.any(),
+            org.mockito.kotlin.any(),
+            org.mockito.kotlin.any()
+        )
+    ).doSuspendableAnswer { invocation ->
+        @Suppress("UNCHECKED_CAST")
+        val cb = invocation.arguments[2] as suspend (com.streamvault.data.remote.stalker.StalkerItemRecord) -> Unit
+        items.forEach { cb(it) }
+        com.streamvault.domain.model.Result.success(items.size)
+    }
+}
+
+/** Stubs the streaming live-channel path to return an error result without emitting items. */
+private suspend fun com.streamvault.data.remote.stalker.StalkerApiService.stubStreamLiveStreamsError(message: String) {
+    org.mockito.kotlin.whenever(
+        streamLiveStreams(
+            org.mockito.kotlin.any(),
+            org.mockito.kotlin.any(),
+            org.mockito.kotlin.any()
+        )
+    ).doSuspendableAnswer { com.streamvault.domain.model.Result.error(message) }
+}
+
+/** Counterpart to [stubStreamBulkEpg] for the per-channel streamed EPG path. */
+private suspend fun com.streamvault.data.remote.stalker.StalkerApiService.stubStreamEpg(
+    channelId: String,
+    programs: List<com.streamvault.data.remote.stalker.StalkerProgramRecord>,
+    periodHours: Int = 6
+) {
+    org.mockito.kotlin.whenever(
+        streamEpg(
+            org.mockito.kotlin.any(),
+            org.mockito.kotlin.any(),
+            org.mockito.kotlin.eq(channelId),
+            org.mockito.kotlin.eq(periodHours),
+            org.mockito.kotlin.any()
+        )
+    ).doSuspendableAnswer { invocation ->
+        @Suppress("UNCHECKED_CAST")
+        val cb = invocation.arguments[4] as suspend (com.streamvault.data.remote.stalker.StalkerProgramRecord) -> Unit
+        programs.forEach { cb(it) }
+        com.streamvault.domain.model.Result.success(programs.size)
+    }
 }

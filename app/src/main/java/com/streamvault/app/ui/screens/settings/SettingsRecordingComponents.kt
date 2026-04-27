@@ -44,6 +44,8 @@ import com.streamvault.app.ui.design.FocusSpec
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.interaction.mouseClickable
 import com.streamvault.app.ui.theme.*
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createDateTimeFormat
 import com.streamvault.domain.manager.BackupConflictStrategy
 import com.streamvault.domain.manager.BackupImportPlan
 import com.streamvault.domain.manager.BackupPreview
@@ -946,6 +948,8 @@ private fun RecordingDetailPanel(
     onToggleSchedule: (Boolean) -> Unit
 ) {
     val accent = recordingStatusAccent(item.status)
+    val appTimeFormat = LocalAppTimeFormat.current
+    val dateTimeFormat = remember(appTimeFormat) { appTimeFormat.createDateTimeFormat() }
     Surface(
         modifier = modifier,
         colors = SurfaceDefaults.colors(containerColor = SurfaceElevated),
@@ -997,8 +1001,8 @@ private fun RecordingDetailPanel(
                 Text(
                     text = stringResource(
                         R.string.settings_recording_time_window,
-                        formatTimestamp(item.scheduledStartMs),
-                        formatTimestamp(item.scheduledEndMs)
+                        formatTimestamp(item.scheduledStartMs, dateTimeFormat),
+                        formatTimestamp(item.scheduledEndMs, dateTimeFormat)
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = OnSurface
@@ -1182,10 +1186,12 @@ private fun recordingDisplaySubtitle(item: RecordingItem): String? {
 @Composable
 private fun recordingListSecondaryLine(item: RecordingItem): String {
     val subtitle = recordingDisplaySubtitle(item)
+    val appTimeFormat = LocalAppTimeFormat.current
+    val dateTimeFormat = remember(appTimeFormat) { appTimeFormat.createDateTimeFormat() }
     return subtitle ?: stringResource(
         R.string.settings_recording_time_window,
-        formatTimestamp(item.scheduledStartMs),
-        formatTimestamp(item.scheduledEndMs)
+        formatTimestamp(item.scheduledStartMs, dateTimeFormat),
+        formatTimestamp(item.scheduledEndMs, dateTimeFormat)
     )
 }
 
@@ -1272,11 +1278,13 @@ internal fun RecordingItemCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val appTimeFormat = LocalAppTimeFormat.current
+                val dateTimeFormat = remember(appTimeFormat) { appTimeFormat.createDateTimeFormat() }
                 Text(
                     text = stringResource(
                         R.string.settings_recording_time_window,
-                        formatTimestamp(item.scheduledStartMs),
-                        formatTimestamp(item.scheduledEndMs)
+                        formatTimestamp(item.scheduledStartMs, dateTimeFormat),
+                        formatTimestamp(item.scheduledEndMs, dateTimeFormat)
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = OnSurface,

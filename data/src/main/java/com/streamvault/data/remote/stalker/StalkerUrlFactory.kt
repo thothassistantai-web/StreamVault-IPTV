@@ -16,7 +16,8 @@ data class StalkerStreamToken(
     val kind: StalkerStreamKind,
     val itemId: Long,
     val cmd: String,
-    val containerExtension: String? = null
+    val containerExtension: String? = null,
+    val seriesNumber: Int? = null
 )
 
 object StalkerUrlFactory {
@@ -66,7 +67,8 @@ object StalkerUrlFactory {
         kind: StalkerStreamKind,
         itemId: Long,
         cmd: String,
-        containerExtension: String? = null
+        containerExtension: String? = null,
+        seriesNumber: Int? = null
     ): String {
         val query = buildList {
             add("cmd=${encode(cmd)}")
@@ -74,6 +76,8 @@ object StalkerUrlFactory {
                 ?.removePrefix(".")
                 ?.takeIf { it.isNotBlank() }
                 ?.let { ext -> add("ext=${encode(ext.lowercase(Locale.ROOT))}") }
+            seriesNumber?.takeIf { it > 0 }
+                ?.let { episode -> add("series=${encode(episode.toString())}") }
         }.joinToString("&")
         return "$INTERNAL_SCHEME://$providerId/${kind.pathSegment}/$itemId?$query"
     }
@@ -89,12 +93,14 @@ object StalkerUrlFactory {
         val query = parseQuery(uri.rawQuery)
         val cmd = query["cmd"] ?: return null
         val ext = query["ext"]?.trim()?.takeIf { it.isNotBlank() }
+        val seriesNumber = query["series"]?.toIntOrNull()?.takeIf { it > 0 }
         return StalkerStreamToken(
             providerId = providerId,
             kind = kind,
             itemId = itemId,
             cmd = cmd,
-            containerExtension = ext
+            containerExtension = ext,
+            seriesNumber = seriesNumber
         )
     }
 

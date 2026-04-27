@@ -22,6 +22,7 @@ import com.streamvault.app.tv.LauncherRecommendationsManager
 import com.streamvault.app.tv.WatchNextManager
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.app.ui.theme.StreamVaultTheme
+import com.streamvault.app.ui.time.LocalAppTimeFormat
 import dagger.hilt.android.AndroidEntryPoint
 
 import javax.inject.Inject
@@ -114,6 +115,7 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             val appLanguage by preferencesRepository.appLanguage.collectAsState(initial = "system")
+            val appTimeFormat by preferencesRepository.appTimeFormat.collectAsState(initial = com.streamvault.domain.model.AppTimeFormat.SYSTEM)
             val currentContext = LocalContext.current
             
             val configuration = remember(appLanguage) {
@@ -152,7 +154,8 @@ class MainActivity : ComponentActivity() {
 
             CompositionLocalProvider(
                 LocalContext provides localizedContext,
-                LocalLayoutDirection provides layoutDirection
+                LocalLayoutDirection provides layoutDirection,
+                LocalAppTimeFormat provides appTimeFormat
             ) {
                 StreamVaultTheme {
                     AppNavigation(mainActivity = this@MainActivity)

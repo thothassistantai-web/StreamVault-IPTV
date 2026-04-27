@@ -63,6 +63,8 @@ import com.streamvault.app.ui.components.shell.AppHeroHeader
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
 import com.streamvault.app.ui.components.shell.StatusPill
 import com.streamvault.app.ui.design.AppColors
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createDateTimeFormat
 import com.streamvault.app.ui.design.AppColors.Brand as Primary
 import com.streamvault.app.ui.design.AppColors.Focus as FocusBorder
 import com.streamvault.app.ui.design.AppColors.SurfaceElevated as SurfaceElevated
@@ -496,12 +498,13 @@ private fun DashboardProviderHealthCard(
     onOpenDiagnostics: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val syncLabel = remember(health.lastSyncedAt) {
+    val appTimeFormat = LocalAppTimeFormat.current
+    val dateTimeFormat = remember(appTimeFormat) { appTimeFormat.createDateTimeFormat() }
+    val syncLabel = remember(health.lastSyncedAt, dateTimeFormat) {
         if (health.lastSyncedAt <= 0L) {
             context.getString(R.string.dashboard_provider_no_sync)
         } else {
-            val format = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
-            context.getString(R.string.dashboard_provider_synced_at, format.format(Date(health.lastSyncedAt)))
+            context.getString(R.string.dashboard_provider_synced_at, dateTimeFormat.format(Date(health.lastSyncedAt)))
         }
     }
     val expiryLabel = remember(health.expirationDate) {

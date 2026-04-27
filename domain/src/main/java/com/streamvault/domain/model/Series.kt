@@ -22,7 +22,8 @@ data class Series(
     val lastModified: Long = 0L,
     val isAdult: Boolean = false,
     val isUserProtected: Boolean = false,
-    val seriesId: Long = 0L
+    val seriesId: Long = 0L,
+    val providerSeriesId: String? = null
 ) {
     init {
         require(rating in 0f..10f) { "rating must be between 0 and 10" }

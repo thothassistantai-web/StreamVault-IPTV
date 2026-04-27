@@ -84,12 +84,12 @@ class StreamVaultDatabaseMigrationTest {
     }
 
     @Test
-    fun migrate1To39_fullChainValidatesLatestSchema() {
+    fun migrate1To42_fullChainValidatesLatestSchema() {
         migrationTestHelper.createDatabase("streamvault-full-chain-test", 1).close()
 
         migrationTestHelper.runMigrationsAndValidate(
             "streamvault-full-chain-test",
-            39,
+            42,
             true,
             StreamVaultDatabase.MIGRATION_1_2,
             StreamVaultDatabase.MIGRATION_2_3,
@@ -128,8 +128,113 @@ class StreamVaultDatabaseMigrationTest {
             StreamVaultDatabase.MIGRATION_35_36,
             StreamVaultDatabase.MIGRATION_36_37,
             StreamVaultDatabase.MIGRATION_37_38,
-            StreamVaultDatabase.MIGRATION_38_39
+            StreamVaultDatabase.MIGRATION_38_39,
+            StreamVaultDatabase.MIGRATION_39_40,
+            StreamVaultDatabase.MIGRATION_40_41,
+            StreamVaultDatabase.MIGRATION_41_42,
+            StreamVaultDatabase.MIGRATION_42_43,
+            StreamVaultDatabase.MIGRATION_43_44
         ).close()
+    }
+
+    @Test
+    fun migrate40To41_addsAudioVideoOffsetColumn() {
+        migrationTestHelper.createDatabase("streamvault-40-41-test", 40).close()
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-40-41-test",
+            41,
+            true,
+            StreamVaultDatabase.MIGRATION_40_41
+        )
+
+        assertEquals(
+            1,
+            countRows(
+                migratedDb,
+                "SELECT COUNT(*) FROM pragma_table_info('channel_preferences') WHERE name = 'audio_video_offset_ms'"
+            )
+        )
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun migrate41To42_createsPlaybackCompatibilityRecordsTable() {
+        migrationTestHelper.createDatabase("streamvault-41-42-test", 41).close()
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-41-42-test",
+            42,
+            true,
+            StreamVaultDatabase.MIGRATION_41_42
+        )
+
+        assertEquals(
+            1,
+            countRows(
+                migratedDb,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'playback_compatibility_records'"
+            )
+        )
+        assertEquals(
+            1,
+            countRows(
+                migratedDb,
+                "SELECT COUNT(*) FROM pragma_table_info('playback_compatibility_records') WHERE name = 'decoder_name'"
+            )
+        )
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun migrate42To43_addsProviderSeriesIdColumn() {
+        migrationTestHelper.createDatabase("streamvault-42-43-test", 42).close()
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-42-43-test",
+            43,
+            true,
+            StreamVaultDatabase.MIGRATION_42_43
+        )
+
+        assertEquals(
+            1,
+            countRows(
+                migratedDb,
+                "SELECT COUNT(*) FROM pragma_table_info('series') WHERE name = 'provider_series_id'"
+            )
+        )
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun migrate43To44_addsPagedVodHydrationColumns() {
+        migrationTestHelper.createDatabase("streamvault-43-44-test", 43).close()
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-43-44-test",
+            44,
+            true,
+            StreamVaultDatabase.MIGRATION_43_44
+        )
+
+        listOf("movie_category_hydration", "series_category_hydration").forEach { table ->
+            assertEquals(
+                4,
+                countRows(
+                    migratedDb,
+                    """
+                    SELECT COUNT(*) FROM pragma_table_info('$table')
+                    WHERE name IN ('last_loaded_page', 'total_pages', 'is_complete', 'page_size')
+                    """.trimIndent()
+                )
+            )
+        }
+
+        migratedDb.close()
     }
 
     @Test

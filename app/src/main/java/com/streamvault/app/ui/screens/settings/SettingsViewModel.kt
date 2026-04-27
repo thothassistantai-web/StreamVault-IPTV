@@ -25,6 +25,7 @@ import com.streamvault.domain.manager.BackupPreview
 import com.streamvault.domain.manager.ParentalControlManager
 import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.model.Category
+import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.ContentType
@@ -419,15 +420,33 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setVodInfiniteScroll(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setVodInfiniteScroll(enabled)
+        }
+    }
+
     fun setGuideDefaultCategory(categoryId: Long) {
         viewModelScope.launch {
             preferencesRepository.setGuideDefaultCategoryId(categoryId)
         }
     }
 
+    fun setAppTimeFormat(format: AppTimeFormat) {
+        viewModelScope.launch {
+            preferencesRepository.setAppTimeFormat(format)
+        }
+    }
+
     fun setPreventStandbyDuringPlayback(prevent: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setPreventStandbyDuringPlayback(prevent)
+        }
+    }
+
+    fun setAutoPlayNextEpisode(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setAutoPlayNextEpisode(enabled)
         }
     }
 
@@ -491,6 +510,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setPlayerAudioVideoOffsetMs(offsetMs: Int) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerAudioVideoOffsetMs(offsetMs)
+        }
+    }
+
     fun setPlayerMediaSessionEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setPlayerMediaSessionEnabled(enabled)
@@ -506,6 +531,18 @@ class SettingsViewModel @Inject constructor(
     fun setPlayerTimeshiftDepthMinutes(minutes: Int) {
         viewModelScope.launch {
             preferencesRepository.setPlayerTimeshiftDepthMinutes(minutes)
+        }
+    }
+
+    fun setDefaultStopPlaybackTimerMinutes(minutes: Int) {
+        viewModelScope.launch {
+            preferencesRepository.setDefaultStopPlaybackTimerMinutes(minutes)
+        }
+    }
+
+    fun setDefaultIdleStandbyTimerMinutes(minutes: Int) {
+        viewModelScope.launch {
+            preferencesRepository.setDefaultIdleStandbyTimerMinutes(minutes)
         }
     }
 
@@ -536,6 +573,12 @@ class SettingsViewModel @Inject constructor(
     fun setPlayerDecoderMode(mode: DecoderMode) {
         viewModelScope.launch {
             preferencesRepository.setPlayerDecoderMode(mode)
+        }
+    }
+
+    fun setPlayerSurfaceMode(mode: com.streamvault.domain.model.PlayerSurfaceMode) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerSurfaceMode(mode)
         }
     }
 

@@ -78,7 +78,11 @@ object DatabaseModule {
                 StreamVaultDatabase.MIGRATION_36_37,
                 StreamVaultDatabase.MIGRATION_37_38,
                 StreamVaultDatabase.MIGRATION_38_39,
-                StreamVaultDatabase.MIGRATION_39_40
+                StreamVaultDatabase.MIGRATION_39_40,
+                StreamVaultDatabase.MIGRATION_40_41,
+                StreamVaultDatabase.MIGRATION_41_42,
+                StreamVaultDatabase.MIGRATION_42_43,
+                StreamVaultDatabase.MIGRATION_43_44
             )
             // NOTE: fallbackToDestructiveMigration() intentionally removed.
             // All future schema changes MUST add a corresponding Migration in StreamVaultDatabase.
@@ -112,4 +116,5 @@ object DatabaseModule {
     @Provides fun provideRecordingRunDao(db: StreamVaultDatabase): RecordingRunDao = db.recordingRunDao()
     @Provides fun provideProgramReminderDao(db: StreamVaultDatabase): ProgramReminderDao = db.programReminderDao()
     @Provides fun provideRecordingStorageDao(db: StreamVaultDatabase): RecordingStorageDao = db.recordingStorageDao()
+    @Provides fun providePlaybackCompatibilityDao(db: StreamVaultDatabase): PlaybackCompatibilityDao = db.playbackCompatibilityDao()
 }

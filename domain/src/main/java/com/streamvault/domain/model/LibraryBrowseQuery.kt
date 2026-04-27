@@ -42,7 +42,15 @@ data class PagedResult<T>(
     val items: List<T>,
     val totalCount: Int,
     val offset: Int,
-    val limit: Int
+    val limit: Int,
+    /**
+     * True when the repository knows there are more items available remotely
+     * that are not yet reflected in [totalCount]. This is used for partially
+     * cached sources (e.g. paged Stalker categories) so callers can offer
+     * "load more" affordances even when the local cache appears full
+     * relative to its own count.
+     */
+    val hasMoreRemote: Boolean = false
 ) {
     init {
         require(totalCount >= 0) { "totalCount must be non-negative" }
@@ -50,7 +58,7 @@ data class PagedResult<T>(
         require(limit > 0) { "limit must be positive" }
     }
 
-    val hasNextPage: Boolean get() = offset + items.size < totalCount
+    val hasNextPage: Boolean get() = offset + items.size < totalCount || hasMoreRemote
     val hasPreviousPage: Boolean get() = offset > 0
     val currentPage: Int get() = if (limit > 0) offset / limit else 0
     val totalPages: Int get() = if (limit > 0) (totalCount + limit - 1) / limit else 0
