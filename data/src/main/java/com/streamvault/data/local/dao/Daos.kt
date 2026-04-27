@@ -9,6 +9,11 @@ data class RemoteIdMapping(
     @ColumnInfo(name = "remote_id") val remoteId: Long
 )
 
+data class SeriesRemoteIdMapping(
+    @ColumnInfo(name = "id") val id: Long,
+    @ColumnInfo(name = "remote_id") val remoteId: String
+)
+
 data class TmdbIdMapping(
     @ColumnInfo(name = "tmdb_id") val tmdbId: Long
 )
@@ -174,6 +179,58 @@ abstract class ChannelDao {
         categoryId: Long,
         limit: Int
     ): Flow<List<ChannelBrowseEntity>>
+
+    @Query(
+        """
+        SELECT id, stream_id, name, logo_url, group_title, category_id, category_name, stream_url,
+               epg_channel_id, number, catch_up_supported, catch_up_days, catchUpSource,
+               provider_id, is_adult, is_user_protected, logical_group_id, error_count
+        FROM channels
+        WHERE provider_id = :providerId
+        ORDER BY number ASC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    abstract suspend fun getByProviderBrowsePageOffset(providerId: Long, limit: Int, offset: Int): List<ChannelBrowseEntity>
+
+    @Query(
+        """
+        SELECT id, stream_id, name, logo_url, group_title, category_id, category_name, stream_url,
+               epg_channel_id, number, catch_up_supported, catch_up_days, catchUpSource,
+               provider_id, is_adult, is_user_protected, logical_group_id, error_count
+        FROM channels
+        WHERE provider_id = :providerId AND error_count = 0
+        ORDER BY number ASC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    abstract suspend fun getByProviderWithoutErrorsBrowsePageOffset(providerId: Long, limit: Int, offset: Int): List<ChannelBrowseEntity>
+
+    @Query(
+        """
+        SELECT id, stream_id, name, logo_url, group_title, category_id, category_name, stream_url,
+               epg_channel_id, number, catch_up_supported, catch_up_days, catchUpSource,
+               provider_id, is_adult, is_user_protected, logical_group_id, error_count
+        FROM channels
+        WHERE provider_id = :providerId AND category_id = :categoryId
+        ORDER BY number ASC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    abstract suspend fun getByCategoryBrowsePageOffset(providerId: Long, categoryId: Long, limit: Int, offset: Int): List<ChannelBrowseEntity>
+
+    @Query(
+        """
+        SELECT id, stream_id, name, logo_url, group_title, category_id, category_name, stream_url,
+               epg_channel_id, number, catch_up_supported, catch_up_days, catchUpSource,
+               provider_id, is_adult, is_user_protected, logical_group_id, error_count
+        FROM channels
+        WHERE provider_id = :providerId AND category_id = :categoryId AND error_count = 0
+        ORDER BY number ASC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    abstract suspend fun getByCategoryWithoutErrorsBrowsePageOffset(providerId: Long, categoryId: Long, limit: Int, offset: Int): List<ChannelBrowseEntity>
 
     @Query("SELECT * FROM channels WHERE provider_id = :providerId AND category_id = :categoryId ORDER BY number ASC LIMIT :limit OFFSET :offset")
     abstract fun getByCategoryPage(providerId: Long, categoryId: Long, limit: Int, offset: Int): Flow<List<ChannelEntity>>
@@ -354,11 +411,155 @@ interface ChannelPreferenceDao {
     @Query("SELECT aspect_ratio FROM channel_preferences WHERE channel_id = :channelId LIMIT 1")
     fun observeAspectRatio(channelId: Long): Flow<String?>
 
+    @Query("SELECT audio_video_offset_ms FROM channel_preferences WHERE channel_id = :channelId LIMIT 1")
+    fun observeAudioVideoOffset(channelId: Long): Flow<Int?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(preference: ChannelPreferenceEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(preference: ChannelPreferenceEntity): Long
+
+    @Query("UPDATE channel_preferences SET aspect_ratio = :aspectRatio, updated_at = :updatedAt WHERE channel_id = :channelId")
+    suspend fun updateAspectRatio(channelId: Long, aspectRatio: String?, updatedAt: Long): Int
+
+    @Query("UPDATE channel_preferences SET audio_video_offset_ms = :offsetMs, updated_at = :updatedAt WHERE channel_id = :channelId")
+    suspend fun updateAudioVideoOffset(channelId: Long, offsetMs: Int?, updatedAt: Long): Int
+
+    @Transaction
+    suspend fun setAspectRatio(channelId: Long, aspectRatio: String) {
+        val updatedAt = System.currentTimeMillis()
+        if (updateAspectRatio(channelId, aspectRatio, updatedAt) == 0) {
+            val inserted = insertIgnore(
+                ChannelPreferenceEntity(
+                    channelId = channelId,
+                    aspectRatio = aspectRatio,
+                    updatedAt = updatedAt
+                )
+            )
+            if (inserted == -1L) {
+                updateAspectRatio(channelId, aspectRatio, updatedAt)
+            }
+        }
+    }
+
+    @Transaction
+    suspend fun setAudioVideoOffset(channelId: Long, offsetMs: Int?) {
+        val updatedAt = System.currentTimeMillis()
+        if (updateAudioVideoOffset(channelId, offsetMs, updatedAt) == 0) {
+            val inserted = insertIgnore(
+                ChannelPreferenceEntity(
+                    channelId = channelId,
+                    audioVideoOffsetMs = offsetMs,
+                    updatedAt = updatedAt
+                )
+            )
+            if (inserted == -1L) {
+                updateAudioVideoOffset(channelId, offsetMs, updatedAt)
+            }
+        }
+    }
+
     @Query("DELETE FROM channel_preferences")
     suspend fun deleteAll()
+}
+
+@Dao
+interface PlaybackCompatibilityDao {
+    @Query(
+        """
+        SELECT * FROM playback_compatibility_records
+        WHERE device_fingerprint = :deviceFingerprint
+          AND stream_type = :streamType
+          AND video_mime_type = :videoMimeType
+          AND resolution_bucket = :resolutionBucket
+        ORDER BY failure_count DESC, last_failed_at DESC
+        """
+    )
+    suspend fun getKnownBadCandidates(
+        deviceFingerprint: String,
+        streamType: String,
+        videoMimeType: String,
+        resolutionBucket: String
+    ): List<PlaybackCompatibilityRecordEntity>
+
+    @Query(
+        """
+        INSERT INTO playback_compatibility_records(
+            device_fingerprint, device_model, android_sdk, stream_type, video_mime_type,
+            resolution_bucket, decoder_name, surface_type, failure_type, last_failed_at,
+            last_succeeded_at, failure_count, success_count
+        ) VALUES (
+            :deviceFingerprint, :deviceModel, :androidSdk, :streamType, :videoMimeType,
+            :resolutionBucket, :decoderName, :surfaceType, :failureType, :failedAt,
+            0, 1, 0
+        )
+        ON CONFLICT(device_fingerprint, stream_type, video_mime_type, resolution_bucket, decoder_name, surface_type)
+        DO UPDATE SET
+            device_model = excluded.device_model,
+            android_sdk = excluded.android_sdk,
+            failure_type = excluded.failure_type,
+            last_failed_at = excluded.last_failed_at,
+            failure_count = playback_compatibility_records.failure_count + 1
+        """
+    )
+    suspend fun recordFailure(
+        deviceFingerprint: String,
+        deviceModel: String,
+        androidSdk: Int,
+        streamType: String,
+        videoMimeType: String,
+        resolutionBucket: String,
+        decoderName: String,
+        surfaceType: String,
+        failureType: String,
+        failedAt: Long
+    )
+
+    @Query(
+        """
+        INSERT INTO playback_compatibility_records(
+            device_fingerprint, device_model, android_sdk, stream_type, video_mime_type,
+            resolution_bucket, decoder_name, surface_type, failure_type, last_failed_at,
+            last_succeeded_at, failure_count, success_count
+        ) VALUES (
+            :deviceFingerprint, :deviceModel, :androidSdk, :streamType, :videoMimeType,
+            :resolutionBucket, :decoderName, :surfaceType, '', 0, :succeededAt, 0, 1
+        )
+        ON CONFLICT(device_fingerprint, stream_type, video_mime_type, resolution_bucket, decoder_name, surface_type)
+        DO UPDATE SET
+            device_model = excluded.device_model,
+            android_sdk = excluded.android_sdk,
+            last_succeeded_at = excluded.last_succeeded_at,
+            success_count = playback_compatibility_records.success_count + 1
+        """
+    )
+    suspend fun recordSuccess(
+        deviceFingerprint: String,
+        deviceModel: String,
+        androidSdk: Int,
+        streamType: String,
+        videoMimeType: String,
+        resolutionBucket: String,
+        decoderName: String,
+        surfaceType: String,
+        succeededAt: Long
+    )
+
+    @Query("DELETE FROM playback_compatibility_records WHERE last_failed_at < :olderThanMs AND last_succeeded_at < :olderThanMs")
+    suspend fun deleteOlderThan(olderThanMs: Long): Int
+
+    @Query(
+        """
+        DELETE FROM playback_compatibility_records
+        WHERE id NOT IN (
+            SELECT id FROM playback_compatibility_records
+            ORDER BY MAX(last_failed_at, last_succeeded_at) DESC
+            LIMIT :maxRecords
+        )
+        """
+    )
+    suspend fun keepMostRecent(maxRecords: Int): Int
 }
 
 @Dao
@@ -1097,6 +1298,17 @@ interface MovieDao {
         restoreWatchProgress(providerId)
     }
 
+    @Transaction
+    suspend fun upsertCategoryPage(providerId: Long, movies: List<MovieEntity>) {
+        if (movies.isEmpty()) return
+        val existingByRemoteId = getIdMappings(providerId).associate { it.remoteId to it.id }
+        val remapped = movies
+            .distinctBy { it.streamId }
+            .map { entity -> entity.copy(id = existingByRemoteId[entity.streamId] ?: 0L) }
+        insertAll(remapped)
+        restoreWatchProgress(providerId)
+    }
+
     @Query("SELECT category_id, COUNT(*) as item_count FROM movies WHERE provider_id = :providerId AND category_id IS NOT NULL GROUP BY category_id")
     fun getCategoryCounts(providerId: Long): Flow<List<CategoryCount>>
 
@@ -1746,6 +1958,9 @@ interface SeriesDao {
     @Query("SELECT * FROM series WHERE provider_id = :providerId AND series_id = :seriesId LIMIT 1")
     suspend fun getBySeriesId(providerId: Long, seriesId: Long): SeriesEntity?
 
+    @Query("SELECT * FROM series WHERE provider_id = :providerId AND provider_series_id = :providerSeriesId LIMIT 1")
+    suspend fun getByProviderSeriesId(providerId: Long, providerSeriesId: String): SeriesEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(series: List<SeriesEntity>)
 
@@ -1755,11 +1970,23 @@ interface SeriesDao {
     @Update
     suspend fun updateAll(series: List<SeriesEntity>)
 
-    @Query("SELECT id, series_id AS remote_id FROM series WHERE provider_id = :providerId")
-    suspend fun getIdMappings(providerId: Long): List<RemoteIdMapping>
+    @Query(
+        """
+        SELECT id, COALESCE(NULLIF(provider_series_id, ''), CAST(series_id AS TEXT)) AS remote_id
+        FROM series
+        WHERE provider_id = :providerId
+        """
+    )
+    suspend fun getIdMappings(providerId: Long): List<SeriesRemoteIdMapping>
 
-    @Query("SELECT id, series_id AS remote_id FROM series WHERE provider_id = :providerId AND category_id = :categoryId")
-    suspend fun getIdMappingsByCategory(providerId: Long, categoryId: Long): List<RemoteIdMapping>
+    @Query(
+        """
+        SELECT id, COALESCE(NULLIF(provider_series_id, ''), CAST(series_id AS TEXT)) AS remote_id
+        FROM series
+        WHERE provider_id = :providerId AND category_id = :categoryId
+        """
+    )
+    suspend fun getIdMappingsByCategory(providerId: Long, categoryId: Long): List<SeriesRemoteIdMapping>
 
     @Query("DELETE FROM series WHERE provider_id = :providerId")
     suspend fun deleteByProvider(providerId: Long)
@@ -1773,29 +2000,49 @@ interface SeriesDao {
     @Transaction
     suspend fun replaceAll(providerId: Long, series: List<SeriesEntity>) {
         val existingByRemoteId = getIdMappings(providerId).associate { it.remoteId to it.id }
+        fun SeriesEntity.remoteKey(): String = providerSeriesId?.takeIf { it.isNotBlank() } ?: seriesId.toString()
         val remapped = series
-            .distinctBy { it.seriesId }
-            .map { entity -> entity.copy(id = existingByRemoteId[entity.seriesId] ?: 0L) }
+            .distinctBy { it.remoteKey() }
+            .map { entity -> entity.copy(id = existingByRemoteId[entity.remoteKey()] ?: 0L) }
         deleteByProvider(providerId)
         insertAll(remapped)
     }
 
-    @Query("DELETE FROM series WHERE provider_id = :providerId AND category_id = :categoryId AND series_id NOT IN (:remoteIds)")
-    suspend fun deleteMissingByCategory(providerId: Long, categoryId: Long, remoteIds: List<Long>)
+    @Query(
+        """
+        DELETE FROM series
+        WHERE provider_id = :providerId
+          AND category_id = :categoryId
+          AND COALESCE(NULLIF(provider_series_id, ''), CAST(series_id AS TEXT)) NOT IN (:remoteIds)
+        """
+    )
+    suspend fun deleteMissingByCategory(providerId: Long, categoryId: Long, remoteIds: List<String>)
 
     @Transaction
     suspend fun replaceCategory(providerId: Long, categoryId: Long, series: List<SeriesEntity>) {
         val existingByRemoteId = getIdMappingsByCategory(providerId, categoryId).associate { it.remoteId to it.id }
+        fun SeriesEntity.remoteKey(): String = providerSeriesId?.takeIf { it.isNotBlank() } ?: seriesId.toString()
         val remapped = series
-            .distinctBy { it.seriesId }
-            .map { entity -> entity.copy(id = existingByRemoteId[entity.seriesId] ?: 0L) }
+            .distinctBy { it.remoteKey() }
+            .map { entity -> entity.copy(id = existingByRemoteId[entity.remoteKey()] ?: 0L) }
 
         if (remapped.isEmpty()) {
             deleteByProviderAndCategory(providerId, categoryId)
         } else {
             insertAll(remapped)
-            deleteMissingByCategory(providerId, categoryId, remapped.map { it.seriesId })
+            deleteMissingByCategory(providerId, categoryId, remapped.map { it.remoteKey() })
         }
+    }
+
+    @Transaction
+    suspend fun upsertCategoryPage(providerId: Long, series: List<SeriesEntity>) {
+        if (series.isEmpty()) return
+        val existingByRemoteId = getIdMappings(providerId).associate { it.remoteId to it.id }
+        fun SeriesEntity.remoteKey(): String = providerSeriesId?.takeIf { it.isNotBlank() } ?: seriesId.toString()
+        val remapped = series
+            .distinctBy { it.remoteKey() }
+            .map { entity -> entity.copy(id = existingByRemoteId[entity.remoteKey()] ?: 0L) }
+        insertAll(remapped)
     }
 
     @Query("SELECT category_id, COUNT(*) as item_count FROM series WHERE provider_id = :providerId AND category_id IS NOT NULL GROUP BY category_id")

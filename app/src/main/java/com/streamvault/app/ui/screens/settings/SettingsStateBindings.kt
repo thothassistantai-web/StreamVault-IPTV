@@ -8,6 +8,7 @@ import com.streamvault.app.ui.model.LiveTvChannelMode
 import com.streamvault.app.ui.model.LiveTvQuickFilterVisibilityMode
 import com.streamvault.app.ui.model.VodViewMode
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.Category
 import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ChannelNumberingMode
@@ -50,10 +51,13 @@ internal fun observeSettingsPreferenceSnapshot(
             parentalControlLevel = level,
             hasParentalPin = hasParentalPin,
             appLanguage = "system",
+            appTimeFormat = AppTimeFormat.SYSTEM,
             preferredAudioLanguage = "auto",
             playerMediaSessionEnabled = true,
             playerDecoderMode = DecoderMode.AUTO,
+            playerSurfaceMode = com.streamvault.domain.model.PlayerSurfaceMode.AUTO,
             playerPlaybackSpeed = 1f,
+            playerAudioVideoOffsetMs = 0,
             playerControlsTimeoutSeconds = 5,
             playerLiveOverlayTimeoutSeconds = 4,
             playerNoticeTimeoutSeconds = 6,
@@ -65,6 +69,8 @@ internal fun observeSettingsPreferenceSnapshot(
             ethernetMaxVideoHeight = null,
             playerTimeshiftEnabled = false,
             playerTimeshiftDepthMinutes = 30,
+            defaultStopPlaybackTimerMinutes = 0,
+            defaultIdleStandbyTimerMinutes = 0,
             lastSpeedTestMegabits = null,
             lastSpeedTestTimestamp = null,
             lastSpeedTestTransport = null,
@@ -84,10 +90,12 @@ internal fun observeSettingsPreferenceSnapshot(
             groupedChannelLabelMode = GroupedChannelLabelMode.HYBRID,
             liveVariantPreferenceMode = LiveVariantPreferenceMode.BALANCED,
             vodViewMode = VodViewMode.MODERN,
+            vodInfiniteScroll = false,
             guideDefaultCategoryId = VirtualCategoryIds.FAVORITES,
             guideDefaultCategoryOptions = emptyList(),
             preventStandbyDuringPlayback = true,
             zapAutoRevert = true,
+            autoPlayNextEpisode = true,
             autoCheckAppUpdates = true,
             autoDownloadAppUpdates = false,
             lastAppUpdateCheckAt = null,
@@ -100,14 +108,20 @@ internal fun observeSettingsPreferenceSnapshot(
         )
     }.combine(preferencesRepository.appLanguage) { snapshot, language ->
         snapshot.copy(appLanguage = language)
+    }.combine(preferencesRepository.appTimeFormat) { snapshot, timeFormat ->
+        snapshot.copy(appTimeFormat = timeFormat)
     }.combine(preferencesRepository.preferredAudioLanguage) { snapshot, preferredAudioLanguage ->
         snapshot.copy(preferredAudioLanguage = preferredAudioLanguage ?: "auto")
     }.combine(preferencesRepository.playerMediaSessionEnabled) { snapshot, mediaSessionEnabled ->
         snapshot.copy(playerMediaSessionEnabled = mediaSessionEnabled)
     }.combine(preferencesRepository.playerDecoderMode) { snapshot, decoderMode ->
         snapshot.copy(playerDecoderMode = decoderMode)
+    }.combine(preferencesRepository.playerSurfaceMode) { snapshot, surfaceMode ->
+        snapshot.copy(playerSurfaceMode = surfaceMode)
     }.combine(preferencesRepository.playerPlaybackSpeed) { snapshot, playerPlaybackSpeed ->
         snapshot.copy(playerPlaybackSpeed = playerPlaybackSpeed)
+    }.combine(preferencesRepository.playerAudioVideoOffsetMs) { snapshot, playerAudioVideoOffsetMs ->
+        snapshot.copy(playerAudioVideoOffsetMs = playerAudioVideoOffsetMs)
     }.combine(preferencesRepository.playerControlsTimeoutSeconds) { snapshot, timeoutSeconds ->
         snapshot.copy(playerControlsTimeoutSeconds = timeoutSeconds)
     }.combine(preferencesRepository.playerLiveOverlayTimeoutSeconds) { snapshot, timeoutSeconds ->
@@ -130,6 +144,10 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(playerTimeshiftEnabled = enabled)
     }.combine(preferencesRepository.playerTimeshiftDepthMinutes) { snapshot, depthMinutes ->
         snapshot.copy(playerTimeshiftDepthMinutes = depthMinutes)
+    }.combine(preferencesRepository.defaultStopPlaybackTimerMinutes) { snapshot, minutes ->
+        snapshot.copy(defaultStopPlaybackTimerMinutes = minutes)
+    }.combine(preferencesRepository.defaultIdleStandbyTimerMinutes) { snapshot, minutes ->
+        snapshot.copy(defaultIdleStandbyTimerMinutes = minutes)
     }.combine(preferencesRepository.lastSpeedTestMegabits) { snapshot, lastSpeedTestMegabits ->
         snapshot.copy(lastSpeedTestMegabits = lastSpeedTestMegabits)
     }.combine(preferencesRepository.lastSpeedTestTimestamp) { snapshot, lastSpeedTestTimestamp ->
@@ -170,12 +188,16 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(liveVariantPreferenceMode = liveVariantPreferenceMode)
     }.combine(preferencesRepository.vodViewMode) { snapshot, vodViewMode ->
         snapshot.copy(vodViewMode = VodViewMode.fromStorage(vodViewMode))
+    }.combine(preferencesRepository.vodInfiniteScroll) { snapshot, vodInfiniteScroll ->
+        snapshot.copy(vodInfiniteScroll = vodInfiniteScroll)
     }.combine(preferencesRepository.guideDefaultCategoryId) { snapshot, guideDefaultCategoryId ->
         snapshot.copy(guideDefaultCategoryId = guideDefaultCategoryId ?: VirtualCategoryIds.FAVORITES)
     }.combine(preferencesRepository.preventStandbyDuringPlayback) { snapshot, preventStandby ->
         snapshot.copy(preventStandbyDuringPlayback = preventStandby)
     }.combine(preferencesRepository.zapAutoRevert) { snapshot, zapAutoRevert ->
         snapshot.copy(zapAutoRevert = zapAutoRevert)
+    }.combine(preferencesRepository.autoPlayNextEpisode) { snapshot, autoPlayNextEpisode ->
+        snapshot.copy(autoPlayNextEpisode = autoPlayNextEpisode)
     }.combine(preferencesRepository.autoCheckAppUpdates) { snapshot, autoCheckAppUpdates ->
         snapshot.copy(autoCheckAppUpdates = autoCheckAppUpdates)
     }.combine(preferencesRepository.autoDownloadAppUpdates) { snapshot, autoDownloadAppUpdates ->
@@ -205,10 +227,13 @@ internal fun SettingsUiState.applyPreferenceSnapshot(snapshot: SettingsPreferenc
         parentalControlLevel = snapshot.parentalControlLevel,
         hasParentalPin = snapshot.hasParentalPin,
         appLanguage = snapshot.appLanguage,
+        appTimeFormat = snapshot.appTimeFormat,
         preferredAudioLanguage = snapshot.preferredAudioLanguage,
         playerMediaSessionEnabled = snapshot.playerMediaSessionEnabled,
         playerDecoderMode = snapshot.playerDecoderMode,
+        playerSurfaceMode = snapshot.playerSurfaceMode,
         playerPlaybackSpeed = snapshot.playerPlaybackSpeed,
+        playerAudioVideoOffsetMs = snapshot.playerAudioVideoOffsetMs,
         playerControlsTimeoutSeconds = snapshot.playerControlsTimeoutSeconds,
         playerLiveOverlayTimeoutSeconds = snapshot.playerLiveOverlayTimeoutSeconds,
         playerNoticeTimeoutSeconds = snapshot.playerNoticeTimeoutSeconds,
@@ -220,6 +245,8 @@ internal fun SettingsUiState.applyPreferenceSnapshot(snapshot: SettingsPreferenc
         ethernetMaxVideoHeight = snapshot.ethernetMaxVideoHeight,
         playerTimeshiftEnabled = snapshot.playerTimeshiftEnabled,
         playerTimeshiftDepthMinutes = snapshot.playerTimeshiftDepthMinutes,
+        defaultStopPlaybackTimerMinutes = snapshot.defaultStopPlaybackTimerMinutes,
+        defaultIdleStandbyTimerMinutes = snapshot.defaultIdleStandbyTimerMinutes,
         lastSpeedTest = snapshot.lastSpeedTestMegabits?.let {
             InternetSpeedTestUiModel(
                 megabitsPerSecond = it,
@@ -243,10 +270,12 @@ internal fun SettingsUiState.applyPreferenceSnapshot(snapshot: SettingsPreferenc
         groupedChannelLabelMode = snapshot.groupedChannelLabelMode,
         liveVariantPreferenceMode = snapshot.liveVariantPreferenceMode,
         vodViewMode = snapshot.vodViewMode,
+        vodInfiniteScroll = snapshot.vodInfiniteScroll,
         guideDefaultCategoryId = snapshot.guideDefaultCategoryId,
         guideDefaultCategoryOptions = guideDefaultCategoryOptions,
         preventStandbyDuringPlayback = snapshot.preventStandbyDuringPlayback,
         zapAutoRevert = snapshot.zapAutoRevert,
+        autoPlayNextEpisode = snapshot.autoPlayNextEpisode,
         autoCheckAppUpdates = snapshot.autoCheckAppUpdates,
         autoDownloadAppUpdates = snapshot.autoDownloadAppUpdates,
         appUpdate = cachedAppUpdate.copy(

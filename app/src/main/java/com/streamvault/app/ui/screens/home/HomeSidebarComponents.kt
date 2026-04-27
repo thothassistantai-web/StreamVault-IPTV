@@ -61,14 +61,14 @@ import com.streamvault.app.ui.theme.Primary
 import com.streamvault.app.ui.theme.PrimaryLight
 import com.streamvault.app.ui.theme.SurfaceElevated
 import com.streamvault.app.ui.theme.SurfaceHighlight
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createTimeFormat
 import com.streamvault.domain.model.Category
 import com.streamvault.domain.model.Channel
 import com.streamvault.player.PlayerEngine
 import com.streamvault.player.PlayerRenderSurfaceType
 import com.streamvault.player.PlayerSurfaceResizeMode
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 @Composable
 internal fun CompactSplitLauncherButton(
@@ -210,11 +210,13 @@ internal fun LivePreviewPane(
                             style = MaterialTheme.typography.bodyLarge,
                             color = OnBackground
                         )
+                        val appTimeFormat = LocalAppTimeFormat.current
+                        val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
                         Text(
                             text = stringResource(
                                 R.string.time_range_format,
-                                formatProgramTime(program.startTime),
-                                formatProgramTime(program.endTime)
+                                timeFormat.format(Date(program.startTime)),
+                                timeFormat.format(Date(program.endTime))
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = OnSurfaceDim
@@ -251,11 +253,6 @@ internal fun LivePreviewPane(
             }
         }
     }
-}
-
-private fun formatProgramTime(timestampMs: Long): String {
-    if (timestampMs <= 0L) return "--:--"
-    return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestampMs))
 }
 
 @Composable

@@ -64,6 +64,9 @@ abstract class RepositoryModule {
     abstract fun bindSyncMetadataRepository(impl: SyncMetadataRepositoryImpl): SyncMetadataRepository
 
     @Binds @Singleton
+    abstract fun bindPlaybackCompatibilityRepository(impl: PlaybackCompatibilityRepositoryImpl): PlaybackCompatibilityRepository
+
+    @Binds @Singleton
     abstract fun bindDatabaseTransactionRunner(impl: RoomDatabaseTransactionRunner): DatabaseTransactionRunner
 
     @Binds @Singleton

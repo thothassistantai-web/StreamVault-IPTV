@@ -15,6 +15,7 @@ import com.streamvault.domain.model.LibraryBrowseQuery
 import com.streamvault.domain.model.LibrarySortBy
 import com.streamvault.domain.model.Movie
 import com.streamvault.domain.model.PlaybackHistory
+import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.repository.FavoriteRepository
 import com.streamvault.domain.repository.MovieRepository
@@ -51,6 +52,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -82,6 +84,7 @@ class MoviesViewModel @Inject constructor(
         const val UNCATEGORIZED = "Uncategorized"
         const val MIN_SEARCH_QUERY_LENGTH = 2
         const val FAVORITE_ID_FETCH_BUFFER = 80
+        const val INITIAL_PREVIEW_BATCH_SIZE = 6
     }
 
     private val _uiState = MutableStateFlow(MoviesUiState())
@@ -91,7 +94,7 @@ class MoviesViewModel @Inject constructor(
     private val _selectedCategoryLoadLimit = MutableStateFlow(VodBrowseDefaults.SELECTED_CATEGORY_PAGE_SIZE)
     private val _selectedLibraryFilterType = MutableStateFlow(LibraryFilterType.ALL)
     private val _selectedLibrarySortBy = MutableStateFlow(LibrarySortBy.LIBRARY)
-    private val _previewBatchSize = MutableStateFlow(8)
+    private val _previewBatchSize = MutableStateFlow(INITIAL_PREVIEW_BATCH_SIZE)
     private var activeProviderId: Long? = null
 
     private data class PreviewLoadResult(
@@ -152,7 +155,13 @@ class MoviesViewModel @Inject constructor(
                             categories = providerCategories,
                             hiddenCategoryIds = hiddenCategoryIds,
                             sortMode = sortMode
-                        )
+                        ).let { categories ->
+                            if (provider.type == ProviderType.STALKER_PORTAL) {
+                                categories.filterNot(::isLikelyProviderWideStalkerCategory)
+                            } else {
+                                categories
+                            }
+                        }
                         MovieCatalogDependencies(
                             allFavorites = allFavorites,
                             customCategories = customCategories,
@@ -173,6 +182,12 @@ class MoviesViewModel @Inject constructor(
                             hiddenCategoryIds = dependencies.hiddenCategoryIds,
                             categorySortMode = dependencies.categorySortMode,
                             query = query.trim()
+                        )
+                    }
+                    .distinctUntilChangedBy { params ->
+                        params.copy(
+                            providerCategoryCounts = emptyMap(),
+                            libraryCount = 0
                         )
                     }
                 }
@@ -231,9 +246,13 @@ class MoviesViewModel @Inject constructor(
                     val currentSelected = _uiState.value.selectedCategory
                     val preserveSelectedCategory = currentSelected != null && _searchQuery.value.isNotBlank()
                     val resolvedSelected = currentSelected?.takeIf { selected ->
+                        val customCategoryNames = _uiState.value.categories.mapTo(linkedSetOf()) { it.name }
+                        val providerCategoryNames = snapshot.providerCategories.mapTo(linkedSetOf()) { it.name }
                         preserveSelectedCategory ||
                             selected == _uiState.value.fullLibraryCategoryName ||
-                            selected in snapshot.categoryNames
+                            selected in snapshot.categoryNames ||
+                            selected in providerCategoryNames ||
+                            selected in customCategoryNames
                     }
                     _uiState.update {
                         it.copy(
@@ -263,6 +282,12 @@ class MoviesViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesRepository.vodViewMode.collectLatest { mode ->
                 _uiState.update { it.copy(vodViewMode = VodViewMode.fromStorage(mode)) }
+            }
+        }
+
+        viewModelScope.launch {
+            preferencesRepository.vodInfiniteScroll.collectLatest { enabled ->
+                _uiState.update { it.copy(vodInfiniteScroll = enabled) }
             }
         }
 
@@ -465,7 +490,7 @@ class MoviesViewModel @Inject constructor(
     }
 
     fun selectCategory(categoryName: String?) {
-        _previewBatchSize.value = 8
+        _previewBatchSize.value = INITIAL_PREVIEW_BATCH_SIZE
         activeProviderId?.let { providerId ->
             parentalControlManager.retainUnlockedCategory(
                 providerId = providerId,
@@ -505,14 +530,35 @@ class MoviesViewModel @Inject constructor(
 
     fun loadMorePreviewRows() {
         if (_uiState.value.hasMorePreviewRows && !_uiState.value.isLoadingPreviewRows) {
-            _previewBatchSize.update { it + 8 }
+            _previewBatchSize.update { it + INITIAL_PREVIEW_BATCH_SIZE }
         }
     }
 
     fun setSearchQuery(query: String) {
-        _previewBatchSize.value = 8
+        _previewBatchSize.value = INITIAL_PREVIEW_BATCH_SIZE
         setVodSearchQuery(query, _searchQuery, _uiState) { updatedQuery ->
             copy(searchQuery = updatedQuery)
+        }
+    }
+
+    fun resetPreviewRowsForScreenEntry() {
+        _previewBatchSize.value = INITIAL_PREVIEW_BATCH_SIZE
+        _uiState.update { state ->
+            if (state.selectedCategory != null || state.searchQuery.isNotBlank()) {
+                state
+            } else {
+                val providerNames = state.providerCategories.mapTo(linkedSetOf()) { it.name }
+                val initialProviderNames = state.providerCategories
+                    .take(INITIAL_PREVIEW_BATCH_SIZE)
+                    .mapTo(linkedSetOf()) { it.name }
+                fun keepRow(name: String): Boolean = name !in providerNames || name in initialProviderNames
+                state.copy(
+                    moviesByCategory = state.moviesByCategory.filterKeys(::keepRow),
+                    categoryNames = state.categoryNames.filter(::keepRow),
+                    categoryCounts = state.categoryCounts.filterKeys(::keepRow),
+                    hasMorePreviewRows = state.providerCategories.size > INITIAL_PREVIEW_BATCH_SIZE
+                )
+            }
         }
     }
 
@@ -929,6 +975,16 @@ class MoviesViewModel @Inject constructor(
         )
     }
 
+    private fun isLikelyProviderWideStalkerCategory(category: Category): Boolean {
+        val name = category.name.trim().lowercase()
+        return name == "*" ||
+            name == "all" ||
+            name == "all movies" ||
+            name == "all vod" ||
+            name == "all videos" ||
+            name == "all categories"
+    }
+
     private suspend fun loadSelectedCategoryItems(
         request: SelectedMovieCategoryRequest
     ): SelectedMovieCategorySnapshot {
@@ -945,7 +1001,7 @@ class MoviesViewModel @Inject constructor(
             .map { it.contentId }
             .toSet()
 
-        val (selectedItems, totalCount) = when (request.selectedCategory) {
+        val (selectedItems, totalCount, hasMoreRemote) = when (request.selectedCategory) {
             VodBrowseDefaults.FULL_LIBRARY_CATEGORY -> {
                 val result = movieRepository
                     .browseMovies(
@@ -959,7 +1015,11 @@ class MoviesViewModel @Inject constructor(
                         )
                     )
                     .first()
-                result.items.filterNot { movie -> movie.categoryId in request.hiddenCategoryIds } to result.totalCount
+                Triple(
+                    result.items.filterNot { movie -> movie.categoryId in request.hiddenCategoryIds },
+                    result.totalCount,
+                    result.hasMoreRemote
+                )
             }
             VodBrowseDefaults.FAVORITES_CATEGORY -> {
                 val ids = request.allFavorites
@@ -986,7 +1046,11 @@ class MoviesViewModel @Inject constructor(
                     request.sortBy,
                     request.query
                 )
-                filteredItems.take(request.loadLimit) to if (fetchIds === ids) filteredItems.size else ids.size
+                Triple(
+                    filteredItems.take(request.loadLimit),
+                    if (fetchIds === ids) filteredItems.size else ids.size,
+                    false
+                )
             }
             else -> {
                 val customCategory = request.customCategories.firstOrNull { it.name == request.selectedCategory }
@@ -1015,7 +1079,11 @@ class MoviesViewModel @Inject constructor(
                         request.sortBy,
                         request.query
                     )
-                    filteredItems.take(request.loadLimit) to if (fetchIds === ids) filteredItems.size else ids.size
+                    Triple(
+                        filteredItems.take(request.loadLimit),
+                        if (fetchIds === ids) filteredItems.size else ids.size,
+                        false
+                    )
                 } else {
                     val providerCategory = request.providerCategories.firstOrNull { it.name == request.selectedCategory }
                     if (providerCategory != null) {
@@ -1032,9 +1100,9 @@ class MoviesViewModel @Inject constructor(
                                 )
                             )
                             .first()
-                        result.items to result.totalCount
+                        Triple(result.items, result.totalCount, result.hasMoreRemote)
                     } else {
-                        emptyList<Movie>() to 0
+                        Triple(emptyList<Movie>(), 0, false)
                     }
                 }
             }
@@ -1047,7 +1115,7 @@ class MoviesViewModel @Inject constructor(
             items = enrichedItems,
             loadedCount = enrichedItems.size,
             totalCount = totalCount,
-            canLoadMore = totalCount > enrichedItems.size
+            canLoadMore = totalCount > enrichedItems.size || hasMoreRemote
         )
     }
 
@@ -1206,6 +1274,7 @@ data class MoviesUiState(
     val selectedLibraryFilterType: LibraryFilterType = LibraryFilterType.ALL,
     val selectedLibrarySortBy: LibrarySortBy = LibrarySortBy.LIBRARY,
     val vodViewMode: VodViewMode = VodViewMode.MODERN,
+    val vodInfiniteScroll: Boolean = false,
     val continueWatching: List<PlaybackHistory> = emptyList(),
     val hasProviders: Boolean = false,
     val hasActiveProvider: Boolean = false,

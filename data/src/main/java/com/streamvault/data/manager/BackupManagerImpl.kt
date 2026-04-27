@@ -77,7 +77,9 @@ class BackupManagerImpl @Inject constructor(
                 "liveTvQuickFilterVisibility" to (preferencesRepository.liveTvQuickFilterVisibility.first() ?: "always"),
                 "playerMediaSessionEnabled" to preferencesRepository.playerMediaSessionEnabled.first().toString(),
                 "playerDecoderMode" to preferencesRepository.playerDecoderMode.first().name,
+                "playerSurfaceMode" to preferencesRepository.playerSurfaceMode.first().name,
                 "playerPlaybackSpeed" to preferencesRepository.playerPlaybackSpeed.first().toString(),
+                "playerAudioVideoOffsetMs" to preferencesRepository.playerAudioVideoOffsetMs.first().toString(),
                 "preferredAudioLanguage" to (preferencesRepository.preferredAudioLanguage.first() ?: "auto"),
                 "playerSubtitleTextScale" to preferencesRepository.playerSubtitleTextScale.first().toString(),
                 "playerSubtitleTextColor" to preferencesRepository.playerSubtitleTextColor.first().toString(),
@@ -346,7 +348,17 @@ class BackupManagerImpl @Inject constructor(
                         preferencesRepository.setPlayerDecoderMode(decoderMode)
                     }
                 }
+                prefs["playerSurfaceMode"]?.takeIf { it.isNotBlank() }?.let { savedMode ->
+                    val surfaceMode = com.streamvault.domain.model.PlayerSurfaceMode.entries
+                        .firstOrNull { entry -> entry.name == savedMode }
+                    if (surfaceMode != null) {
+                        preferencesRepository.setPlayerSurfaceMode(surfaceMode)
+                    }
+                }
                 prefs["playerPlaybackSpeed"]?.toFloatOrNull()?.let { preferencesRepository.setPlayerPlaybackSpeed(it) }
+                prefs["playerAudioVideoOffsetMs"]?.toIntOrNull()?.let {
+                    preferencesRepository.setPlayerAudioVideoOffsetMs(it)
+                }
                 preferencesRepository.setPreferredAudioLanguage(prefs["preferredAudioLanguage"])
                 prefs["playerSubtitleTextScale"]?.toFloatOrNull()?.let { preferencesRepository.setPlayerSubtitleTextScale(it) }
                 prefs["playerSubtitleTextColor"]?.toIntOrNull()?.let { preferencesRepository.setPlayerSubtitleTextColor(it) }

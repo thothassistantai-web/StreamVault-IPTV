@@ -43,9 +43,10 @@ import com.streamvault.data.local.entity.*
         RecordingScheduleEntity::class,
         RecordingRunEntity::class,
         ProgramReminderEntity::class,
-        RecordingStorageEntity::class
+        RecordingStorageEntity::class,
+        PlaybackCompatibilityRecordEntity::class
     ],
-    version = 40,
+    version = 44,
     exportSchema = true   // ← was false; schema JSON now tracked in version control
 )
 @TypeConverters(RoomEnumConverters::class)
@@ -78,6 +79,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
     abstract fun recordingRunDao(): RecordingRunDao
     abstract fun programReminderDao(): ProgramReminderDao
     abstract fun recordingStorageDao(): RecordingStorageDao
+    abstract fun playbackCompatibilityDao(): PlaybackCompatibilityDao
 
     companion object {
         /**
@@ -1871,6 +1873,111 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                 database.execSQL("DROP TRIGGER IF EXISTS series_ai")
                 database.execSQL("DROP TRIGGER IF EXISTS series_ad")
                 database.execSQL("DROP TRIGGER IF EXISTS series_au")
+            }
+        }
+
+        /**
+         * Migration 40 → 41: add per-channel A/V sync override.
+         * Null means the channel follows the global player default.
+         */
+        val MIGRATION_40_41 = object : Migration(40, 41) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE channel_preferences ADD COLUMN audio_video_offset_ms INTEGER DEFAULT NULL")
+            }
+        }
+
+        /**
+         * Migration 41 -> 42: remember playback decoder/surface combinations that fail
+         * silently on a device so Auto mode can avoid repeating them.
+         */
+        val MIGRATION_41_42 = object : Migration(41, 42) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS playback_compatibility_records (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        device_fingerprint TEXT NOT NULL,
+                        device_model TEXT NOT NULL,
+                        android_sdk INTEGER NOT NULL,
+                        stream_type TEXT NOT NULL,
+                        video_mime_type TEXT NOT NULL,
+                        resolution_bucket TEXT NOT NULL,
+                        decoder_name TEXT NOT NULL,
+                        surface_type TEXT NOT NULL,
+                        failure_type TEXT NOT NULL DEFAULT '',
+                        last_failed_at INTEGER NOT NULL DEFAULT 0,
+                        last_succeeded_at INTEGER NOT NULL DEFAULT 0,
+                        failure_count INTEGER NOT NULL DEFAULT 0,
+                        success_count INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS index_playback_compatibility_records_device_fingerprint_stream_type_video_mime_type_resolution_bucket_decoder_name_surface_type
+                    ON playback_compatibility_records(device_fingerprint, stream_type, video_mime_type, resolution_bucket, decoder_name, surface_type)
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS index_playback_compatibility_records_device_fingerprint_stream_type_video_mime_type_resolution_bucket
+                    ON playback_compatibility_records(device_fingerprint, stream_type, video_mime_type, resolution_bucket)
+                    """.trimIndent()
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_playback_compatibility_records_last_failed_at ON playback_compatibility_records(last_failed_at)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_playback_compatibility_records_last_succeeded_at ON playback_compatibility_records(last_succeeded_at)")
+            }
+        }
+
+        /**
+         * Migration 42 -> 43: preserve provider-native series identifiers so Stalker
+         * series details can round-trip composite portal IDs.
+         */
+        val MIGRATION_42_43 = object : Migration(42, 43) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE series ADD COLUMN provider_series_id TEXT")
+                database.execSQL(
+                    "UPDATE series SET provider_series_id = CAST(series_id AS TEXT) WHERE provider_series_id IS NULL"
+                )
+            }
+        }
+
+        /**
+         * Migration 43 -> 44: add page-aware VOD/series category hydration metadata
+         * for on-demand Stalker paging while preserving existing complete caches.
+         */
+        val MIGRATION_43_44 = object : Migration(43, 44) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                addPagedHydrationColumns(database, "movie_category_hydration")
+                addPagedHydrationColumns(database, "series_category_hydration")
+            }
+
+            private fun addPagedHydrationColumns(database: SupportSQLiteDatabase, tableName: String) {
+                database.execSQL("ALTER TABLE $tableName ADD COLUMN last_loaded_page INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE $tableName ADD COLUMN total_pages INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE $tableName ADD COLUMN is_complete INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE $tableName ADD COLUMN page_size INTEGER NOT NULL DEFAULT 0")
+                database.execSQL(
+                    """
+                    UPDATE $tableName
+                    SET last_loaded_page = CASE
+                            WHEN last_status = 'SUCCESS' THEN 1
+                            ELSE 0
+                        END,
+                        total_pages = CASE
+                            WHEN last_status = 'SUCCESS' THEN 1
+                            ELSE 0
+                        END,
+                        is_complete = CASE
+                            WHEN last_status = 'SUCCESS' THEN 1
+                            ELSE 0
+                        END,
+                        page_size = CASE
+                            WHEN last_status = 'SUCCESS' THEN item_count
+                            ELSE 0
+                        END
+                    """.trimIndent()
+                )
             }
         }
     }

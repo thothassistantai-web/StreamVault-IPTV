@@ -70,6 +70,9 @@ import com.streamvault.app.ui.components.rememberCrossfadeImageModel
 import com.streamvault.app.ui.screens.player.NumericChannelInputState
 import com.streamvault.app.ui.screens.player.PlayerTimeshiftUiState
 import com.streamvault.app.ui.screens.player.SeekPreviewState
+import com.streamvault.app.ui.screens.player.SleepTimerUiState
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createTimeFormat
 import com.streamvault.app.ui.theme.ErrorColor
 import com.streamvault.app.ui.theme.Primary
 import com.streamvault.domain.model.Program
@@ -78,7 +81,6 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import com.streamvault.app.ui.interaction.TvClickableSurface
@@ -110,6 +112,7 @@ fun PlayerControlsOverlay(
     isMuted: Boolean,
     playbackSpeed: Float = 1f,
     mediaTitle: String?,
+    sleepTimerUiState: SleepTimerUiState = SleepTimerUiState(),
     timeshiftUiState: PlayerTimeshiftUiState = PlayerTimeshiftUiState(),
     playButtonFocusRequester: FocusRequester,
     quickActionsFocusRequester: FocusRequester = FocusRequester(),
@@ -129,6 +132,9 @@ fun PlayerControlsOverlay(
     onOpenAudioTracks: () -> Unit,
     onOpenVideoTracks: () -> Unit,
     onOpenPlaybackSpeed: () -> Unit = {},
+    onOpenStopPlaybackTimer: () -> Unit = {},
+    onOpenIdleStandbyTimer: () -> Unit = {},
+    onOpenAudioVideoSync: () -> Unit = {},
     showEpisodesAction: Boolean = false,
     onOpenEpisodes: () -> Unit = {},
     onOpenSplitScreen: () -> Unit,
@@ -195,6 +201,7 @@ fun PlayerControlsOverlay(
                 isMuted = isMuted,
                 playbackSpeed = playbackSpeed,
                 mediaTitle = mediaTitle,
+                sleepTimerUiState = sleepTimerUiState,
                 timeshiftUiState = timeshiftUiState,
                 playButtonFocusRequester = playButtonFocusRequester,
                 quickActionsFocusRequester = quickActionsFocusRequester,
@@ -211,6 +218,9 @@ fun PlayerControlsOverlay(
                 onOpenAudioTracks = onOpenAudioTracks,
                 onOpenVideoTracks = onOpenVideoTracks,
                 onOpenPlaybackSpeed = onOpenPlaybackSpeed,
+                onOpenStopPlaybackTimer = onOpenStopPlaybackTimer,
+                onOpenIdleStandbyTimer = onOpenIdleStandbyTimer,
+                onOpenAudioVideoSync = onOpenAudioVideoSync,
                 showEpisodesAction = showEpisodesAction,
                 onOpenEpisodes = onOpenEpisodes,
                 onOpenSplitScreen = onOpenSplitScreen,
@@ -398,6 +408,8 @@ private fun PlayerTopBar(
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val isTelevisionDevice = rememberIsTelevisionDevice()
+    val appTimeFormat = LocalAppTimeFormat.current
+    val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
     val topBarHeight = when {
         screenWidth < 700.dp -> 100.dp
         !isTelevisionDevice && screenWidth < 1280.dp -> 116.dp
@@ -458,16 +470,16 @@ private fun PlayerTopBar(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                val currentTime = remember(clockLabelOverride) {
+                val currentTime = remember(clockLabelOverride, timeFormat) {
                     mutableStateOf(
-                        clockLabelOverride ?: SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                        clockLabelOverride ?: timeFormat.format(Date())
                     )
                 }
-                LaunchedEffect(clockLabelOverride) {
+                LaunchedEffect(clockLabelOverride, timeFormat) {
                     if (clockLabelOverride == null) {
                         while (true) {
+                            currentTime.value = timeFormat.format(Date())
                             delay(10_000)
-                            currentTime.value = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
                         }
                     } else {
                         currentTime.value = clockLabelOverride
@@ -518,6 +530,7 @@ private fun PlayerBottomBar(
     isMuted: Boolean,
     playbackSpeed: Float,
     mediaTitle: String?,
+    sleepTimerUiState: SleepTimerUiState,
     timeshiftUiState: PlayerTimeshiftUiState,
     playButtonFocusRequester: FocusRequester,
     quickActionsFocusRequester: FocusRequester,
@@ -533,6 +546,9 @@ private fun PlayerBottomBar(
     onOpenAudioTracks: () -> Unit,
     onOpenVideoTracks: () -> Unit,
     onOpenPlaybackSpeed: () -> Unit,
+    onOpenStopPlaybackTimer: () -> Unit,
+    onOpenIdleStandbyTimer: () -> Unit,
+    onOpenAudioVideoSync: () -> Unit,
     showEpisodesAction: Boolean,
     onOpenEpisodes: () -> Unit,
     onOpenSplitScreen: () -> Unit,
@@ -604,6 +620,7 @@ private fun PlayerBottomBar(
                         currentRecordingStatus = currentRecordingStatus,
                         isMuted = isMuted,
                         mediaTitle = mediaTitle,
+                        sleepTimerUiState = sleepTimerUiState,
                         timeshiftUiState = timeshiftUiState,
                         playButtonFocusRequester = playButtonFocusRequester,
                         quickActionsFocusRequester = quickActionsFocusRequester,
@@ -618,6 +635,9 @@ private fun PlayerBottomBar(
                         onOpenSubtitleTracks = onOpenSubtitleTracks,
                         onOpenAudioTracks = onOpenAudioTracks,
                         onOpenVideoTracks = onOpenVideoTracks,
+                        onOpenStopPlaybackTimer = onOpenStopPlaybackTimer,
+                        onOpenIdleStandbyTimer = onOpenIdleStandbyTimer,
+                        onOpenAudioVideoSync = onOpenAudioVideoSync,
                         onOpenSplitScreen = onOpenSplitScreen,
                         onEnterPictureInPicture = onEnterPictureInPicture,
                         onToggleMute = onToggleMute,
@@ -646,6 +666,7 @@ private fun PlayerBottomBar(
                         videoQualityCount = videoQualityCount,
                         isMuted = isMuted,
                         playbackSpeed = playbackSpeed,
+                        sleepTimerUiState = sleepTimerUiState,
                         playButtonFocusRequester = playButtonFocusRequester,
                         quickActionsFocusRequester = quickActionsFocusRequester,
                         onSeekToPosition = onSeekToPosition,
@@ -655,6 +676,9 @@ private fun PlayerBottomBar(
                         onOpenAudioTracks = onOpenAudioTracks,
                         onOpenVideoTracks = onOpenVideoTracks,
                         onOpenPlaybackSpeed = onOpenPlaybackSpeed,
+                        onOpenStopPlaybackTimer = onOpenStopPlaybackTimer,
+                        onOpenIdleStandbyTimer = onOpenIdleStandbyTimer,
+                        onOpenAudioVideoSync = onOpenAudioVideoSync,
                         showEpisodesAction = showEpisodesAction,
                         onOpenEpisodes = onOpenEpisodes,
                         onEnterPictureInPicture = onEnterPictureInPicture,
@@ -686,6 +710,7 @@ private fun PlayerLiveInfo(
     currentRecordingStatus: RecordingStatus?,
     isMuted: Boolean,
     mediaTitle: String?,
+    sleepTimerUiState: SleepTimerUiState,
     timeshiftUiState: PlayerTimeshiftUiState,
     playButtonFocusRequester: FocusRequester,
     quickActionsFocusRequester: FocusRequester,
@@ -700,6 +725,9 @@ private fun PlayerLiveInfo(
     onOpenSubtitleTracks: () -> Unit,
     onOpenAudioTracks: () -> Unit,
     onOpenVideoTracks: () -> Unit,
+    onOpenStopPlaybackTimer: () -> Unit,
+    onOpenIdleStandbyTimer: () -> Unit,
+    onOpenAudioVideoSync: () -> Unit,
     onOpenSplitScreen: () -> Unit,
     onEnterPictureInPicture: () -> Unit,
     onToggleMute: () -> Unit,
@@ -715,6 +743,8 @@ private fun PlayerLiveInfo(
     onSetScrubbingMode: (Boolean) -> Unit
 ) {
     val showTimeshiftControls = timeshiftUiState.available && !isCastConnected
+    val appTimeFormat = LocalAppTimeFormat.current
+    val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
     val primaryActions = buildList {
         if (showTimeshiftControls) {
             add(PlayerActionSpec(stringResource(R.string.player_jump_to_live), onSeekToLiveEdge))
@@ -726,6 +756,28 @@ private fun PlayerLiveInfo(
         add(PlayerActionSpec(
             stringResource(if (isCastConnected) R.string.player_stop_casting else R.string.player_cast),
             if (isCastConnected) onStopCasting else onCast
+        ))
+        add(PlayerActionSpec(
+            sleepTimerActionLabel(
+                title = stringResource(R.string.player_stop_playback_after),
+                activeLabel = stringResource(
+                    R.string.player_stop_timer_status,
+                    formatTimerRemaining(sleepTimerUiState.stopRemainingMs)
+                ),
+                active = sleepTimerUiState.stopTimerActive
+            ),
+            onOpenStopPlaybackTimer
+        ))
+        add(PlayerActionSpec(
+            sleepTimerActionLabel(
+                title = stringResource(R.string.player_idle_standby_after),
+                activeLabel = stringResource(
+                    R.string.player_idle_timer_status,
+                    formatTimerRemaining(sleepTimerUiState.idleRemainingMs)
+                ),
+                active = sleepTimerUiState.idleTimerActive
+            ),
+            onOpenIdleStandbyTimer
         ))
         add(PlayerActionSpec(stringResource(R.string.player_picture_in_picture), onEnterPictureInPicture))
         if (currentProgram?.hasArchive == true) {
@@ -751,6 +803,9 @@ private fun PlayerLiveInfo(
         }
         if (videoQualityCount > 0) {
             add(PlayerActionSpec(stringResource(R.string.player_video_quality), onOpenVideoTracks))
+        }
+        if (!isCastConnected) {
+            add(PlayerActionSpec(stringResource(R.string.player_av_sync_short), onOpenAudioVideoSync))
         }
         add(PlayerActionSpec(stringResource(R.string.multiview_nav), onOpenSplitScreen))
     }
@@ -780,6 +835,12 @@ private fun PlayerLiveInfo(
                 }
                 if (isMuted) {
                     PlayerMetaPill(text = stringResource(R.string.player_muted_badge))
+                }
+                if (sleepTimerUiState.stopTimerActive) {
+                    PlayerMetaPill(text = stringResource(R.string.player_stop_timer_status, formatTimerRemaining(sleepTimerUiState.stopRemainingMs)))
+                }
+                if (sleepTimerUiState.idleTimerActive) {
+                    PlayerMetaPill(text = stringResource(R.string.player_idle_timer_status, formatTimerRemaining(sleepTimerUiState.idleRemainingMs)))
                 }
                 if (showTimeshiftControls) {
                     PlayerMetaPill(
@@ -853,12 +914,12 @@ private fun PlayerLiveInfo(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(start)),
+                text = timeFormat.format(Date(start)),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.5f)
             )
             Text(
-                text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(end)),
+                text = timeFormat.format(Date(end)),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.5f)
             )
@@ -893,6 +954,7 @@ private fun PlayerVodInfo(
     videoQualityCount: Int,
     isMuted: Boolean,
     playbackSpeed: Float,
+    sleepTimerUiState: SleepTimerUiState,
     playButtonFocusRequester: FocusRequester,
     quickActionsFocusRequester: FocusRequester,
     onSeekToPosition: (Long) -> Unit,
@@ -902,6 +964,9 @@ private fun PlayerVodInfo(
     onOpenAudioTracks: () -> Unit,
     onOpenVideoTracks: () -> Unit,
     onOpenPlaybackSpeed: () -> Unit,
+    onOpenStopPlaybackTimer: () -> Unit,
+    onOpenIdleStandbyTimer: () -> Unit,
+    onOpenAudioVideoSync: () -> Unit,
     showEpisodesAction: Boolean,
     onOpenEpisodes: () -> Unit,
     onEnterPictureInPicture: () -> Unit,
@@ -974,6 +1039,31 @@ private fun PlayerVodInfo(
                 onOpenPlaybackSpeed
             )
         )
+        if (!isCastConnected) {
+            add(PlayerActionSpec(stringResource(R.string.player_av_sync_short), onOpenAudioVideoSync))
+        }
+        add(PlayerActionSpec(
+            sleepTimerActionLabel(
+                title = stringResource(R.string.player_stop_playback_after),
+                activeLabel = stringResource(
+                    R.string.player_stop_timer_status,
+                    formatTimerRemaining(sleepTimerUiState.stopRemainingMs)
+                ),
+                active = sleepTimerUiState.stopTimerActive
+            ),
+            onOpenStopPlaybackTimer
+        ))
+        add(PlayerActionSpec(
+            sleepTimerActionLabel(
+                title = stringResource(R.string.player_idle_standby_after),
+                activeLabel = stringResource(
+                    R.string.player_idle_timer_status,
+                    formatTimerRemaining(sleepTimerUiState.idleRemainingMs)
+                ),
+                active = sleepTimerUiState.idleTimerActive
+            ),
+            onOpenIdleStandbyTimer
+        ))
         add(PlayerActionSpec(
             stringResource(if (isCastConnected) R.string.player_stop_casting else R.string.player_cast),
             if (isCastConnected) onStopCasting else onCast
@@ -1292,6 +1382,22 @@ private fun formatPlaybackSpeedLabel(speed: Float): String {
     }
 }
 
+private fun sleepTimerActionLabel(title: String, activeLabel: String, active: Boolean): String =
+    if (active) activeLabel else title
+
+private fun formatTimerRemaining(ms: Long): String {
+    val totalSeconds = (ms.coerceAtLeast(0L) + 999L) / 1000L
+    if (totalSeconds < 60L) return "${totalSeconds}s"
+    val totalMinutes = (totalSeconds + 59L) / 60L
+    return if (totalMinutes < 60L) {
+        "${totalMinutes}m"
+    } else {
+        val hours = totalMinutes / 60L
+        val minutes = totalMinutes % 60L
+        if (minutes == 0L) "${hours}h" else "${hours}h ${minutes}m"
+    }
+}
+
 @Composable
 private fun PlayerQuickSettingsButton(
     text: String,
@@ -1493,8 +1599,10 @@ private fun LiveTimeshiftScrubber(
 
     val engineState = timeshiftUiState.engineState
     val oldestWallMs = engineState.bufferStartMs
+    val appTimeFormat = LocalAppTimeFormat.current
+    val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
     val oldestLabel = if (oldestWallMs > 0L) {
-        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(oldestWallMs))
+        timeFormat.format(Date(oldestWallMs))
     } else if (bufferDepthMs > 1_000L) {
         "-${formatTimeshiftDuration(bufferDepthMs)}"
     } else {

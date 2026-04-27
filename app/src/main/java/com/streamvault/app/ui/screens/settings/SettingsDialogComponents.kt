@@ -965,14 +965,21 @@ internal fun ClickableSettingsRow(
 }
 
 @Composable
-internal fun SwitchSettingsRow(label: String, value: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+internal fun SwitchSettingsRow(
+    label: String,
+    value: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+    indent: androidx.compose.ui.unit.Dp = 0.dp
+) {
     val focusRequester = remember { FocusRequester() }
     TvClickableSurface(
-        onClick = { onCheckedChange(!checked) },
+        onClick = { if (enabled) onCheckedChange(!checked) },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color.Transparent,
-            focusedContainerColor = Primary.copy(alpha = 0.15f)
+            focusedContainerColor = if (enabled) Primary.copy(alpha = 0.15f) else Color.Transparent
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         modifier = Modifier
@@ -980,23 +987,28 @@ internal fun SwitchSettingsRow(label: String, value: String, checked: Boolean, o
             .focusRequester(focusRequester)
             .mouseClickable(
                 focusRequester = focusRequester,
-                onClick = { onCheckedChange(!checked) }
+                onClick = { if (enabled) onCheckedChange(!checked) }
             )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 12.dp),
+                .padding(start = 8.dp + indent, end = 8.dp, top = 12.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(text = label, style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (enabled) OnSurface else OnSurfaceDim
+                )
                 Text(text = value, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
             }
             Switch(
                 checked = checked,
-                onCheckedChange = { onCheckedChange(it) }
+                onCheckedChange = { if (enabled) onCheckedChange(it) },
+                enabled = enabled
             )
         }
     }
@@ -1219,9 +1231,12 @@ internal fun formatBytes(bytes: Long): String {
     }
 }
 
-internal fun formatTimestamp(timestampMs: Long): String {
+internal fun formatTimestamp(
+    timestampMs: Long,
+    dateTimeFormat: DateFormat = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+): String {
     if (timestampMs <= 0L) return "--:--"
-    return java.text.SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(java.util.Date(timestampMs))
+    return dateTimeFormat.format(java.util.Date(timestampMs))
 }
 
 internal data class AppLanguageOption(
@@ -1316,6 +1331,101 @@ internal fun formatPlaybackSpeedLabel(speed: Float): String {
     } else {
         "${("%.2f".format(Locale.US, speed)).trimEnd('0').trimEnd('.')}x"
     }
+}
+
+internal fun formatPlaybackTimerMinutesLabel(minutes: Int, context: android.content.Context): String {
+    return if (minutes <= 0) {
+        context.getString(R.string.settings_timer_off)
+    } else {
+        context.resources.getQuantityString(R.plurals.settings_timer_minutes, minutes, minutes)
+    }
+}
+
+@Composable
+internal fun PlaybackTimerPresetDialog(
+    title: String,
+    selectedMinutes: Int,
+    onDismiss: () -> Unit,
+    onSelect: (Int) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val options = remember { listOf(0, 15, 30, 45, 60, 90, 120) }
+
+    PremiumSelectionDialog(
+        title = title,
+        onDismiss = onDismiss
+    ) {
+        options.forEachIndexed { index, minutes ->
+            LevelOption(
+                level = index,
+                text = formatPlaybackTimerMinutesLabel(minutes, context),
+                currentLevel = if (selectedMinutes == minutes) index else -1,
+                onSelect = { onSelect(minutes) }
+            )
+        }
+    }
+}
+
+internal fun formatAudioVideoOffsetLabel(offsetMs: Int): String = when {
+    offsetMs > 0 -> "+$offsetMs ms"
+    offsetMs < 0 -> "$offsetMs ms"
+    else -> "0 ms"
+}
+
+@Composable
+internal fun AudioVideoOffsetValueDialog(
+    title: String,
+    subtitle: String,
+    initialValue: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var value by rememberSaveable(initialValue) { mutableStateOf(initialValue.coerceIn(-2_000, 2_000)) }
+
+    PremiumDialog(
+        title = title,
+        subtitle = subtitle,
+        onDismissRequest = onDismiss,
+        widthFraction = 0.42f,
+        content = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = formatAudioVideoOffsetLabel(value),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Primary
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PremiumDialogFooterButton(
+                        label = "-50",
+                        onClick = { value = (value - 50).coerceAtLeast(-2_000) }
+                    )
+                    PremiumDialogFooterButton(
+                        label = "+50",
+                        onClick = { value = (value + 50).coerceAtMost(2_000) }
+                    )
+                    PremiumDialogFooterButton(
+                        label = stringResource(R.string.settings_reset),
+                        onClick = { value = 0 }
+                    )
+                }
+            }
+        },
+        footer = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
+            ) {
+                PremiumDialogFooterButton(
+                    label = stringResource(R.string.settings_cancel),
+                    onClick = onDismiss
+                )
+                PremiumDialogFooterButton(
+                    label = stringResource(R.string.settings_save),
+                    onClick = { onConfirm(value) }
+                )
+            }
+        }
+    )
 }
 
 @Composable
@@ -1446,7 +1556,17 @@ internal fun formatDecoderModeLabel(mode: DecoderMode, context: android.content.
         DecoderMode.AUTO -> context.getString(R.string.settings_decoder_auto)
         DecoderMode.HARDWARE -> context.getString(R.string.settings_decoder_hardware)
         DecoderMode.SOFTWARE -> context.getString(R.string.settings_decoder_software)
+        DecoderMode.COMPATIBILITY -> context.getString(R.string.settings_decoder_compatibility)
     }
+}
+
+internal fun formatSurfaceModeLabel(
+    mode: com.streamvault.domain.model.PlayerSurfaceMode,
+    context: android.content.Context
+): String = when (mode) {
+    com.streamvault.domain.model.PlayerSurfaceMode.AUTO -> context.getString(R.string.settings_surface_auto)
+    com.streamvault.domain.model.PlayerSurfaceMode.SURFACE_VIEW -> context.getString(R.string.settings_surface_surface_view)
+    com.streamvault.domain.model.PlayerSurfaceMode.TEXTURE_VIEW -> context.getString(R.string.settings_surface_texture_view)
 }
 
 internal fun formatTimeoutSecondsLabel(seconds: Int, context: android.content.Context): String {
@@ -1476,7 +1596,8 @@ internal fun formatSpeedTestValueLabel(speedTest: InternetSpeedTestUiModel): Str
 
 internal fun formatSpeedTestSummary(
     speedTest: InternetSpeedTestUiModel,
-    context: android.content.Context
+    context: android.content.Context,
+    dateTimeFormat: DateFormat = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
 ): String {
     val transportLabel = when (speedTest.transportLabel) {
         InternetSpeedTestTransport.WIFI.name -> context.getString(R.string.settings_speed_test_transport_wifi)
@@ -1485,7 +1606,7 @@ internal fun formatSpeedTestSummary(
         InternetSpeedTestTransport.OTHER.name -> context.getString(R.string.settings_speed_test_transport_other)
         else -> context.getString(R.string.settings_speed_test_transport_unknown)
     }
-    val measuredAtLabel = formatTimestamp(speedTest.measuredAtMs)
+    val measuredAtLabel = formatTimestamp(speedTest.measuredAtMs, dateTimeFormat)
     return if (speedTest.isEstimated) {
         context.getString(R.string.settings_speed_test_summary_estimated, transportLabel, measuredAtLabel)
     } else {

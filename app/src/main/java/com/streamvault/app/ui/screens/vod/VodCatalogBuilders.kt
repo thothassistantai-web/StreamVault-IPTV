@@ -82,12 +82,16 @@ suspend fun <Item> buildVodPreviewCatalog(
         }
     }
 
+    val requestedProviderCategoryIds = providerPreviews.keys.filterNotNull().toSet()
+    providerCategories.forEach { category ->
+        countMap[category.name] = providerCategoryCounts[category.id] ?: providerPreviews[category.id]?.size ?: 0
+    }
     providerCategories
+        .filter { category -> category.id in requestedProviderCategoryIds }
         .forEach { category ->
             val preview = providerPreviews[category.id].orEmpty()
                 .let { items -> markVodFavorites(items, globalFavoriteIds, itemId, copyWithFavorite) }
             previewRows[category.name] = preview
-            countMap[category.name] = providerCategoryCounts[category.id] ?: preview.size
         }
 
     return VodCatalogSnapshot(

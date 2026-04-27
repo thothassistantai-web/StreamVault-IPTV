@@ -41,8 +41,14 @@ data class PlayerDiagnosticsUiState(
     val providerName: String = "",
     val providerSourceLabel: String = "",
     val decoderMode: DecoderMode = DecoderMode.AUTO,
+    val activeDecoderName: String = "Unknown",
+    val activeDecoderPolicy: String = "AUTO",
+    val renderSurfaceType: String = "SURFACE_VIEW",
+    val videoStallCount: Int = 0,
+    val lastVideoFrameAgoMs: Long = 0,
     val streamClassLabel: String = "Primary",
     val playbackStateLabel: String = "Idle",
+    val audioVideoOffsetMs: Int = 0,
     val alternativeStreamCount: Int = 0,
     val channelErrorCount: Int = 0,
     val archiveSupportLabel: String = "",
@@ -50,6 +56,16 @@ data class PlayerDiagnosticsUiState(
     val recentRecoveryActions: List<String> = emptyList(),
     val troubleshootingHints: List<String> = emptyList()
 )
+
+data class PlayerAudioVideoOffsetUiState(
+    val globalOffsetMs: Int = 0,
+    val channelOverrideMs: Int? = null,
+    val previewOffsetMs: Int? = null,
+    val effectiveOffsetMs: Int = 0
+) {
+    val hasChannelOverride: Boolean
+        get() = channelOverrideMs != null
+}
 
 data class PlayerTimeshiftUiState(
     val available: Boolean = false,
@@ -61,6 +77,25 @@ data class PlayerTimeshiftUiState(
     val statusMessage: String = "",
     val engineState: LiveTimeshiftState = LiveTimeshiftState()
 )
+
+data class SleepTimerUiState(
+    val stopTimerMinutes: Int = 0,
+    val stopRemainingMs: Long = 0L,
+    val idleTimerMinutes: Int = 0,
+    val idleRemainingMs: Long = 0L
+) {
+    val stopTimerActive: Boolean
+        get() = stopTimerMinutes > 0 && stopRemainingMs > 0L
+
+    val idleTimerActive: Boolean
+        get() = idleTimerMinutes > 0 && idleRemainingMs > 0L
+
+    val stopTimerWarningVisible: Boolean
+        get() = stopTimerActive && stopRemainingMs <= 60_000L
+
+    val idleTimerWarningVisible: Boolean
+        get() = idleTimerActive && idleRemainingMs <= 60_000L
+}
 
 enum class PlayerRecoveryType {
     NETWORK,
@@ -90,6 +125,14 @@ internal data class EpgRequestKey(
     val internalChannelId: Long,
     val epgChannelId: String?,
     val streamId: Long
+)
+
+internal data class AudioVideoOffsetSnapshot(
+    val globalOffsetMs: Int,
+    val channelOverrideMs: Int?,
+    val previewOffsetMs: Int?,
+    val effectiveOffsetMs: Int,
+    val engine: com.streamvault.player.PlayerEngine
 )
 
 internal data class PlayerUiTimeouts(

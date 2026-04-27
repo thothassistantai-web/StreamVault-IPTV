@@ -1,8 +1,14 @@
 package com.streamvault.data.remote.stalker
 
 import android.util.Log
+import com.google.gson.JsonObject as GsonJsonObject
+import com.google.gson.JsonParser
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
 import com.streamvault.domain.model.Result
 import java.io.IOException
+import java.io.InputStream
+import java.io.InputStreamReader
 import java.net.URI
 import java.net.URLEncoder
 import java.security.MessageDigest
@@ -14,6 +20,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeFormatterBuilder
 import java.time.format.ResolverStyle
+import java.util.Base64
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -134,6 +141,25 @@ class OkHttpStalkerApiService @Inject constructor(
         )
     }
 
+    override suspend fun streamLiveStreams(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        onItem: suspend (StalkerItemRecord) -> Unit
+    ): Result<Int> = runApiCall("Failed to load live channels") {
+        requestStreamingItems(
+            url = session.loadUrl,
+            profile = profile,
+            referer = session.portalReferer,
+            token = session.token,
+            query = mapOf(
+                "type" to "itv",
+                "action" to "get_all_channels",
+                "JsHttpRequest" to "1-xml"
+            ),
+            onItem = onItem
+        )
+    }
+
     override suspend fun getVodCategories(
         session: StalkerSession,
         profile: StalkerDeviceProfile
@@ -166,6 +192,25 @@ class OkHttpStalkerApiService @Inject constructor(
                 categoryId?.takeIf { it.isNotBlank() }?.let { put("category", it) }
             }
         ).filterNot { it.isSeries }
+    }
+
+    override suspend fun getVodStreamsPage(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        categoryId: String?,
+        page: Int
+    ): Result<StalkerPagedItems> = runApiCall("Failed to load movies") {
+        fetchPagedItemPage(
+            session = session,
+            profile = profile,
+            page = page,
+            baseQuery = buildMap {
+                put("type", "vod")
+                put("action", "get_ordered_list")
+                put("JsHttpRequest", "1-xml")
+                categoryId?.takeIf { it.isNotBlank() }?.let { put("category", it) }
+            }
+        ).let { paged -> paged.copy(items = paged.items.filterNot { it.isSeries }) }
     }
 
     override suspend fun getSeriesCategories(
@@ -202,6 +247,25 @@ class OkHttpStalkerApiService @Inject constructor(
         )
     }
 
+    override suspend fun getSeriesPage(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        categoryId: String?,
+        page: Int
+    ): Result<StalkerPagedItems> = runApiCall("Failed to load series") {
+        fetchPagedItemPage(
+            session = session,
+            profile = profile,
+            page = page,
+            baseQuery = buildMap {
+                put("type", "series")
+                put("action", "get_ordered_list")
+                put("JsHttpRequest", "1-xml")
+                categoryId?.takeIf { it.isNotBlank() }?.let { put("category", it) }
+            }
+        )
+    }
+
     override suspend fun getSeriesDetails(
         session: StalkerSession,
         profile: StalkerDeviceProfile,
@@ -221,13 +285,13 @@ class OkHttpStalkerApiService @Inject constructor(
                 "episode_id" to "0"
             )
         )
+        val seedEntries = seriesPayload.extractItemEntries()
         val seriesItems = seriesPayload.toItemRecords()
-        val series = seriesItems.firstOrNull()
+        val series = seriesItems.firstOrNull { item -> !item.looksLikeSeasonShell() }
             ?: StalkerItemRecord(
                 id = seriesId,
-                name = "Series $seriesId"
+                name = ""
             )
-        val seedEntries = seriesPayload.extractItemEntries()
         val seasonRows = seedEntries
             .mapNotNull { entry ->
                 entry.findString("season_id")
@@ -237,9 +301,31 @@ class OkHttpStalkerApiService @Inject constructor(
                     }
             }
             .distinctBy { it.first }
+        val shellSeasonRows = seedEntries.mapIndexedNotNull { index, entry ->
+            entry.toSeasonShellRecord(index + 1)
+                ?.let { season -> season.seasonNumber.toString() to entry }
+        }
 
         val seasons = if (seasonRows.isNotEmpty()) {
             seasonRows.map { (seasonId, entry) ->
+                val episodesPayload = requestJson(
+                    url = session.loadUrl,
+                    profile = profile,
+                    referer = session.portalReferer,
+                    token = session.token,
+                    query = mapOf(
+                        "type" to "series",
+                        "action" to "get_ordered_list",
+                        "JsHttpRequest" to "1-xml",
+                        "movie_id" to seriesId,
+                        "season_id" to seasonId,
+                        "episode_id" to "0"
+                    )
+                )
+                entry.toSeasonRecord(episodesPayload.extractItemEntries())
+            }
+        } else if (shellSeasonRows.isNotEmpty()) {
+            shellSeasonRows.map { (seasonId, entry) ->
                 val episodesPayload = requestJson(
                     url = session.loadUrl,
                     profile = profile,
@@ -297,19 +383,22 @@ class OkHttpStalkerApiService @Inject constructor(
         profile: StalkerDeviceProfile,
         channelId: String
     ): Result<List<StalkerProgramRecord>> = runApiCall("Failed to load EPG") {
-        requestJson(
+        // Legacy buffered API kept for compatibility; route through the streaming path
+        // and cap the in-memory list so a misbehaving portal cannot OOM the caller.
+        val buffer = ArrayList<StalkerProgramRecord>()
+        requestStreamingPrograms(
             url = session.loadUrl,
             profile = profile,
             referer = session.portalReferer,
             token = session.token,
-            query = mapOf(
-                "type" to "itv",
-                "action" to "get_epg_info",
-                "JsHttpRequest" to "1-xml",
-                "ch_id" to channelId,
-                "period" to "6"
-            )
-        ).toProgramRecords(channelId)
+            channelIdOverride = channelId,
+            query = perChannelEpgQuery(channelId, periodHours = 6)
+        ) { program ->
+            if (buffer.size < MAX_INLINE_EPG_RECORDS) {
+                buffer.add(program)
+            }
+        }
+        buffer
     }
 
     override suspend fun getBulkEpg(
@@ -317,29 +406,89 @@ class OkHttpStalkerApiService @Inject constructor(
         profile: StalkerDeviceProfile,
         periodHours: Int
     ): Result<List<StalkerProgramRecord>> = runApiCall("Failed to load bulk EPG") {
-        requestJson(
+        // Legacy buffered API kept for compatibility; route through the streaming path
+        // and cap the in-memory list so a misbehaving portal cannot OOM the caller.
+        val buffer = ArrayList<StalkerProgramRecord>()
+        requestStreamingPrograms(
             url = session.loadUrl,
             profile = profile,
             referer = session.portalReferer,
             token = session.token,
-            query = mapOf(
-                "type" to "itv",
-                "action" to "get_epg_info",
-                "JsHttpRequest" to "1-xml",
-                "period" to periodHours.coerceAtLeast(1).toString()
-            )
-        ).toProgramRecords()
+            channelIdOverride = null,
+            query = bulkEpgQuery(periodHours)
+        ) { program ->
+            if (buffer.size < MAX_INLINE_EPG_RECORDS) {
+                buffer.add(program)
+            }
+        }
+        buffer
     }
+
+    override suspend fun streamBulkEpg(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        periodHours: Int,
+        onProgram: suspend (StalkerProgramRecord) -> Unit
+    ): Result<Int> = runApiCall("Failed to load bulk EPG") {
+        requestStreamingPrograms(
+            url = session.loadUrl,
+            profile = profile,
+            referer = session.portalReferer,
+            token = session.token,
+            channelIdOverride = null,
+            query = bulkEpgQuery(periodHours),
+            onProgram = onProgram
+        )
+    }
+
+    override suspend fun streamEpg(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        channelId: String,
+        periodHours: Int,
+        onProgram: suspend (StalkerProgramRecord) -> Unit
+    ): Result<Int> = runApiCall("Failed to load EPG") {
+        requestStreamingPrograms(
+            url = session.loadUrl,
+            profile = profile,
+            referer = session.portalReferer,
+            token = session.token,
+            channelIdOverride = channelId,
+            query = perChannelEpgQuery(channelId, periodHours),
+            onProgram = onProgram
+        )
+    }
+
+    private fun bulkEpgQuery(periodHours: Int): Map<String, String> = mapOf(
+        "type" to "itv",
+        "action" to "get_epg_info",
+        "JsHttpRequest" to "1-xml",
+        "period" to periodHours.coerceAtLeast(1).toString()
+    )
+
+    private fun perChannelEpgQuery(channelId: String, periodHours: Int): Map<String, String> = mapOf(
+        "type" to "itv",
+        "action" to "get_epg_info",
+        "JsHttpRequest" to "1-xml",
+        "ch_id" to channelId,
+        "period" to periodHours.coerceAtLeast(1).toString()
+    )
 
     override suspend fun createLink(
         session: StalkerSession,
         profile: StalkerDeviceProfile,
         kind: StalkerStreamKind,
-        cmd: String
+        cmd: String,
+        seriesNumber: Int?
     ): Result<String> = runApiCall("Failed to resolve playback link") {
         val type = when (kind) {
             StalkerStreamKind.LIVE -> "itv"
             StalkerStreamKind.MOVIE, StalkerStreamKind.EPISODE -> "vod"
+        }
+        val seriesSelector = if (kind == StalkerStreamKind.EPISODE) {
+            seriesNumber?.takeIf { it > 0 }?.toString() ?: "0"
+        } else {
+            "0"
         }
         val payload = requestJson(
             url = session.loadUrl,
@@ -351,7 +500,7 @@ class OkHttpStalkerApiService @Inject constructor(
                 "action" to "create_link",
                 "JsHttpRequest" to "1-xml",
                 "cmd" to cmd,
-                "series" to "0",
+                "series" to seriesSelector,
                 "forced_storage" to "0",
                 "disable_ad" to "0",
                 "download" to "0"
@@ -390,6 +539,29 @@ class OkHttpStalkerApiService @Inject constructor(
             items += pagePayload.toItemRecords()
         }
         return items
+    }
+
+    private suspend fun fetchPagedItemPage(
+        session: StalkerSession,
+        profile: StalkerDeviceProfile,
+        baseQuery: Map<String, String>,
+        page: Int
+    ): StalkerPagedItems {
+        val safePage = page.coerceAtLeast(1).coerceAtMost(MAX_PAGE_COUNT)
+        val payload = requestJson(
+            url = session.loadUrl,
+            profile = profile,
+            referer = session.portalReferer,
+            token = session.token,
+            query = baseQuery + ("p" to safePage.toString())
+        )
+        val items = payload.toItemRecords()
+        return StalkerPagedItems(
+            items = items,
+            page = safePage,
+            totalPages = payload.totalPages(),
+            pageSize = payload.pageSize(items.size)
+        )
     }
 
     private suspend fun fetchAllLiveChannels(
@@ -467,6 +639,311 @@ class OkHttpStalkerApiService @Inject constructor(
             parsed.ensureNoPortalError()
             parsed
         }
+    }
+
+    private suspend fun requestStreamingItems(
+        url: String,
+        profile: StalkerDeviceProfile,
+        referer: String,
+        query: Map<String, String>,
+        token: String,
+        onItem: suspend (StalkerItemRecord) -> Unit
+    ): Int = withContext(Dispatchers.IO) {
+        val action = query["action"]
+        val request = Request.Builder()
+            .url(buildUrl(url, query))
+            .header("User-Agent", profile.userAgent)
+            .header("X-User-Agent", profile.xUserAgent)
+            .header("Referer", referer)
+            .header("Accept", "*/*")
+            .header("Cookie", "mac=${profile.macAddress}; stb_lang=${profile.locale}; timezone=${profile.timezone}")
+            .header("Authorization", "Bearer $token")
+            .get()
+            .build()
+
+        runCatching {
+            executeStreamingRequest(request, action, onItem)
+        }.recoverCatching { error ->
+            val alternateUrl = siblingLoadUrl(url)
+                ?.takeIf { it != url }
+                ?: throw error
+            Log.w(
+                TAG,
+                "Retrying streamed Stalker ${action.orEmpty()} via alternate endpoint $alternateUrl after ${error.message}"
+            )
+            val alternateRequest = request.newBuilder()
+                .url(buildUrl(alternateUrl, query))
+                .header("Referer", StalkerUrlFactory.portalReferer(alternateUrl))
+                .build()
+            executeStreamingRequest(alternateRequest, action, onItem)
+        }.getOrElse { throw it }
+    }
+
+    private suspend fun executeStreamingRequest(
+        request: Request,
+        action: String?,
+        onItem: suspend (StalkerItemRecord) -> Unit
+    ): Int {
+        return okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Portal request failed with HTTP ${response.code}.")
+            }
+            val body = response.body ?: throw IOException("Portal returned an empty response${actionSuffix(action)}.")
+            val charset = body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
+            val reader = JsonReader(InputStreamReader(body.byteStream(), charset))
+            reader.isLenient = true
+            try {
+                streamStalkerItems(reader, onItem).also { count ->
+                    if (count == 0) {
+                        throw IOException("Portal returned an empty response${actionSuffix(action)}.")
+                    }
+                }
+            } catch (error: IllegalStateException) {
+                throw IOException("Portal returned unreadable JSON${actionSuffix(action)}.", error)
+            }
+        }
+    }
+
+    private suspend fun streamStalkerItems(
+        reader: JsonReader,
+        onItem: suspend (StalkerItemRecord) -> Unit
+    ): Int {
+        return when (reader.peek()) {
+            JsonToken.BEGIN_ARRAY -> streamItemArray(reader, onItem)
+            JsonToken.BEGIN_OBJECT -> streamItemObject(reader, onItem)
+            JsonToken.NULL -> {
+                reader.nextNull()
+                0
+            }
+            else -> {
+                reader.skipValue()
+                0
+            }
+        }
+    }
+
+    private suspend fun streamItemObject(
+        reader: JsonReader,
+        onItem: suspend (StalkerItemRecord) -> Unit
+    ): Int {
+        var count = 0
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "error" -> {
+                    val error = reader.nextStringOrSkip()
+                    if (!error.isNullOrBlank() && !error.equals("null", ignoreCase = true)) {
+                        throw IOException(error)
+                    }
+                }
+                "js", "data", "items" -> count += streamStalkerItems(reader, onItem)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return count
+    }
+
+    private suspend fun streamItemArray(
+        reader: JsonReader,
+        onItem: suspend (StalkerItemRecord) -> Unit
+    ): Int {
+        var count = 0
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                val element = JsonParser.parseReader(reader)
+                val item = element.asJsonObjectOrNull()?.toItemRecord()
+                if (item != null) {
+                    onItem(item)
+                    count++
+                }
+            } else {
+                count += streamStalkerItems(reader, onItem)
+            }
+        }
+        reader.endArray()
+        return count
+    }
+
+    /**
+     * Issues a streamed Stalker request that emits [StalkerProgramRecord]s instead of building
+     * a Gson tree of the entire response. This is the heap-safe path used for `get_epg_info`,
+     * which on some portals returns >30 MB of JSON regardless of the requested period.
+     */
+    private suspend fun requestStreamingPrograms(
+        url: String,
+        profile: StalkerDeviceProfile,
+        referer: String,
+        query: Map<String, String>,
+        token: String,
+        channelIdOverride: String?,
+        onProgram: suspend (StalkerProgramRecord) -> Unit
+    ): Int = withContext(Dispatchers.IO) {
+        val action = query["action"]
+        val request = Request.Builder()
+            .url(buildUrl(url, query))
+            .header("User-Agent", profile.userAgent)
+            .header("X-User-Agent", profile.xUserAgent)
+            .header("Referer", referer)
+            .header("Accept", "*/*")
+            .header("Cookie", "mac=${profile.macAddress}; stb_lang=${profile.locale}; timezone=${profile.timezone}")
+            .header("Authorization", "Bearer $token")
+            .get()
+            .build()
+
+        runCatching {
+            executeStreamingPrograms(request, action, channelIdOverride, onProgram)
+        }.recoverCatching { error ->
+            val alternateUrl = siblingLoadUrl(url)
+                ?.takeIf { it != url }
+                ?: throw error
+            Log.w(
+                TAG,
+                "Retrying streamed Stalker EPG ${action.orEmpty()} via alternate endpoint $alternateUrl after ${error.message}"
+            )
+            val alternateRequest = request.newBuilder()
+                .url(buildUrl(alternateUrl, query))
+                .header("Referer", StalkerUrlFactory.portalReferer(alternateUrl))
+                .build()
+            executeStreamingPrograms(alternateRequest, action, channelIdOverride, onProgram)
+        }.getOrElse { throw it }
+    }
+
+    private suspend fun executeStreamingPrograms(
+        request: Request,
+        action: String?,
+        channelIdOverride: String?,
+        onProgram: suspend (StalkerProgramRecord) -> Unit
+    ): Int {
+        return okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Portal request failed with HTTP ${response.code}.")
+            }
+            val body = response.body ?: throw IOException("Portal returned an empty response${actionSuffix(action)}.")
+            val charset = body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
+            val limited = ByteSizeLimitInputStream(
+                delegate = body.byteStream(),
+                maxBytes = MAX_EPG_BYTES,
+                onOverflow = {
+                    "Portal EPG payload exceeded ${MAX_EPG_BYTES} bytes${actionSuffix(action)}."
+                }
+            )
+            val reader = JsonReader(InputStreamReader(limited, charset))
+            reader.isLenient = true
+            try {
+                streamStalkerPrograms(reader, channelIdOverride, onProgram)
+            } catch (error: IllegalStateException) {
+                throw IOException("Portal returned unreadable JSON${actionSuffix(action)}.", error)
+            }
+        }
+    }
+
+    private suspend fun streamStalkerPrograms(
+        reader: JsonReader,
+        channelIdOverride: String?,
+        onProgram: suspend (StalkerProgramRecord) -> Unit
+    ): Int {
+        return when (reader.peek()) {
+            JsonToken.BEGIN_ARRAY -> streamProgramArray(reader, channelIdOverride, onProgram)
+            JsonToken.BEGIN_OBJECT -> streamProgramObject(reader, channelIdOverride, onProgram)
+            JsonToken.NULL -> {
+                reader.nextNull()
+                0
+            }
+            else -> {
+                reader.skipValue()
+                0
+            }
+        }
+    }
+
+    private suspend fun streamProgramObject(
+        reader: JsonReader,
+        channelIdOverride: String?,
+        onProgram: suspend (StalkerProgramRecord) -> Unit
+    ): Int {
+        var count = 0
+        reader.beginObject()
+        var sawEnvelope = false
+        while (reader.hasNext()) {
+            val name = reader.nextName()
+            when (name) {
+                "error" -> {
+                    val error = reader.nextStringOrSkip()
+                    if (!error.isNullOrBlank() && !error.equals("null", ignoreCase = true)) {
+                        throw IOException(error)
+                    }
+                }
+                "js", "data", "items" -> {
+                    sawEnvelope = true
+                    count += streamStalkerPrograms(reader, channelIdOverride, onProgram)
+                }
+                else -> {
+                    // Some portals return the bulk EPG as an object whose keys are channel IDs
+                    // mapped to arrays of program objects. When we have not already descended
+                    // into an envelope key and there is no caller-supplied override, treat the
+                    // key as the channel ID and walk the array.
+                    if (!sawEnvelope && channelIdOverride == null && reader.peek() == JsonToken.BEGIN_ARRAY) {
+                        count += streamProgramArray(reader, name, onProgram)
+                    } else {
+                        reader.skipValue()
+                    }
+                }
+            }
+        }
+        reader.endObject()
+        return count
+    }
+
+    private suspend fun streamProgramArray(
+        reader: JsonReader,
+        channelIdOverride: String?,
+        onProgram: suspend (StalkerProgramRecord) -> Unit
+    ): Int {
+        var count = 0
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                val element = JsonParser.parseReader(reader)
+                val program = element.asJsonObjectOrNull()?.toProgramRecord(channelIdOverride)
+                if (program != null) {
+                    onProgram(program)
+                    count++
+                }
+            } else {
+                count += streamStalkerPrograms(reader, channelIdOverride, onProgram)
+            }
+        }
+        reader.endArray()
+        return count
+    }
+
+    private fun GsonJsonObject.toProgramRecord(channelIdOverride: String?): StalkerProgramRecord? {
+        val resolvedChannelId = channelIdOverride
+            ?: findString("ch_id")
+            ?: findString("channel_id")
+            ?: findString("id_channel")
+            ?: findString("xmltv_id")
+            ?: findString("epg_id")
+            ?: return null
+        val startMillis = findString("start_timestamp")?.toLongOrNull()?.times(1000L)
+            ?: findString("time")?.let(::parseDateTime)
+            ?: return null
+        val endMillis = findString("stop_timestamp")?.toLongOrNull()?.times(1000L)
+            ?: findString("time_to")?.let(::parseDateTime)
+            ?: (startMillis + (findString("duration")?.toLongOrNull()?.times(60_000L) ?: DEFAULT_PROGRAM_DURATION_MILLIS))
+        val title = findString("name") ?: findString("title") ?: return null
+        return StalkerProgramRecord(
+            id = findString("id") ?: "$resolvedChannelId:$startMillis",
+            channelId = resolvedChannelId,
+            title = title,
+            description = findString("descr") ?: findString("description") ?: "",
+            startTimeMillis = startMillis,
+            endTimeMillis = endMillis,
+            hasArchive = findBoolean("has_archive") == true || findString("has_archive") == "1",
+            isNowPlaying = findBoolean("now_playing") == true || findString("now_playing") == "1"
+        )
     }
 
     private fun siblingLoadUrl(url: String): String? {
@@ -560,11 +1037,17 @@ class OkHttpStalkerApiService @Inject constructor(
     private fun JsonElement.totalPages(): Int {
         val payload = payloadObjectOrNull() ?: return 1
         val totalItems = payload["total_items"]?.primitiveContentOrNull()?.toIntOrNull() ?: return 1
-        val pageSize = payload["max_page_items"]?.primitiveContentOrNull()?.toIntOrNull()
-            ?.takeIf { it > 0 }
-            ?: payload["data"]?.jsonArrayOrNull()?.size?.takeIf { it > 0 }
+        val pageSize = pageSize(payload["data"]?.jsonArrayOrNull()?.size ?: 0).takeIf { it > 0 }
             ?: return 1
         return ((totalItems + pageSize - 1) / pageSize).coerceAtLeast(1).coerceAtMost(MAX_PAGE_COUNT)
+    }
+
+    private fun JsonElement.pageSize(fallback: Int): Int {
+        val payload = payloadObjectOrNull() ?: return fallback
+        return payload["max_page_items"]?.primitiveContentOrNull()?.toIntOrNull()
+            ?.takeIf { it > 0 }
+            ?: payload["data"]?.jsonArrayOrNull()?.size?.takeIf { it > 0 }
+            ?: fallback
     }
 
     private fun JsonElement.toProviderProfile(): StalkerProviderProfile {
@@ -654,10 +1137,90 @@ class OkHttpStalkerApiService @Inject constructor(
         )
     }
 
+    private fun GsonJsonObject.toItemRecord(): StalkerItemRecord? {
+        val id = findString("id")
+            ?: findString("ch_id")
+            ?: findString("video_id")
+            ?: findString("series_id")
+            ?: return null
+        val name = findString("name")
+            ?: findString("title")
+            ?: return null
+        return StalkerItemRecord(
+            id = id,
+            name = name,
+            categoryId = findString("tv_genre_id")
+                ?: findString("category_id")
+                ?: findString("genre_id"),
+            categoryName = findString("category_name"),
+            number = findString("number")?.toIntOrNull() ?: 0,
+            logoUrl = sanitizeUrl(findString("logo"))
+                ?: sanitizeUrl(findString("screenshot_uri"))
+                ?: sanitizeUrl(findString("cover")),
+            epgChannelId = findString("xmltv_id") ?: findString("epg_id"),
+            cmd = findString("cmd"),
+            streamUrl = sanitizeUrl(findString("cmd")),
+            plot = findString("description") ?: findString("plot"),
+            cast = findString("actors"),
+            director = findString("director"),
+            genre = findString("genres_str") ?: findString("genre"),
+            releaseDate = findString("year")
+                ?.takeIf { it.length == 4 }
+                ?: findString("released") ?: findString("added"),
+            rating = findString("rating_imdb")?.toFloatOrNull()
+                ?: findString("rating")?.toFloatOrNull()
+                ?: 0f,
+            tmdbId = findString("tmdb_id")?.toLongOrNull(),
+            youtubeTrailer = findString("trailer_url"),
+            backdropUrl = sanitizeUrl(findString("backdrop_path")),
+            containerExtension = extractContainerExtension(
+                findString("cmd"),
+                findString("container_extension")
+            ),
+            addedAt = findString("added")?.toLongOrNull() ?: 0L,
+            isAdult = findBoolean("censored") == true,
+            isSeries = findBoolean("is_series") == true || findString("is_series") == "1"
+        )
+    }
+
+    private fun StalkerItemRecord.looksLikeSeasonShell(): Boolean {
+        val normalizedName = name.trim()
+        if (normalizedName.startsWith("Season ", ignoreCase = true)) {
+            return true
+        }
+        return id.contains(':') && isSeries.not() && cmd.isNullOrBlank().not()
+    }
+
     private fun JsonObject.toSeasonRecord(episodeEntries: List<JsonObject>): StalkerSeasonRecord {
         val seasonNumber = findString("season_id")?.toIntOrNull()
             ?: findString("season_number")?.toIntOrNull()
+            ?: extractSeasonNumberFromCmd(findString("cmd"))
             ?: 1
+        val seasonName = findString("title")
+            ?: findString("name")
+            ?: "Season $seasonNumber"
+        val explicitEpisodes = episodeEntries.mapIndexedNotNull { index, entry ->
+            entry.toEpisodeRecord(index + 1, seasonNumber)
+        }
+        return StalkerSeasonRecord(
+            seasonNumber = seasonNumber,
+            name = seasonName,
+            coverUrl = sanitizeUrl(findString("screenshot_uri")) ?: sanitizeUrl(findString("cover")),
+            episodes = explicitEpisodes.takeUnless { it.isEmpty() || it.isSeasonShellOnly() }
+                ?: buildEpisodesFromSeriesShell(seasonNumber, seasonName)
+        )
+    }
+
+    private fun JsonObject.toSeasonShellRecord(fallbackSeasonNumber: Int): StalkerSeasonRecord? {
+        val episodeNumbers = extractSeasonShellEpisodeNumbers()
+        if (episodeNumbers.isEmpty()) {
+            return null
+        }
+        val seasonNumber = findString("season_id")?.toIntOrNull()
+            ?: findString("season_number")?.toIntOrNull()
+            ?: extractSeasonNumberFromCmd(findString("cmd"))
+            ?: findString("name")?.filter(Char::isDigit)?.toIntOrNull()
+            ?: fallbackSeasonNumber
         val seasonName = findString("title")
             ?: findString("name")
             ?: "Season $seasonNumber"
@@ -665,9 +1228,7 @@ class OkHttpStalkerApiService @Inject constructor(
             seasonNumber = seasonNumber,
             name = seasonName,
             coverUrl = sanitizeUrl(findString("screenshot_uri")) ?: sanitizeUrl(findString("cover")),
-            episodes = episodeEntries.mapIndexedNotNull { index, entry ->
-                entry.toEpisodeRecord(index + 1, seasonNumber)
-            }
+            episodes = buildEpisodesFromSeriesShell(seasonNumber, seasonName)
         )
     }
 
@@ -701,6 +1262,66 @@ class OkHttpStalkerApiService @Inject constructor(
                 ?: 0f,
             containerExtension = extractContainerExtension(findString("cmd"), findString("container_extension"))
         )
+    }
+
+    private fun JsonObject.buildEpisodesFromSeriesShell(
+        fallbackSeasonNumber: Int,
+        fallbackSeasonName: String
+    ): List<StalkerEpisodeRecord> {
+        val episodeNumbers = extractSeasonShellEpisodeNumbers()
+        if (episodeNumbers.isEmpty()) {
+            return emptyList()
+        }
+        val seasonName = fallbackSeasonName.ifBlank { "Season $fallbackSeasonNumber" }
+        return episodeNumbers.map { episodeNumber ->
+            StalkerEpisodeRecord(
+                id = "${findString("id") ?: findString("series_id") ?: "season:$fallbackSeasonNumber"}:$episodeNumber",
+                title = "$seasonName Episode $episodeNumber",
+                episodeNumber = episodeNumber,
+                seasonNumber = fallbackSeasonNumber,
+                cmd = findString("cmd"),
+                coverUrl = sanitizeUrl(findString("screenshot_uri")) ?: sanitizeUrl(findString("cover")),
+                plot = findString("description") ?: findString("plot"),
+                durationSeconds = findString("duration")?.toIntOrNull() ?: 0,
+                releaseDate = findString("added"),
+                rating = findString("rating_imdb")?.toFloatOrNull()
+                    ?: findString("rating")?.toFloatOrNull()
+                    ?: 0f,
+                containerExtension = extractContainerExtension(findString("cmd"), findString("container_extension"))
+            )
+        }
+    }
+
+    private fun JsonObject.extractSeasonShellEpisodeNumbers(): List<Int> {
+        val seriesArray = this["series"]?.jsonArrayOrNull() ?: return emptyList()
+        return seriesArray.mapIndexedNotNull { index, element ->
+            element.primitiveContentOrNull()?.toIntOrNull()
+                ?: element.jsonObjectOrNull()?.findString("series_number")?.toIntOrNull()
+                ?: element.jsonObjectOrNull()?.findString("episode_number")?.toIntOrNull()
+                ?: (index + 1)
+        }
+    }
+
+    private fun List<StalkerEpisodeRecord>.isSeasonShellOnly(): Boolean {
+        if (size != 1) {
+            return false
+        }
+        val entry = first()
+        return entry.episodeNumber <= 1 && entry.title.startsWith("Season ", ignoreCase = true)
+    }
+
+    private fun extractSeasonNumberFromCmd(cmd: String?): Int? {
+        val decoded = decodeBase64JsonPayload(cmd) ?: return null
+        return decoded.findString("season_num")?.toIntOrNull()
+            ?: decoded.findString("season_id")?.toIntOrNull()
+    }
+
+    private fun decodeBase64JsonPayload(cmd: String?): GsonJsonObject? {
+        val value = cmd?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching {
+            val decoded = String(Base64.getDecoder().decode(value), Charsets.UTF_8)
+            JsonParser.parseString(decoded).asJsonObject
+        }.getOrNull()
     }
 
     private fun JsonElement.toProgramRecords(channelId: String? = null): List<StalkerProgramRecord> {
@@ -784,6 +1405,44 @@ class OkHttpStalkerApiService @Inject constructor(
             }
     }
 
+    private fun GsonJsonObject.findString(key: String): String? {
+        val element = get(key) ?: return null
+        if (!element.isJsonPrimitive) return null
+        return element.asJsonPrimitive
+            .takeUnless { it.isJsonNull }
+            ?.asString
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun GsonJsonObject.findBoolean(key: String): Boolean? {
+        val value = findString(key)?.lowercase(Locale.ROOT) ?: return null
+        return when (value) {
+            "1", "true", "yes" -> true
+            "0", "false", "no" -> false
+            else -> null
+        }
+    }
+
+    private fun com.google.gson.JsonElement.asJsonObjectOrNull(): GsonJsonObject? =
+        if (isJsonObject) asJsonObject else null
+
+    private fun JsonReader.nextStringOrSkip(): String? {
+        return when (peek()) {
+            JsonToken.STRING,
+            JsonToken.NUMBER,
+            JsonToken.BOOLEAN -> nextString()
+            JsonToken.NULL -> {
+                nextNull()
+                null
+            }
+            else -> {
+                skipValue()
+                null
+            }
+        }
+    }
+
     private fun JsonElement.jsonArrayOrNull(): JsonArray? = when (this) {
         is JsonArray -> this
         else -> null
@@ -859,6 +1518,10 @@ class OkHttpStalkerApiService @Inject constructor(
         private const val TAG = "OkHttpStalkerApi"
         private const val MAX_PAGE_COUNT = 200
         private const val DEFAULT_PROGRAM_DURATION_MILLIS = 30 * 60_000L
+        /** Hard ceiling for the streamed `get_epg_info` body; anything larger is treated as a portal fault. */
+        private const val MAX_EPG_BYTES = 64L * 1024L * 1024L
+        /** Records retained by the legacy buffered [getBulkEpg]/[getEpg] APIs to keep callers heap-safe. */
+        private const val MAX_INLINE_EPG_RECORDS = 1500
         private const val DEFAULT_VERSION_STRING =
             "ImageDescription: 0.2.18-r23-250; ImageDate: Wed Oct 31 15:22:54 EEST 2018; PORTAL version: 5.6.2; API Version: JS API version: 343; STB API version: 146; Player Engine version: 0x58c"
     }
@@ -946,3 +1609,44 @@ private val STALKER_DATE_FORMATTERS: List<DateTimeFormatter> = listOf(
         .toFormatter(Locale.ROOT)
         .withResolverStyle(ResolverStyle.SMART)
 )
+
+
+/**
+ * InputStream wrapper that throws [IOException] when more than [maxBytes] bytes are read from
+ * [delegate]. Used to bound the streamed get_epg_info response so a misbehaving portal
+ * cannot push the device into low-memory or OOM territory.
+ */
+private class ByteSizeLimitInputStream(
+    private val delegate: InputStream,
+    private val maxBytes: Long,
+    private val onOverflow: () -> String
+) : InputStream() {
+    private var bytesRead: Long = 0
+
+    override fun read(): Int {
+        val value = delegate.read()
+        if (value >= 0) {
+            bytesRead += 1
+            checkLimit()
+        }
+        return value
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        val n = delegate.read(b, off, len)
+        if (n > 0) {
+            bytesRead += n
+            checkLimit()
+        }
+        return n
+    }
+
+    override fun available(): Int = delegate.available()
+    override fun close() = delegate.close()
+
+    private fun checkLimit() {
+        if (bytesRead > maxBytes) {
+            throw IOException(onOverflow())
+        }
+    }
+}

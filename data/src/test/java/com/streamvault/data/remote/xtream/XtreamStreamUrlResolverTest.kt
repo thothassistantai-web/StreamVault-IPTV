@@ -8,6 +8,7 @@ import com.streamvault.data.remote.stalker.StalkerCategoryRecord
 import com.streamvault.data.remote.stalker.StalkerDeviceProfile
 import com.streamvault.data.remote.stalker.StalkerEpisodeRecord
 import com.streamvault.data.remote.stalker.StalkerItemRecord
+import com.streamvault.data.remote.stalker.StalkerPagedItems
 import com.streamvault.data.remote.stalker.StalkerProgramRecord
 import com.streamvault.data.remote.stalker.StalkerProviderProfile
 import com.streamvault.data.remote.stalker.StalkerSeasonRecord
@@ -275,6 +276,44 @@ class XtreamStreamUrlResolverTest {
     }
 
     @Test
+    fun resolveWithMetadata_passes_stalker_episode_series_selector_to_create_link() = runBlocking {
+        val fakeStalkerApiService = FakeStalkerApiService().apply {
+            createLinkResponse = "http://portal.example.com/play/movie.php?stream=1672828.mkv"
+        }
+        val resolver = XtreamStreamUrlResolver(
+            providerDao = FakeProviderDao(
+                ProviderEntity(
+                    id = 14,
+                    name = "Stalker",
+                    type = ProviderType.STALKER_PORTAL,
+                    serverUrl = "https://portal.example.com",
+                    stalkerMacAddress = "00:1A:79:12:34:56",
+                    stalkerDeviceProfile = "MAG250",
+                    stalkerDeviceTimezone = "UTC",
+                    stalkerDeviceLocale = "en"
+                )
+            ),
+            credentialCrypto = credentialCrypto,
+            stalkerApiService = fakeStalkerApiService
+        )
+        val internalUrl = StalkerUrlFactory.buildInternalStreamUrl(
+            providerId = 14,
+            kind = StalkerStreamKind.EPISODE,
+            itemId = 77,
+            cmd = "eyJzZXJpZXNfaWQiOjUzOTk5LCJzZWFzb25fbnVtIjoxLCJ0eXBlIjoic2VyaWVzIn0=",
+            containerExtension = "mkv",
+            seriesNumber = 11
+        )
+
+        val resolved = resolver.resolveWithMetadata(internalUrl)
+
+        assertThat(resolved?.url).isEqualTo("http://portal.example.com/play/movie.php?stream=1672828.mkv")
+        assertThat(fakeStalkerApiService.authenticateCalls).isEqualTo(1)
+        assertThat(fakeStalkerApiService.createLinkCalls).isEqualTo(1)
+        assertThat(fakeStalkerApiService.lastCreateLinkSeriesNumber).isEqualTo(11)
+    }
+
+    @Test
     fun resolveWithMetadata_repairs_stale_direct_stalker_live_url_and_applies_headers() = runBlocking {
         val fakeStalkerApiService = FakeStalkerApiService()
         val resolver = XtreamStreamUrlResolver(
@@ -334,6 +373,7 @@ class XtreamStreamUrlResolverTest {
     private class FakeStalkerApiService : StalkerApiService {
         var authenticateCalls: Int = 0
         var createLinkCalls: Int = 0
+        var lastCreateLinkSeriesNumber: Int? = null
         var createLinkResponse: String = "http://edge.example.com/live/77.m3u8?exp=1774017000"
 
         override suspend fun authenticate(profile: StalkerDeviceProfile): Result<Pair<StalkerSession, StalkerProviderProfile>> {
@@ -358,6 +398,12 @@ class XtreamStreamUrlResolverTest {
             categoryId: String?
         ): Result<List<StalkerItemRecord>> = Result.success(emptyList())
 
+        override suspend fun streamLiveStreams(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            onItem: suspend (StalkerItemRecord) -> Unit
+        ): Result<Int> = Result.success(0)
+
         override suspend fun getVodCategories(
             session: StalkerSession,
             profile: StalkerDeviceProfile
@@ -369,6 +415,15 @@ class XtreamStreamUrlResolverTest {
             categoryId: String?
         ): Result<List<StalkerItemRecord>> = Result.success(emptyList())
 
+        override suspend fun getVodStreamsPage(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            categoryId: String?,
+            page: Int
+        ): Result<StalkerPagedItems> = Result.success(
+            StalkerPagedItems(items = emptyList(), page = page, totalPages = page, pageSize = 0)
+        )
+
         override suspend fun getSeriesCategories(
             session: StalkerSession,
             profile: StalkerDeviceProfile
@@ -379,6 +434,15 @@ class XtreamStreamUrlResolverTest {
             profile: StalkerDeviceProfile,
             categoryId: String?
         ): Result<List<StalkerItemRecord>> = Result.success(emptyList())
+
+        override suspend fun getSeriesPage(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            categoryId: String?,
+            page: Int
+        ): Result<StalkerPagedItems> = Result.success(
+            StalkerPagedItems(items = emptyList(), page = page, totalPages = page, pageSize = 0)
+        )
 
         override suspend fun getSeriesDetails(
             session: StalkerSession,
@@ -410,13 +474,30 @@ class XtreamStreamUrlResolverTest {
             periodHours: Int
         ): Result<List<StalkerProgramRecord>> = Result.success(emptyList())
 
+        override suspend fun streamBulkEpg(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            periodHours: Int,
+            onProgram: suspend (StalkerProgramRecord) -> Unit
+        ): Result<Int> = Result.success(0)
+
+        override suspend fun streamEpg(
+            session: StalkerSession,
+            profile: StalkerDeviceProfile,
+            channelId: String,
+            periodHours: Int,
+            onProgram: suspend (StalkerProgramRecord) -> Unit
+        ): Result<Int> = Result.success(0)
+
         override suspend fun createLink(
             session: StalkerSession,
             profile: StalkerDeviceProfile,
             kind: StalkerStreamKind,
-            cmd: String
+            cmd: String,
+            seriesNumber: Int?
         ): Result<String> {
             createLinkCalls += 1
+            lastCreateLinkSeriesNumber = seriesNumber
             return Result.success(createLinkResponse)
         }
     }

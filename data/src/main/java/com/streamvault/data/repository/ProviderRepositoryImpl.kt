@@ -25,6 +25,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -47,6 +48,7 @@ class ProviderRepositoryImpl @Inject constructor(
 ) : ProviderRepository {
     private companion object {
         const val XTREAM_GUIDE_BATCH_CONCURRENCY = 4
+        const val BACKGROUND_EPG_START_DELAY_MS = 15_000L
     }
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -708,9 +710,12 @@ class ProviderRepositoryImpl @Inject constructor(
         if (provider.epgSyncMode != ProviderEpgSyncMode.BACKGROUND) {
             return
         }
-        repositoryScope.launch {
-            syncManager.scheduleBackgroundEpgSync(providerId)
-        }
+        // The previous implementation launched a coroutine that slept for 15s and then
+        // scheduled the worker. That kept a coroutine alive (and held onto its captures)
+        // even when the user immediately backed out of the screen. WorkManager's own
+        // initialDelay is the right place for that wait — it's persisted, cancellable,
+        // and doesn't pin any process state.
+        syncManager.scheduleBackgroundEpgSync(providerId)
     }
 
     private fun normalizeXtreamPrograms(

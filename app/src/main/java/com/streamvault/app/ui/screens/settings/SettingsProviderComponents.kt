@@ -44,12 +44,15 @@ import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.interaction.mouseClickable
 import com.streamvault.app.ui.theme.*
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createDateTimeFormat
 import com.streamvault.domain.model.ActiveLiveSource
 import com.streamvault.domain.model.CombinedM3uProfile
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.ProviderType
 import kotlinx.coroutines.launch
+import java.text.DateFormat
 import java.util.Locale
 
 @Composable
@@ -1222,6 +1225,8 @@ private fun ProviderDiagnosticsPanel(
 
 @Composable
 private fun DatabaseMaintenancePanel(report: DatabaseMaintenanceUiModel) {
+    val appTimeFormat = LocalAppTimeFormat.current
+    val dateTimeFormat = remember(appTimeFormat) { appTimeFormat.createDateTimeFormat() }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1235,7 +1240,7 @@ private fun DatabaseMaintenancePanel(report: DatabaseMaintenanceUiModel) {
             color = Primary
         )
         Text(
-            text = "Last maintenance ${formatDiagnosticTimestamp(report.ranAt)}",
+            text = "Last maintenance ${formatDiagnosticTimestamp(report.ranAt, dateTimeFormat)}",
             style = MaterialTheme.typography.bodySmall,
             color = OnSurface
         )
@@ -1305,7 +1310,9 @@ private fun ProviderDiagnosticPill(
     count: Int,
     timestamp: Long
 ) {
-    val syncLabel = remember(timestamp) { formatDiagnosticTimestamp(timestamp) }
+    val appTimeFormat = LocalAppTimeFormat.current
+    val dateTimeFormat = remember(appTimeFormat) { appTimeFormat.createDateTimeFormat() }
+    val syncLabel = remember(timestamp, dateTimeFormat) { formatDiagnosticTimestamp(timestamp, dateTimeFormat) }
     Surface(
         shape = RoundedCornerShape(10.dp),
         colors = SurfaceDefaults.colors(
@@ -1369,11 +1376,11 @@ private fun ProviderDiagnosticsUiModel.healthSummary(providerType: ProviderType)
     return warnings.joinToString(" • ")
 }
 
-private fun formatDiagnosticTimestamp(timestamp: Long): String? =
+private fun formatDiagnosticTimestamp(timestamp: Long, dateTimeFormat: DateFormat): String? =
     if (timestamp <= 0L) {
         null
     } else {
-        java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+        dateTimeFormat.format(java.util.Date(timestamp))
     }
 
 private fun formatMaintenanceBytes(bytes: Long): String {

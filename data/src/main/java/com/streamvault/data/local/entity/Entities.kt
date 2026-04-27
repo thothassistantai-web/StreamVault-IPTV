@@ -130,7 +130,45 @@ data class ChannelPreferenceEntity(
     val id: Long = 0,
     @ColumnInfo(name = "channel_id") val channelId: Long,
     @ColumnInfo(name = "aspect_ratio") val aspectRatio: String? = null,
+    @ColumnInfo(name = "audio_video_offset_ms") val audioVideoOffsetMs: Int? = null,
     @ColumnInfo(name = "updated_at") val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "playback_compatibility_records",
+    indices = [
+        Index(
+            value = [
+                "device_fingerprint",
+                "stream_type",
+                "video_mime_type",
+                "resolution_bucket",
+                "decoder_name",
+                "surface_type"
+            ],
+            unique = true
+        ),
+        Index(value = ["device_fingerprint", "stream_type", "video_mime_type", "resolution_bucket"]),
+        Index(value = ["last_failed_at"]),
+        Index(value = ["last_succeeded_at"])
+    ]
+)
+data class PlaybackCompatibilityRecordEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    @ColumnInfo(name = "device_fingerprint") val deviceFingerprint: String,
+    @ColumnInfo(name = "device_model") val deviceModel: String,
+    @ColumnInfo(name = "android_sdk") val androidSdk: Int,
+    @ColumnInfo(name = "stream_type") val streamType: String,
+    @ColumnInfo(name = "video_mime_type") val videoMimeType: String,
+    @ColumnInfo(name = "resolution_bucket") val resolutionBucket: String,
+    @ColumnInfo(name = "decoder_name") val decoderName: String,
+    @ColumnInfo(name = "surface_type") val surfaceType: String,
+    @ColumnInfo(name = "failure_type") val failureType: String = "",
+    @ColumnInfo(name = "last_failed_at") val lastFailedAt: Long = 0L,
+    @ColumnInfo(name = "last_succeeded_at") val lastSucceededAt: Long = 0L,
+    @ColumnInfo(name = "failure_count") val failureCount: Int = 0,
+    @ColumnInfo(name = "success_count") val successCount: Int = 0
 )
 
 @Entity(
@@ -219,6 +257,7 @@ data class SeriesEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     @ColumnInfo(name = "series_id") val seriesId: Long = 0,
+    @ColumnInfo(name = "provider_series_id") val providerSeriesId: String? = null,
     val name: String,
     @ColumnInfo(name = "poster_url") val posterUrl: String? = null,
     @ColumnInfo(name = "backdrop_url") val backdropUrl: String? = null,
@@ -243,6 +282,7 @@ data class SeriesEntity(
 data class SeriesBrowseEntity(
     val id: Long = 0,
     @ColumnInfo(name = "series_id") val seriesId: Long = 0,
+    @ColumnInfo(name = "provider_series_id") val providerSeriesId: String? = null,
     val name: String,
     @ColumnInfo(name = "poster_url") val posterUrl: String? = null,
     @ColumnInfo(name = "category_id") val categoryId: Long? = null,
@@ -764,7 +804,11 @@ data class MovieCategoryHydrationEntity(
     @ColumnInfo(name = "last_hydrated_at") val lastHydratedAt: Long = 0L,
     @ColumnInfo(name = "item_count") val itemCount: Int = 0,
     @ColumnInfo(name = "last_status") val lastStatus: String = "IDLE",
-    @ColumnInfo(name = "last_error") val lastError: String? = null
+    @ColumnInfo(name = "last_error") val lastError: String? = null,
+    @ColumnInfo(name = "last_loaded_page") val lastLoadedPage: Int = 0,
+    @ColumnInfo(name = "total_pages") val totalPages: Int = 0,
+    @ColumnInfo(name = "is_complete") val isComplete: Boolean = false,
+    @ColumnInfo(name = "page_size") val pageSize: Int = 0
 )
 
 @Entity(
@@ -784,7 +828,11 @@ data class SeriesCategoryHydrationEntity(
     @ColumnInfo(name = "last_hydrated_at") val lastHydratedAt: Long = 0L,
     @ColumnInfo(name = "item_count") val itemCount: Int = 0,
     @ColumnInfo(name = "last_status") val lastStatus: String = "IDLE",
-    @ColumnInfo(name = "last_error") val lastError: String? = null
+    @ColumnInfo(name = "last_error") val lastError: String? = null,
+    @ColumnInfo(name = "last_loaded_page") val lastLoadedPage: Int = 0,
+    @ColumnInfo(name = "total_pages") val totalPages: Int = 0,
+    @ColumnInfo(name = "is_complete") val isComplete: Boolean = false,
+    @ColumnInfo(name = "page_size") val pageSize: Int = 0
 )
 
 // ── External EPG Source ────────────────────────────────────────────

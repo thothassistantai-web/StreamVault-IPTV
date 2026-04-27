@@ -44,6 +44,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.streamvault.app.R
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createTimeFormatter
 import com.streamvault.domain.model.Program
 import java.time.Instant
 import java.time.ZoneId
@@ -64,7 +66,8 @@ fun ProgramHistoryDialog(
     val isTelevisionDevice = rememberIsTelevisionDevice()
     val locale = Locale.getDefault()
     val zoneId = remember { ZoneId.systemDefault() }
-    val timeFormat = remember(locale) { DateTimeFormatter.ofPattern("HH:mm", locale) }
+    val appTimeFormat = LocalAppTimeFormat.current
+    val timeFormat = remember(appTimeFormat, locale) { appTimeFormat.createTimeFormatter(locale) }
     val dayFormat = remember(locale) { DateTimeFormatter.ofPattern("EEE, MMM d", locale) }
 
     LaunchedEffect(Unit) {

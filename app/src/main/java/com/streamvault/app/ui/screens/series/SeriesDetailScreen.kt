@@ -22,6 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,6 +62,8 @@ import com.streamvault.domain.model.Series
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.app.ui.interaction.TvIconButton
+
+private const val EPISODE_DETAIL_PAGE_SIZE = 100
 
 @Composable
 fun SeriesDetailScreen(
@@ -142,6 +147,10 @@ private fun SeriesDetailContent(
             PaddingValues(horizontal = 56.dp, vertical = 36.dp)
         }
         val posterWidth = if (compactLayout) 132.dp else 220.dp
+        var visibleEpisodeLimit by remember(selectedSeason?.seasonNumber) {
+            mutableStateOf(EPISODE_DETAIL_PAGE_SIZE)
+        }
+        val visibleEpisodes = selectedSeason?.episodes.orEmpty().take(visibleEpisodeLimit)
 
         AsyncImage(
             model = rememberCrossfadeImageModel(series.backdropUrl ?: series.posterUrl),
@@ -416,8 +425,26 @@ private fun SeriesDetailContent(
                         )
                     }
                 }
-                items(season.episodes, key = { it.id }) { episode ->
+                items(visibleEpisodes, key = { it.id }) { episode ->
                     EpisodeItem(episode = episode, onClick = { onEpisodeClick(episode) })
+                }
+                if (visibleEpisodes.size < season.episodes.size) {
+                    item {
+                        TvButton(
+                            onClick = {
+                                visibleEpisodeLimit = (visibleEpisodeLimit + EPISODE_DETAIL_PAGE_SIZE)
+                                    .coerceAtMost(season.episodes.size)
+                            }
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.library_load_more,
+                                    visibleEpisodes.size,
+                                    season.episodes.size
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }

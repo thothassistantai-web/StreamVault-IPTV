@@ -38,6 +38,7 @@ import com.streamvault.app.ui.theme.TextSecondary
 import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
+import com.streamvault.domain.model.AppTimeFormat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -65,10 +66,18 @@ internal fun SettingsScreenDialogs(
     onShowGuideDefaultCategoryDialogChange: (Boolean) -> Unit,
     showPlaybackSpeedDialog: Boolean,
     onShowPlaybackSpeedDialogChange: (Boolean) -> Unit,
+    showAudioVideoOffsetDialog: Boolean,
+    onShowAudioVideoOffsetDialogChange: (Boolean) -> Unit,
     showDecoderModeDialog: Boolean,
     onShowDecoderModeDialogChange: (Boolean) -> Unit,
+    showSurfaceModeDialog: Boolean,
+    onShowSurfaceModeDialogChange: (Boolean) -> Unit,
     showTimeshiftDepthDialog: Boolean,
     onShowTimeshiftDepthDialogChange: (Boolean) -> Unit,
+    showDefaultStopTimerDialog: Boolean,
+    onShowDefaultStopTimerDialogChange: (Boolean) -> Unit,
+    showDefaultIdleTimerDialog: Boolean,
+    onShowDefaultIdleTimerDialogChange: (Boolean) -> Unit,
     showControlsTimeoutDialog: Boolean,
     onShowControlsTimeoutDialogChange: (Boolean) -> Unit,
     showLiveOverlayTimeoutDialog: Boolean,
@@ -105,6 +114,8 @@ internal fun SettingsScreenDialogs(
     onPendingProtectionLevelChange: (Int?) -> Unit,
     showLanguageDialog: Boolean,
     onShowLanguageDialogChange: (Boolean) -> Unit,
+    showTimeFormatDialog: Boolean,
+    onShowTimeFormatDialogChange: (Boolean) -> Unit,
     showRecordingPatternDialog: Boolean,
     onShowRecordingPatternDialogChange: (Boolean) -> Unit,
     showRecordingRetentionDialog: Boolean,
@@ -253,12 +264,45 @@ internal fun SettingsScreenDialogs(
         }
     }
 
+    if (showTimeFormatDialog) {
+        PremiumSelectionDialog(
+            title = stringResource(R.string.settings_select_time_format),
+            onDismiss = { onShowTimeFormatDialogChange(false) }
+        ) {
+            AppTimeFormat.entries.forEachIndexed { index, format ->
+                LevelOption(
+                    level = index,
+                    text = context.getString(format.labelResId()),
+                    currentLevel = if (uiState.appTimeFormat == format) index else -1,
+                    onSelect = {
+                        viewModel.setAppTimeFormat(format)
+                        onShowTimeFormatDialogChange(false)
+                    }
+                )
+            }
+        }
+    }
+
+    if (showAudioVideoOffsetDialog) {
+        AudioVideoOffsetValueDialog(
+            title = stringResource(R.string.settings_audio_video_sync_default),
+            subtitle = stringResource(R.string.settings_audio_video_sync_default_subtitle),
+            initialValue = uiState.playerAudioVideoOffsetMs,
+            onDismiss = { onShowAudioVideoOffsetDialogChange(false) },
+            onConfirm = { offsetMs ->
+                viewModel.setPlayerAudioVideoOffsetMs(offsetMs)
+                onShowAudioVideoOffsetDialogChange(false)
+            }
+        )
+    }
+
     if (showDecoderModeDialog) {
         val decoderOptions = remember(context) {
             listOf(
                 DecoderMode.AUTO to context.getString(R.string.settings_decoder_auto),
                 DecoderMode.HARDWARE to context.getString(R.string.settings_decoder_hardware),
-                DecoderMode.SOFTWARE to context.getString(R.string.settings_decoder_software)
+                DecoderMode.SOFTWARE to context.getString(R.string.settings_decoder_software),
+                DecoderMode.COMPATIBILITY to context.getString(R.string.settings_decoder_compatibility)
             )
         }
         PremiumSelectionDialog(
@@ -273,6 +317,32 @@ internal fun SettingsScreenDialogs(
                     onSelect = {
                         viewModel.setPlayerDecoderMode(option.first)
                         onShowDecoderModeDialogChange(false)
+                    }
+                )
+            }
+        }
+    }
+
+    if (showSurfaceModeDialog) {
+        val surfaceOptions = remember(context) {
+            listOf(
+                com.streamvault.domain.model.PlayerSurfaceMode.AUTO to context.getString(R.string.settings_surface_auto),
+                com.streamvault.domain.model.PlayerSurfaceMode.SURFACE_VIEW to context.getString(R.string.settings_surface_surface_view),
+                com.streamvault.domain.model.PlayerSurfaceMode.TEXTURE_VIEW to context.getString(R.string.settings_surface_texture_view)
+            )
+        }
+        PremiumSelectionDialog(
+            title = stringResource(R.string.settings_surface_mode),
+            onDismiss = { onShowSurfaceModeDialogChange(false) }
+        ) {
+            surfaceOptions.forEachIndexed { index, option ->
+                LevelOption(
+                    level = index,
+                    text = option.second,
+                    currentLevel = if (uiState.playerSurfaceMode == option.first) index else -1,
+                    onSelect = {
+                        viewModel.setPlayerSurfaceMode(option.first)
+                        onShowSurfaceModeDialogChange(false)
                     }
                 )
             }
@@ -351,6 +421,30 @@ internal fun SettingsScreenDialogs(
                 )
             }
         }
+    }
+
+    if (showDefaultStopTimerDialog) {
+        PlaybackTimerPresetDialog(
+            title = stringResource(R.string.settings_default_stop_timer),
+            selectedMinutes = uiState.defaultStopPlaybackTimerMinutes,
+            onDismiss = { onShowDefaultStopTimerDialogChange(false) },
+            onSelect = { minutes ->
+                viewModel.setDefaultStopPlaybackTimerMinutes(minutes)
+                onShowDefaultStopTimerDialogChange(false)
+            }
+        )
+    }
+
+    if (showDefaultIdleTimerDialog) {
+        PlaybackTimerPresetDialog(
+            title = stringResource(R.string.settings_default_idle_standby_timer),
+            selectedMinutes = uiState.defaultIdleStandbyTimerMinutes,
+            onDismiss = { onShowDefaultIdleTimerDialogChange(false) },
+            onSelect = { minutes ->
+                viewModel.setDefaultIdleStandbyTimerMinutes(minutes)
+                onShowDefaultIdleTimerDialogChange(false)
+            }
+        )
     }
 
     if (showLiveTvFiltersDialog) {
@@ -846,6 +940,12 @@ internal fun SettingsScreenDialogs(
             }
         )
     }
+}
+
+private fun AppTimeFormat.labelResId(): Int = when (this) {
+    AppTimeFormat.SYSTEM -> R.string.settings_time_format_system
+    AppTimeFormat.TWELVE_HOUR -> R.string.settings_time_format_12h
+    AppTimeFormat.TWENTY_FOUR_HOUR -> R.string.settings_time_format_24h
 }
 
 @Composable

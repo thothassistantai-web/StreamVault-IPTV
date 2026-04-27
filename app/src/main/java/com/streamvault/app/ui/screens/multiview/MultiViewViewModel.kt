@@ -77,6 +77,11 @@ class MultiViewViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            preferencesRepository.playerAudioVideoOffsetMs.collect {
+                applyAudioVideoOffsetsToActiveEngines()
+            }
+        }
+        viewModelScope.launch {
             combine(
                 preferencesRepository.getMultiViewPreset(0),
                 preferencesRepository.getMultiViewPreset(1),
@@ -243,6 +248,7 @@ class MultiViewViewModel @Inject constructor(
 
                         val channel = slot.channel
                             ?: throw IllegalStateException("Missing channel for slot ${slot.index}")
+                        engine.setAudioVideoOffsetMs(effectiveAudioVideoOffsetForChannel(channel.id))
                         val streamInfo = when (val result = channelRepository.getStreamInfo(channel)) {
                             is Result.Success -> result.data
                             is Result.Error -> throw IllegalStateException(result.message)
@@ -561,6 +567,22 @@ class MultiViewViewModel @Inject constructor(
                         )
                     }
                 }
+            }
+        }
+    }
+
+    private suspend fun effectiveAudioVideoOffsetForChannel(channelId: Long): Int {
+        val globalOffset = preferencesRepository.playerAudioVideoOffsetMs.first()
+        if (channelId <= 0L) return globalOffset
+        return preferencesRepository.observeAudioVideoOffsetForChannel(channelId).first() ?: globalOffset
+    }
+
+    private fun applyAudioVideoOffsetsToActiveEngines() {
+        val slots = _uiState.value.slots
+        playerEngines.forEach { (index, engine) ->
+            val channelId = slots.getOrNull(index)?.channel?.id ?: return@forEach
+            viewModelScope.launch {
+                engine.setAudioVideoOffsetMs(effectiveAudioVideoOffsetForChannel(channelId))
             }
         }
     }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +50,8 @@ import com.streamvault.app.ui.components.ChannelLogoBadge
 import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.model.guideLookupKey
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createTimeFormatter
 import com.streamvault.app.ui.theme.FocusBorder
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
@@ -61,9 +64,6 @@ import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Program
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
-import java.util.Locale
 import kotlin.math.max
 
 @Composable
@@ -119,7 +119,8 @@ internal fun EpgGrid(
     onChannelClick: (Channel) -> Unit,
     onProgramClick: (Channel, Program) -> Unit,
     onChannelFocused: (Channel, Program?, Boolean) -> Unit,
-    onProgramFocused: (Channel, Program, Boolean) -> Unit
+    onProgramFocused: (Channel, Program, Boolean) -> Unit,
+    onRequestMoreChannels: () -> Unit = {}
 ) {
     val channelRailWidth = 180.dp
     val timelineGap = 4.dp
@@ -166,6 +167,9 @@ internal fun EpgGrid(
                     items = channels,
                     key = { index, channel -> epgChannelKey(channel, index) }
                 ) { index, channel ->
+                    if (index >= channels.size - 15) {
+                        LaunchedEffect(channels.size) { onRequestMoreChannels() }
+                    }
                     val programs = channel.guideLookupKey()?.let { lookupKey ->
                         programsByChannel[lookupKey].orEmpty()
                     }.orEmpty()
@@ -207,7 +211,8 @@ private fun GuideTimelineHeader(
     scrollState: androidx.compose.foundation.ScrollState
 ) {
     val now = currentGuideNow()
-    val hourFormat = remember { DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT) }
+    val appTimeFormat = LocalAppTimeFormat.current
+    val hourFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormatter() }
     val zone = remember { ZoneId.systemDefault() }
     val totalDuration = (windowEnd - windowStart).coerceAtLeast(1L)
     val clampedNow = now.coerceIn(windowStart, windowEnd)
@@ -510,7 +515,8 @@ fun ProgramItem(
     val now = currentGuideNow()
     val isCurrent = now in program.startTime until program.endTime
 
-    val format = remember { DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT) }
+    val appTimeFormat = LocalAppTimeFormat.current
+    val format = remember(appTimeFormat) { appTimeFormat.createTimeFormatter() }
     val zone = remember { ZoneId.systemDefault() }
     val startStr = format.format(Instant.ofEpochMilli(program.startTime).atZone(zone))
     val endStr = format.format(Instant.ofEpochMilli(program.endTime).atZone(zone))

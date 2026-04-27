@@ -52,6 +52,8 @@ import androidx.tv.material3.Text
 import com.streamvault.app.R
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.interaction.TvButton
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createTimeFormat
 import com.streamvault.app.ui.theme.FocusBorder
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
@@ -64,9 +66,7 @@ import com.streamvault.domain.model.EpgMatchType
 import com.streamvault.domain.model.EpgOverrideCandidate
 import com.streamvault.domain.model.EpgSourceType
 import com.streamvault.domain.model.Program
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 @Composable
 private fun GuideModalDialog(
@@ -317,7 +317,8 @@ internal fun CompactGuideProgramDialog(
     onScheduleWeeklyRecording: (() -> Unit)?
 ) {
     var showDetails by rememberSaveable(program.startTime, program.endTime, program.title) { mutableStateOf(false) }
-    val format = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val appTimeFormat = LocalAppTimeFormat.current
+    val format = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
     val firstButtonFocusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstButtonFocusRequester.requestFocus() }
     GuideModalDialog(onDismiss = onDismiss) {

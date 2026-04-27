@@ -13,8 +13,12 @@ import com.streamvault.data.local.entity.SeriesEntity
 import com.streamvault.data.local.entity.ProviderEntity
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.data.remote.stalker.StalkerCategoryRecord
+import com.streamvault.data.remote.stalker.StalkerEpisodeRecord
 import com.streamvault.data.remote.stalker.StalkerItemRecord
+import com.streamvault.data.remote.stalker.StalkerPagedItems
 import com.streamvault.data.remote.stalker.StalkerProviderProfile
+import com.streamvault.data.remote.stalker.StalkerSeasonRecord
+import com.streamvault.data.remote.stalker.StalkerSeriesDetails
 import com.streamvault.data.remote.stalker.StalkerSession
 import com.streamvault.data.remote.dto.XtreamCategory
 import com.streamvault.data.remote.dto.XtreamSeriesItem
@@ -39,6 +43,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 
 class SeriesRepositoryImplTest {
@@ -128,15 +133,20 @@ class SeriesRepositoryImplTest {
         whenever(stalkerApiService.getSeriesCategories(any(), any())).thenReturn(
             Result.success(listOf(StalkerCategoryRecord(id = "77", name = "Drama")))
         )
-        whenever(stalkerApiService.getSeries(any(), any(), anyOrNull())).thenReturn(
+        whenever(stalkerApiService.getSeriesPage(any(), any(), anyOrNull(), eq(1))).thenReturn(
             Result.success(
-                listOf(
-                    StalkerItemRecord(
-                        id = "301",
-                        name = "Series",
-                        categoryId = "77",
-                        isSeries = true
-                    )
+                StalkerPagedItems(
+                    items = listOf(
+                        StalkerItemRecord(
+                            id = "301",
+                            name = "Series",
+                            categoryId = "77",
+                            isSeries = true
+                        )
+                    ),
+                    page = 1,
+                    totalPages = 1,
+                    pageSize = 1
                 )
             )
         )
@@ -148,8 +158,61 @@ class SeriesRepositoryImplTest {
         val result = repository.getSeriesByCategory(7L, 77L).first()
 
         assertThat(result).isEmpty()
-        verify(seriesDao).replaceCategory(eq(7L), eq(77L), any())
-        verify(episodeDao).deleteOrphans()
+        verify(seriesDao).upsertCategoryPage(eq(7L), any())
+        verify(seriesDao, never()).replaceCategory(eq(7L), eq(77L), any())
+        verifyNoInteractions(episodeDao)
+    }
+
+    @Test
+    fun `stalker series preview loads only first page`() = runTest {
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
+        whenever(seriesDao.getCountByCategory(7L, 77L)).thenReturn(flowOf(0), flowOf(18))
+        whenever(seriesDao.getByCategoryPreview(7L, 77L, 18)).thenReturn(flowOf(emptyList()))
+        whenever(seriesCategoryHydrationDao.get(7L, 77L)).thenReturn(null)
+        whenever(categoryDao.getByProviderAndType(7L, ContentType.SERIES.name)).thenReturn(
+            flowOf(listOf(com.streamvault.data.local.entity.CategoryEntity(providerId = 7L, categoryId = 77L, name = "Drama", type = ContentType.SERIES)))
+        )
+        whenever(providerDao.getById(7L)).thenReturn(
+            ProviderEntity(
+                id = 7L,
+                name = "Stalker",
+                type = ProviderType.STALKER_PORTAL,
+                serverUrl = "http://example.com",
+                stalkerMacAddress = "00:11:22:33:44:55",
+                status = ProviderStatus.ACTIVE
+            )
+        )
+        whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        whenever(stalkerApiService.getSeriesCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "77", name = "Drama")))
+        )
+        whenever(stalkerApiService.getSeriesPage(any(), any(), anyOrNull(), eq(1))).thenReturn(
+            Result.success(
+                StalkerPagedItems(
+                    items = (1..18).map { index ->
+                        StalkerItemRecord(id = "30$index", name = "Series $index", categoryId = "77", isSeries = true)
+                    },
+                    page = 1,
+                    totalPages = 2,
+                    pageSize = 50
+                )
+            )
+        )
+
+        val repository = createRepository()
+
+        repository.getCategoryPreviewRows(7L, listOf(77L), 18).first()
+
+        verify(stalkerApiService).getSeriesPage(any(), any(), anyOrNull(), eq(1))
+        verify(stalkerApiService, never()).getSeriesPage(any(), any(), anyOrNull(), eq(2))
     }
 
     @Test
@@ -256,6 +319,70 @@ class SeriesRepositoryImplTest {
         assertThat(series.id).isEqualTo(15L)
         assertThat(series.name).isEqualTo("Stored Series")
         assertThat(series.posterUrl).isEqualTo("https://img.example.test/poster.jpg")
+    }
+
+    @Test
+    fun `getSeriesDetails uses provider series id for stalker details`() = runTest {
+        val seriesEntity = SeriesEntity(
+            id = 15L,
+            seriesId = 256103980L,
+            providerSeriesId = "55000:55000",
+            name = "Stored Series",
+            providerId = 7L
+        )
+        whenever(seriesDao.getById(15L)).thenReturn(seriesEntity)
+        whenever(providerDao.getById(7L)).thenReturn(
+            ProviderEntity(
+                id = 7L,
+                name = "Stalker",
+                type = ProviderType.STALKER_PORTAL,
+                serverUrl = "http://example.com",
+                stalkerMacAddress = "00:11:22:33:44:55",
+                status = ProviderStatus.ACTIVE
+            )
+        )
+        whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        whenever(stalkerApiService.getSeriesDetails(any(), any(), eq("55000:55000"))).thenReturn(
+            Result.success(
+                StalkerSeriesDetails(
+                    series = StalkerItemRecord(id = "55000:55000", name = "", isSeries = true),
+                    seasons = listOf(
+                        StalkerSeasonRecord(
+                            seasonNumber = 1,
+                            name = "Season 1",
+                            episodes = listOf(
+                                StalkerEpisodeRecord(
+                                    id = "55000:1:1",
+                                    title = "Episode 1",
+                                    episodeNumber = 1,
+                                    seasonNumber = 1,
+                                    cmd = "cmd"
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        whenever(episodeDao.getBySeriesSync(15L)).thenReturn(emptyList())
+
+        val repository = createRepository()
+
+        val result = repository.getSeriesDetails(7L, 15L)
+
+        assertThat(result).isInstanceOf(com.streamvault.domain.model.Result.Success::class.java)
+        val series = (result as com.streamvault.domain.model.Result.Success).data
+        assertThat(series.name).isEqualTo("Stored Series")
+        verify(stalkerApiService).getSeriesDetails(any(), any(), eq("55000:55000"))
+        verifyNoInteractions(xtreamApiService)
     }
 
     @Test

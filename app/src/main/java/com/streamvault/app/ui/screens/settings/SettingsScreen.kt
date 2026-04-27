@@ -53,6 +53,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.app.ui.interaction.TvIconButton
+import com.streamvault.app.ui.time.createDateTimeFormat
 import com.streamvault.app.util.OfficialBuildStatus
 import com.streamvault.app.util.OfficialBuildVerifier
 
@@ -76,6 +77,7 @@ import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.ActiveLiveSource
+import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.CombinedM3uProfile
 import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.LiveChannelGroupingMode
@@ -129,14 +131,24 @@ fun SettingsScreen(
     val appLanguageLabel = remember(uiState.appLanguage, context) {
         displayLanguageLabel(uiState.appLanguage, context.getString(R.string.settings_system_default))
     }
+    val timeFormatLabel = remember(uiState.appTimeFormat, context) {
+        formatAppTimeFormatLabel(uiState.appTimeFormat, context)
+    }
+    val dateTimeFormat = remember(uiState.appTimeFormat) { uiState.appTimeFormat.createDateTimeFormat() }
     val preferredAudioLanguageLabel = remember(uiState.preferredAudioLanguage, context) {
         displayLanguageLabel(uiState.preferredAudioLanguage, context.getString(R.string.settings_audio_language_auto))
     }
     val playbackSpeedLabel = remember(uiState.playerPlaybackSpeed) {
         formatPlaybackSpeedLabel(uiState.playerPlaybackSpeed)
     }
+    val audioVideoOffsetLabel = remember(uiState.playerAudioVideoOffsetMs) {
+        formatAudioVideoOffsetLabel(uiState.playerAudioVideoOffsetMs)
+    }
     val decoderModeLabel = remember(uiState.playerDecoderMode, context) {
         formatDecoderModeLabel(uiState.playerDecoderMode, context)
+    }
+    val surfaceModeLabel = remember(uiState.playerSurfaceMode, context) {
+        formatSurfaceModeLabel(uiState.playerSurfaceMode, context)
     }
     val controlsTimeoutLabel = remember(uiState.playerControlsTimeoutSeconds, context) {
         formatTimeoutSecondsLabel(uiState.playerControlsTimeoutSeconds, context)
@@ -168,12 +180,18 @@ fun SettingsScreen(
     val timeshiftDepthLabel = remember(uiState.playerTimeshiftDepthMinutes, context) {
         formatTimeshiftDepthLabel(uiState.playerTimeshiftDepthMinutes, context)
     }
+    val defaultStopTimerLabel = remember(uiState.defaultStopPlaybackTimerMinutes, context) {
+        formatPlaybackTimerMinutesLabel(uiState.defaultStopPlaybackTimerMinutes, context)
+    }
+    val defaultIdleTimerLabel = remember(uiState.defaultIdleStandbyTimerMinutes, context) {
+        formatPlaybackTimerMinutesLabel(uiState.defaultIdleStandbyTimerMinutes, context)
+    }
     val lastSpeedTestLabel = remember(uiState.lastSpeedTest) {
         uiState.lastSpeedTest?.let(::formatSpeedTestValueLabel)
             ?: context.getString(R.string.settings_speed_test_not_run)
     }
-    val lastSpeedTestSummary = remember(uiState.lastSpeedTest, context) {
-        uiState.lastSpeedTest?.let { formatSpeedTestSummary(it, context) }
+    val lastSpeedTestSummary = remember(uiState.lastSpeedTest, context, dateTimeFormat) {
+        uiState.lastSpeedTest?.let { formatSpeedTestSummary(it, context, dateTimeFormat) }
             ?: context.getString(R.string.settings_speed_test_summary_default)
     }
     val speedTestRecommendationLabel = remember(uiState.lastSpeedTest, context) {
@@ -206,6 +224,7 @@ fun SettingsScreen(
     var showPinDialog by rememberSaveable { mutableStateOf(false) }
     var showLevelDialog by rememberSaveable { mutableStateOf(false) }
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    var showTimeFormatDialog by rememberSaveable { mutableStateOf(false) }
     var showLiveTvModeDialog by rememberSaveable { mutableStateOf(false) }
     var showLiveTvQuickFilterVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     var showLiveChannelNumberingDialog by rememberSaveable { mutableStateOf(false) }
@@ -215,8 +234,12 @@ fun SettingsScreen(
     var showVodViewModeDialog by rememberSaveable { mutableStateOf(false) }
     var showGuideDefaultCategoryDialog by rememberSaveable { mutableStateOf(false) }
     var showPlaybackSpeedDialog by rememberSaveable { mutableStateOf(false) }
+    var showAudioVideoOffsetDialog by rememberSaveable { mutableStateOf(false) }
     var showDecoderModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showSurfaceModeDialog by rememberSaveable { mutableStateOf(false) }
     var showTimeshiftDepthDialog by rememberSaveable { mutableStateOf(false) }
+    var showDefaultStopTimerDialog by rememberSaveable { mutableStateOf(false) }
+    var showDefaultIdleTimerDialog by rememberSaveable { mutableStateOf(false) }
     var showControlsTimeoutDialog by rememberSaveable { mutableStateOf(false) }
     var showLiveOverlayTimeoutDialog by rememberSaveable { mutableStateOf(false) }
     var showNoticeTimeoutDialog by rememberSaveable { mutableStateOf(false) }
@@ -466,6 +489,29 @@ fun SettingsScreen(
                             }
                             HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
                             TvClickableSurface(
+                                onClick = { viewModel.setAutoPlayNextEpisode(!uiState.autoPlayNextEpisode) },
+                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                                colors = ClickableSurfaceDefaults.colors(
+                                    containerColor = Color.Transparent,
+                                    focusedContainerColor = Primary.copy(alpha = 0.15f)
+                                ),
+                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = stringResource(R.string.settings_auto_play_next_episode), style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                                        Text(text = stringResource(R.string.settings_auto_play_next_episode_subtitle), style = MaterialTheme.typography.bodySmall, color = OnBackground.copy(alpha = 0.6f))
+                                    }
+                                    Switch(checked = uiState.autoPlayNextEpisode, onCheckedChange = { viewModel.setAutoPlayNextEpisode(it) })
+                                }
+                            }
+                            HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
+                            TvClickableSurface(
                                 onClick = { viewModel.setPlayerMediaSessionEnabled(!uiState.playerMediaSessionEnabled) },
                                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                                 colors = ClickableSurfaceDefaults.colors(
@@ -554,11 +600,31 @@ fun SettingsScreen(
                                 value = decoderModeLabel,
                                 onClick = { showDecoderModeDialog = true }
                             )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_surface_mode),
+                                value = surfaceModeLabel,
+                                onClick = { showSurfaceModeDialog = true }
+                            )
                             HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
                             ClickableSettingsRow(
                                 label = stringResource(R.string.settings_default_playback_speed),
                                 value = playbackSpeedLabel,
                                 onClick = { showPlaybackSpeedDialog = true }
+                            )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_default_stop_timer),
+                                value = defaultStopTimerLabel,
+                                onClick = { showDefaultStopTimerDialog = true }
+                            )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_default_idle_standby_timer),
+                                value = defaultIdleTimerLabel,
+                                onClick = { showDefaultIdleTimerDialog = true }
+                            )
+                            ClickableSettingsRow(
+                                label = stringResource(R.string.settings_audio_video_sync_default),
+                                value = audioVideoOffsetLabel,
+                                onClick = { showAudioVideoOffsetDialog = true }
                             )
                             ClickableSettingsRow(
                                 label = stringResource(R.string.settings_player_controls_timeout),
@@ -740,9 +806,25 @@ fun SettingsScreen(
                                 onClick = { showGuideDefaultCategoryDialog = true }
                             )
                             ClickableSettingsRow(
+                                label = stringResource(R.string.settings_time_format),
+                                value = timeFormatLabel,
+                                onClick = { showTimeFormatDialog = true }
+                            )
+                            ClickableSettingsRow(
                                 label = stringResource(R.string.settings_vod_view_mode),
                                 value = stringResource(uiState.vodViewMode.labelResId()),
                                 onClick = { showVodViewModeDialog = true }
+                            )
+                            SwitchSettingsRow(
+                                label = stringResource(R.string.settings_vod_infinite_scroll),
+                                value = stringResource(
+                                    if (uiState.vodInfiniteScroll) R.string.settings_vod_infinite_scroll_on
+                                    else R.string.settings_vod_infinite_scroll_off
+                                ),
+                                checked = uiState.vodInfiniteScroll,
+                                onCheckedChange = { viewModel.setVodInfiniteScroll(it) },
+                                enabled = uiState.vodViewMode == VodViewMode.MODERN,
+                                indent = 24.dp
                             )
                             HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
                             ClickableSettingsRow(
@@ -1165,10 +1247,18 @@ fun SettingsScreen(
         onShowGuideDefaultCategoryDialogChange = { showGuideDefaultCategoryDialog = it },
         showPlaybackSpeedDialog = showPlaybackSpeedDialog,
         onShowPlaybackSpeedDialogChange = { showPlaybackSpeedDialog = it },
+        showAudioVideoOffsetDialog = showAudioVideoOffsetDialog,
+        onShowAudioVideoOffsetDialogChange = { showAudioVideoOffsetDialog = it },
         showDecoderModeDialog = showDecoderModeDialog,
         onShowDecoderModeDialogChange = { showDecoderModeDialog = it },
+        showSurfaceModeDialog = showSurfaceModeDialog,
+        onShowSurfaceModeDialogChange = { showSurfaceModeDialog = it },
         showTimeshiftDepthDialog = showTimeshiftDepthDialog,
         onShowTimeshiftDepthDialogChange = { showTimeshiftDepthDialog = it },
+        showDefaultStopTimerDialog = showDefaultStopTimerDialog,
+        onShowDefaultStopTimerDialogChange = { showDefaultStopTimerDialog = it },
+        showDefaultIdleTimerDialog = showDefaultIdleTimerDialog,
+        onShowDefaultIdleTimerDialogChange = { showDefaultIdleTimerDialog = it },
         showControlsTimeoutDialog = showControlsTimeoutDialog,
         onShowControlsTimeoutDialogChange = { showControlsTimeoutDialog = it },
         showLiveOverlayTimeoutDialog = showLiveOverlayTimeoutDialog,
@@ -1205,6 +1295,8 @@ fun SettingsScreen(
         onPendingProtectionLevelChange = { pendingProtectionLevel = it },
         showLanguageDialog = showLanguageDialog,
         onShowLanguageDialogChange = { showLanguageDialog = it },
+        showTimeFormatDialog = showTimeFormatDialog,
+        onShowTimeFormatDialogChange = { showTimeFormatDialog = it },
         showRecordingPatternDialog = showRecordingPatternDialog,
         onShowRecordingPatternDialogChange = { showRecordingPatternDialog = it },
         showRecordingRetentionDialog = showRecordingRetentionDialog,
@@ -1251,6 +1343,17 @@ private fun android.content.Context.findMainActivity(): MainActivity? {
     }
     return null
 }
+
+private fun formatAppTimeFormatLabel(
+    format: AppTimeFormat,
+    context: android.content.Context
+): String = context.getString(
+    when (format) {
+        AppTimeFormat.SYSTEM -> R.string.settings_time_format_system
+        AppTimeFormat.TWELVE_HOUR -> R.string.settings_time_format_12h
+        AppTimeFormat.TWENTY_FOUR_HOUR -> R.string.settings_time_format_24h
+    }
+)
 
 private fun formatTimeshiftDepthLabel(
     depthMinutes: Int,

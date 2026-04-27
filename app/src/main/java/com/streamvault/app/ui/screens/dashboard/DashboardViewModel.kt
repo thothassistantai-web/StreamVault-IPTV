@@ -163,21 +163,19 @@ class DashboardViewModel @Inject constructor(
         combinedProfileId: Long?
     ): Flow<DashboardUiState> {
         val movieShelf = combine(
-            movieRepository.getMovies(provider.id),
+            movieRepository.getFreshPreview(provider.id, MOVIE_SHELF_LIMIT),
             preferencesRepository.parentalControlLevel
         ) { movies, level ->
             movies
                 .filter { !shouldHideVodFromHome(it, level) }
-                .sortedByDescending(::movieFreshnessScore)
                 .take(MOVIE_SHELF_LIMIT)
         }
         val seriesShelf = combine(
-            seriesRepository.getSeries(provider.id),
+            seriesRepository.getFreshPreview(provider.id, SERIES_SHELF_LIMIT),
             preferencesRepository.parentalControlLevel
         ) { series, level ->
             series
                 .filter { !shouldHideVodFromHome(it, level) }
-                .sortedByDescending(::seriesFreshnessScore)
                 .take(SERIES_SHELF_LIMIT)
         }
         val contentShelves = combine(
@@ -359,9 +357,9 @@ class DashboardViewModel @Inject constructor(
 
     private fun observeLiveChannelCount(providerIds: List<Long>): Flow<Int> = when (providerIds.size) {
         0 -> flowOf(0)
-        1 -> channelRepository.getChannels(providerIds.first()).map { it.size }
+        1 -> channelRepository.getChannelCount(providerIds.first())
         else -> combine(providerIds.map { providerId ->
-            channelRepository.getChannels(providerId).map { channels -> channels.size }
+            channelRepository.getChannelCount(providerId)
         }) { counts ->
             counts.sum()
         }

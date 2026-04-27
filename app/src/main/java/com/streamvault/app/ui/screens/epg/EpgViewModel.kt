@@ -35,6 +35,7 @@ import com.streamvault.domain.usecase.ScheduleRecordingCommand
 import com.streamvault.domain.util.AdultContentVisibilityPolicy
 import com.streamvault.data.preferences.PreferencesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -93,7 +94,8 @@ data class EpgUiState(
     val guideWindowStart: Long = DEFAULT_NOW - EpgViewModel.LOOKBACK_MS,
     val guideWindowEnd: Long = DEFAULT_NOW + EpgViewModel.LOOKAHEAD_MS,
     val recordingMessage: String? = null,
-    val pendingRecordingConflict: RecordingConflictInfo? = null
+    val pendingRecordingConflict: RecordingConflictInfo? = null,
+    val hasMoreChannels: Boolean = false
 ) {
     companion object {
         private val DEFAULT_NOW = System.currentTimeMillis()
@@ -177,7 +179,10 @@ private data class GuideBaseSnapshot(
     val baseGuideStale: Boolean,
     val guideAnchorTime: Long,
     val guideWindowStart: Long,
-    val guideWindowEnd: Long
+    val guideWindowEnd: Long,
+    val hiddenCategoryIds: Set<Long> = emptySet(),
+    val nextRawChannelOffset: Int = 0,
+    val hasMoreChannels: Boolean = false
 )
 
 private data class GuideDisplaySnapshot(
@@ -193,6 +198,12 @@ private data class GuideBaseComputation(
     val now: Long,
     val channelsWithSchedule: Int,
     val hasUpcomingData: Boolean
+)
+
+private data class GuidePrefetchedPage(
+    val channels: List<Channel>,
+    val programs: GuideProgramsResult,
+    val nextRawOffset: Int
 )
 
 private data class GuideSelectionRequest(
@@ -275,6 +286,8 @@ class EpgViewModel @Inject constructor(
     val programReminderUiState: StateFlow<ProgramReminderUiState> = _programReminderUiState.asStateFlow()
     private var overrideSearchJob: Job? = null
     private var guideFallbackJob: Job? = null
+    private var prefetchJob: Deferred<GuidePrefetchedPage?>? = null
+    private var loadMoreJob: Job? = null
     private var combinedCategoriesById: Map<Long, CombinedCategory> = emptyMap()
 
     init {
@@ -314,6 +327,129 @@ class EpgViewModel @Inject constructor(
 
     fun refresh() {
         refreshNonce.update { it + 1 }
+    }
+
+    fun requestMoreChannels() {
+        val snapshot = baseGuideSnapshot.value ?: return
+        if (!snapshot.hasMoreChannels) return
+        if (loadMoreJob?.isActive == true) return
+        val deferred = prefetchJob
+        if (deferred == null) {
+            val nextChannels = snapshot.allChannels
+                .drop(snapshot.visibleChannels.size)
+                .take(MAX_CHANNELS)
+            if (nextChannels.isEmpty()) {
+                baseGuideSnapshot.update { it?.copy(hasMoreChannels = false) }
+                return
+            }
+            loadMoreJob = viewModelScope.launch {
+                val programs = loadGuideProgramsForSnapshot(snapshot, nextChannels)
+                val current = baseGuideSnapshot.value ?: return@launch
+                if (current.selectedCategoryId != snapshot.selectedCategoryId ||
+                    current.providerId != snapshot.providerId
+                ) return@launch
+                val newVisible = current.visibleChannels + nextChannels
+                baseGuideSnapshot.update { s ->
+                    s?.copy(
+                        visibleChannels = newVisible,
+                        baseProgramsByChannel = s.baseProgramsByChannel + programs.programsByChannel,
+                        hasMoreChannels = newVisible.size < s.allChannels.size
+                    )
+                }
+            }
+            return
+        }
+        if (deferred.isCancelled) return
+        prefetchJob = null
+        loadMoreJob = viewModelScope.launch {
+            val page = deferred.await() ?: run {
+                baseGuideSnapshot.update { it?.copy(hasMoreChannels = false) }
+                return@launch
+            }
+            val current = baseGuideSnapshot.value ?: return@launch
+            // Guard: category must not have changed while prefetch was running
+            if (current.selectedCategoryId != snapshot.selectedCategoryId ||
+                current.providerId != snapshot.providerId
+            ) return@launch
+            val newVisible = current.visibleChannels + page.channels
+            baseGuideSnapshot.update { s ->
+                s?.copy(
+                    visibleChannels = newVisible,
+                    allChannels = newVisible,
+                    baseProgramsByChannel = s.baseProgramsByChannel + page.programs.programsByChannel,
+                    nextRawChannelOffset = page.nextRawOffset,
+                    hasMoreChannels = page.channels.size >= MAX_CHANNELS
+                )
+            }
+            baseGuideSnapshot.value?.let { schedulePrefetchNextPage(it) }
+        }
+    }
+
+    private suspend fun loadGuideProgramsForSnapshot(
+        snapshot: GuideBaseSnapshot,
+        channels: List<Channel>
+    ): GuideProgramsResult =
+        if (snapshot.providerId > 0L) {
+            loadGuidePrograms(
+                providerId = snapshot.providerId,
+                channels = channels,
+                windowStart = snapshot.guideWindowStart,
+                windowEnd = snapshot.guideWindowEnd
+            )
+        } else {
+            loadCombinedGuidePrograms(
+                channels = channels,
+                windowStart = snapshot.guideWindowStart,
+                windowEnd = snapshot.guideWindowEnd
+            )
+        }
+
+    private fun schedulePrefetchNextPage(snapshot: GuideBaseSnapshot) {
+        if (!snapshot.hasMoreChannels) return
+        prefetchJob = viewModelScope.async<GuidePrefetchedPage?>(Dispatchers.IO) {
+            val channels = fetchGuideChannelPage(
+                providerId = snapshot.providerId,
+                categoryId = snapshot.selectedCategoryId,
+                offset = snapshot.nextRawChannelOffset,
+                hiddenCategoryIds = snapshot.hiddenCategoryIds,
+                favoritesOnly = snapshot.showFavoritesOnly,
+                favoriteChannelIds = snapshot.favoriteChannelIds
+            )
+            if (channels.isEmpty()) return@async null
+            val programs = loadGuidePrograms(
+                providerId = snapshot.providerId,
+                channels = channels,
+                windowStart = snapshot.guideWindowStart,
+                windowEnd = snapshot.guideWindowEnd
+            )
+            GuidePrefetchedPage(
+                channels = channels,
+                programs = programs,
+                nextRawOffset = snapshot.nextRawChannelOffset + MAX_CHANNELS
+            )
+        }
+    }
+
+    private suspend fun fetchGuideChannelPage(
+        providerId: Long,
+        categoryId: Long,
+        offset: Int,
+        hiddenCategoryIds: Set<Long>,
+        favoritesOnly: Boolean,
+        favoriteChannelIds: Set<Long>
+    ): List<Channel> {
+        if (providerId <= 0L) return emptyList()
+        // Favorites and virtual group categories aren't offset-pageable; All Channels is a negative sentinel but is pageable.
+        if (categoryId != ChannelRepository.ALL_CHANNELS_ID &&
+            (categoryId == VirtualCategoryIds.FAVORITES || categoryId < 0L)
+        ) return emptyList()
+        val withoutErrors = channelRepository.getChannelsWithoutErrorsPageOffset(providerId, categoryId, MAX_CHANNELS, offset)
+        val raw = withoutErrors.ifEmpty {
+            channelRepository.getChannelsByCategoryPageOffset(providerId, categoryId, MAX_CHANNELS, offset)
+        }
+        val filtered = if (hiddenCategoryIds.isEmpty()) raw
+        else raw.filterNot { it.categoryId in hiddenCategoryIds }
+        return if (favoritesOnly) filtered.filter { it.id in favoriteChannelIds } else filtered
     }
 
     fun openEpgOverride(channel: Channel) {
@@ -811,6 +947,7 @@ class EpgViewModel @Inject constructor(
                         channels = visibleChannels,
                         existingProgramsByChannel = guideResult.programsByChannel
                     )
+                    baseGuideSnapshot.value?.let { schedulePrefetchNextPage(it) }
                     finalizeStartupCategory(request.resolvedCategoryId)
                 }
             }
@@ -972,7 +1109,12 @@ class EpgViewModel @Inject constructor(
         channelSelection: GuideChannelSelection,
         guideResult: GuideProgramsResult
     ) {
+        prefetchJob?.cancel()
+        prefetchJob = null
         val visibleChannels = channelSelection.channels.take(MAX_CHANNELS)
+        val supportsOffsetPaging = providerId > 0L &&
+            (request.resolvedCategoryId == ChannelRepository.ALL_CHANNELS_ID ||
+                (request.resolvedCategoryId != VirtualCategoryIds.FAVORITES && request.resolvedCategoryId >= 0L))
         val computedNow = System.currentTimeMillis()
         val computedChannelsWithSchedule = visibleChannels.count { channel ->
             channel.guideLookupKey()
@@ -1001,7 +1143,14 @@ class EpgViewModel @Inject constructor(
             baseGuideStale = visibleChannels.isNotEmpty() && (computedChannelsWithSchedule == 0 || !computedHasUpcomingData),
             guideAnchorTime = request.anchorTime,
             guideWindowStart = request.windowStart,
-            guideWindowEnd = request.windowEnd
+            guideWindowEnd = request.windowEnd,
+            hiddenCategoryIds = request.hiddenCategoryIds,
+            nextRawChannelOffset = MAX_CHANNELS,
+            hasMoreChannels = if (supportsOffsetPaging) {
+                channelSelection.channels.size >= MAX_CHANNELS
+            } else {
+                channelSelection.channels.size > visibleChannels.size
+            }
         )
     }
 
@@ -1095,7 +1244,8 @@ class EpgViewModel @Inject constructor(
                         isGuideStale = displaySnapshot.isGuideStale,
                         guideAnchorTime = baseSnapshot.guideAnchorTime,
                         guideWindowStart = baseSnapshot.guideWindowStart,
-                        guideWindowEnd = baseSnapshot.guideWindowEnd
+                        guideWindowEnd = baseSnapshot.guideWindowEnd,
+                        hasMoreChannels = baseSnapshot.hasMoreChannels
                     )
                 }
             }

@@ -77,6 +77,8 @@ import com.streamvault.app.ui.components.shell.StatusPill
 import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.screens.player.PlayerDiagnosticsUiState
 import com.streamvault.app.ui.screens.player.PlayerTimeshiftUiState
+import com.streamvault.app.ui.time.LocalAppTimeFormat
+import com.streamvault.app.ui.time.createTimeFormat
 import com.streamvault.domain.model.RecordingStatus
 import com.streamvault.app.ui.design.AppColors.Brand as Primary
 import com.streamvault.app.ui.design.AppColors.SurfaceElevated as SurfaceVariant
@@ -86,7 +88,6 @@ import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Program
 import com.streamvault.player.PlayerStats
 import com.streamvault.player.timeshift.LiveTimeshiftStatus
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import com.streamvault.app.ui.interaction.TvClickableSurface
@@ -203,6 +204,7 @@ fun ChannelInfoOverlay(
     onOpenAudioTracks: () -> Unit = {},
     onOpenVideoTracks: () -> Unit = {},
     onOpenVariants: () -> Unit = {},
+    onOpenAudioVideoSync: () -> Unit = {},
     onEnterPictureInPicture: () -> Unit = {},
     isCastConnected: Boolean = false,
     onCast: () -> Unit = {},
@@ -210,7 +212,8 @@ fun ChannelInfoOverlay(
     timeshiftUiState: PlayerTimeshiftUiState = PlayerTimeshiftUiState(),
     onTransientPanelVisibilityChanged: (Boolean) -> Unit = {}
 ) {
-    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val appTimeFormat = LocalAppTimeFormat.current
+    val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
     val showTimeshiftControls = timeshiftUiState.available && !isCastConnected
     val hasCatchUpOptions = currentChannel?.catchUpSupported == true || currentProgram?.hasArchive == true
     var expandedPanel by remember { mutableStateOf<ChannelInfoPanel?>(null) }
@@ -540,6 +543,19 @@ fun ChannelInfoOverlay(
                             icon = stringResource(R.string.player_audio),
                             label = stringResource(R.string.player_audio),
                             onClick = onOpenAudioTracks,
+                            onInteraction = { handleMainActionFocus(null) }
+                        )
+                    }
+                }
+                if (!isCastConnected) {
+                    item {
+                        QuickActionButton(
+                            icon = "A/V",
+                            label = stringResource(R.string.player_av_sync_short),
+                            onClick = {
+                                expandedPanel = null
+                                onOpenAudioVideoSync()
+                            },
                             onInteraction = { handleMainActionFocus(null) }
                         )
                     }
@@ -1567,7 +1583,8 @@ fun EpgOverlay(
     onOpenArchiveBrowser: (() -> Unit)? = null,
     onOverlayInteracted: () -> Unit = {}
 ) {
-    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val appTimeFormat = LocalAppTimeFormat.current
+    val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
     val listState = rememberLazyListState()
     val filteredUpcoming = remember(upcomingPrograms, currentProgram, nextProgram) {
         upcomingPrograms.filter { it.id != currentProgram?.id && it.id != nextProgram?.id }
@@ -1832,6 +1849,8 @@ fun DiagnosticsOverlay(
             }
             PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_playback))
             PlayerMetaRow(stringResource(R.string.player_diagnostics_decoder), diagnostics.decoderMode.name)
+            PlayerMetaRow(stringResource(R.string.player_diagnostics_active_decoder), diagnostics.activeDecoderName)
+            PlayerMetaRow(stringResource(R.string.player_diagnostics_surface), diagnostics.renderSurfaceType)
             PlayerMetaRow(stringResource(R.string.player_diagnostics_stream_class), diagnostics.streamClassLabel)
             PlayerMetaRow(stringResource(R.string.player_diagnostics_playback_state), diagnostics.playbackStateLabel)
             if (diagnostics.archiveSupportLabel.isNotBlank()) {
@@ -1846,11 +1865,16 @@ fun DiagnosticsOverlay(
             PlayerMetaRow(stringResource(R.string.player_diagnostics_video_codec), stats.videoCodec)
             PlayerMetaRow(stringResource(R.string.player_diagnostics_video_bitrate), "${stats.videoBitrate / 1000} kbps")
             PlayerMetaRow(stringResource(R.string.player_diagnostics_dropped_frames), stats.droppedFrames.toString())
+            PlayerMetaRow(stringResource(R.string.player_diagnostics_video_stalls), diagnostics.videoStallCount.toString())
+            if (diagnostics.lastVideoFrameAgoMs > 0L) {
+                PlayerMetaRow(stringResource(R.string.player_diagnostics_last_frame), "${diagnostics.lastVideoFrameAgoMs} ms")
+            }
             if (stats.ttffMs > 0L) {
                 PlayerMetaRow("TTFF", "${stats.ttffMs} ms")
             }
             PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_audio))
             PlayerMetaRow(stringResource(R.string.player_diagnostics_audio_codec), stats.audioCodec)
+            PlayerMetaRow(stringResource(R.string.player_diagnostics_av_offset), formatOffsetLabel(diagnostics.audioVideoOffsetMs))
             PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_recovery))
             diagnostics.lastFailureReason?.let { reason ->
                 PlayerMetaRow(stringResource(R.string.player_diagnostics_last_failure), reason, maxLines = 3)
@@ -1891,6 +1915,12 @@ fun DiagnosticsOverlay(
             }
         }
     }
+}
+
+private fun formatOffsetLabel(offsetMs: Int): String = when {
+    offsetMs > 0 -> "+$offsetMs ms"
+    offsetMs < 0 -> "$offsetMs ms"
+    else -> "0 ms"
 }
 
 @Composable
