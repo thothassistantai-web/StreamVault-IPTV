@@ -52,6 +52,12 @@ __pycache__/
 capture.txt
 out.txt
 localization_audit.txt
+missing_en.json
+missing_en.tsv
+missing_keys.txt
+docs/review/
+graphify-out/
+tmp/
 tmp/*.txt
 tmp/*_HEAD.kt
 tmp/gha-artifact-inspect/
