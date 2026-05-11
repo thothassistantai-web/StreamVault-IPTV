@@ -7,6 +7,7 @@ import com.google.gson.stream.JsonToken
 import com.streamvault.data.remote.dto.XtreamAuthResponse
 import com.streamvault.data.remote.dto.XtreamCategory
 import com.streamvault.data.remote.dto.XtreamEpgResponse
+import com.streamvault.data.remote.dto.XtreamLiveStreamRow
 import com.streamvault.data.remote.dto.XtreamSeriesInfoResponse
 import com.streamvault.data.remote.dto.XtreamSeriesItem
 import com.streamvault.data.remote.dto.XtreamStream
@@ -120,6 +121,19 @@ class OkHttpXtreamApiService(
             profile = RequestProfile.HEAVY_CATALOG,
             requestProfile = requestProfile,
             deserializer = XtreamStream.serializer(),
+            onItem = onItem
+        )
+
+    suspend fun streamLiveStreamRows(
+        endpoint: String,
+        requestProfile: HttpRequestProfile = HttpRequestProfile(),
+        onItem: suspend (XtreamLiveStreamRow) -> Unit
+    ): Int =
+        streamArray(
+            endpoint = endpoint,
+            profile = RequestProfile.HEAVY_CATALOG,
+            requestProfile = requestProfile,
+            deserializer = XtreamLiveStreamRow.serializer(),
             onItem = onItem
         )
 

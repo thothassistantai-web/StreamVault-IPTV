@@ -13,6 +13,7 @@ import com.streamvault.domain.manager.BackupImportPlan
 import com.streamvault.domain.manager.BackupPreview
 import com.streamvault.domain.model.ActiveLiveSource
 import com.streamvault.domain.model.ProviderEpgSyncMode
+import com.streamvault.domain.model.ProviderXtreamLiveSyncMode
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.ProviderRepository
@@ -50,6 +51,12 @@ class ProviderSetupViewModel @Inject constructor(
     private val validateAndAddProvider: ValidateAndAddProvider,
     private val importBackup: ImportBackup
 ) : ViewModel() {
+
+    enum class OnboardingCompletion {
+        NONE,
+        READY,
+        SAVED_RESUMING
+    }
 
     enum class SetupSourceType {
         XTREAM,
@@ -94,11 +101,14 @@ class ProviderSetupViewModel @Inject constructor(
                         username = provider.username,
                         password = "",
                         m3uUrl = provider.m3uUrl,
+                        httpUserAgent = provider.httpUserAgent,
+                        httpHeaders = provider.httpHeaders,
                         stalkerMacAddress = provider.stalkerMacAddress,
                         stalkerDeviceProfile = provider.stalkerDeviceProfile,
                         stalkerDeviceTimezone = provider.stalkerDeviceTimezone,
                         stalkerDeviceLocale = provider.stalkerDeviceLocale,
                         epgSyncMode = provider.epgSyncMode,
+                        xtreamLiveSyncMode = provider.xtreamLiveSyncMode,
                         hasCustomizedEpgSyncMode = true,
                         m3uVodClassificationEnabled = provider.m3uVodClassificationEnabled,
                         selectedTab = when (provider.type) {
@@ -125,6 +135,10 @@ class ProviderSetupViewModel @Inject constructor(
         _uiState.update { it.copy(epgSyncMode = mode, hasCustomizedEpgSyncMode = true) }
     }
 
+    fun updateXtreamLiveSyncMode(mode: ProviderXtreamLiveSyncMode) {
+        _uiState.update { it.copy(xtreamLiveSyncMode = mode) }
+    }
+
     fun applySourceDefaults(sourceType: SetupSourceType) {
         _uiState.update { current ->
             if (current.isEditing || current.hasCustomizedEpgSyncMode) {
@@ -145,7 +159,15 @@ class ProviderSetupViewModel @Inject constructor(
         timezone: String,
         locale: String
     ) {
-        _uiState.update { it.copy(validationError = null, error = null, completionWarning = null) }
+        _uiState.update {
+            it.copy(
+                validationError = null,
+                error = null,
+                completionWarning = null,
+                onboardingCompletion = OnboardingCompletion.NONE,
+                loginSuccess = false
+            )
+        }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, validationError = null, syncProgress = "Connecting...") }
@@ -169,6 +191,7 @@ class ProviderSetupViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             loginSuccess = true,
+                            onboardingCompletion = OnboardingCompletion.READY,
                             createdProviderId = result.provider.id,
                             error = null,
                             validationError = null,
@@ -180,7 +203,8 @@ class ProviderSetupViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            loginSuccess = true,
+                            loginSuccess = false,
+                            onboardingCompletion = OnboardingCompletion.SAVED_RESUMING,
                             createdProviderId = result.provider.id,
                             error = null,
                             validationError = null,
@@ -208,8 +232,23 @@ class ProviderSetupViewModel @Inject constructor(
         }
     }
 
-    fun loginXtream(serverUrl: String, username: String, password: String, name: String) {
-        _uiState.update { it.copy(validationError = null, error = null, completionWarning = null) }
+    fun loginXtream(
+        serverUrl: String,
+        username: String,
+        password: String,
+        name: String,
+        httpUserAgent: String,
+        httpHeaders: String
+    ) {
+        _uiState.update {
+            it.copy(
+                validationError = null,
+                error = null,
+                completionWarning = null,
+                onboardingCompletion = OnboardingCompletion.NONE,
+                loginSuccess = false
+            )
+        }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, validationError = null, syncProgress = "Connecting...") }
@@ -221,8 +260,11 @@ class ProviderSetupViewModel @Inject constructor(
                     username = username,
                     password = password,
                     name = name,
+                    httpUserAgent = httpUserAgent,
+                    httpHeaders = httpHeaders,
                     xtreamFastSyncEnabled = false,
                     epgSyncMode = _uiState.value.epgSyncMode,
+                    xtreamLiveSyncMode = _uiState.value.xtreamLiveSyncMode,
                     existingProviderId = existingId
                 ),
                 onProgress = { msg -> _uiState.update { it.copy(syncProgress = msg) } }
@@ -232,6 +274,7 @@ class ProviderSetupViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             loginSuccess = true,
+                            onboardingCompletion = OnboardingCompletion.READY,
                             createdProviderId = result.provider.id,
                             error = null,
                             validationError = null,
@@ -243,7 +286,8 @@ class ProviderSetupViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            loginSuccess = true,
+                            loginSuccess = false,
+                            onboardingCompletion = OnboardingCompletion.SAVED_RESUMING,
                             createdProviderId = result.provider.id,
                             error = null,
                             validationError = null,
@@ -271,8 +315,16 @@ class ProviderSetupViewModel @Inject constructor(
         }
     }
 
-    fun addM3u(url: String, name: String) {
-        _uiState.update { it.copy(validationError = null, error = null, completionWarning = null) }
+    fun addM3u(url: String, name: String, httpUserAgent: String, httpHeaders: String) {
+        _uiState.update {
+            it.copy(
+                validationError = null,
+                error = null,
+                completionWarning = null,
+                onboardingCompletion = OnboardingCompletion.NONE,
+                loginSuccess = false
+            )
+        }
 
         if (url.isBlank()) {
             _uiState.update {
@@ -289,6 +341,8 @@ class ProviderSetupViewModel @Inject constructor(
                 M3uProviderSetupCommand(
                     url = url,
                     name = name,
+                    httpUserAgent = httpUserAgent,
+                    httpHeaders = httpHeaders,
                     epgSyncMode = _uiState.value.epgSyncMode,
                     m3uVodClassificationEnabled = _uiState.value.m3uVodClassificationEnabled,
                     existingProviderId = existingId
@@ -312,6 +366,7 @@ class ProviderSetupViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             loginSuccess = activeCombinedProfileId == null,
+                            onboardingCompletion = OnboardingCompletion.READY,
                             createdProviderId = result.provider.id,
                             createdProviderName = result.provider.name,
                             pendingCombinedAttachProfileId = activeCombinedProfileId,
@@ -336,7 +391,8 @@ class ProviderSetupViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            loginSuccess = activeCombinedProfileId == null,
+                            loginSuccess = false,
+                            onboardingCompletion = OnboardingCompletion.SAVED_RESUMING,
                             createdProviderId = result.provider.id,
                             createdProviderName = result.provider.name,
                             pendingCombinedAttachProfileId = activeCombinedProfileId,
@@ -492,7 +548,7 @@ class ProviderSetupViewModel @Inject constructor(
                 it.copy(
                     pendingCombinedAttachProfileId = null,
                     pendingCombinedAttachProfileName = null,
-                    loginSuccess = true
+                    loginSuccess = it.onboardingCompletion == OnboardingCompletion.READY
                 )
             }
         }
@@ -503,7 +559,7 @@ class ProviderSetupViewModel @Inject constructor(
             it.copy(
                 pendingCombinedAttachProfileId = null,
                 pendingCombinedAttachProfileName = null,
-                loginSuccess = true
+                loginSuccess = it.onboardingCompletion == OnboardingCompletion.READY
             )
         }
     }
@@ -624,6 +680,7 @@ class ProviderSetupViewModel @Inject constructor(
 data class ProviderSetupState(
     val isLoading: Boolean = false,
     val loginSuccess: Boolean = false,
+    val onboardingCompletion: ProviderSetupViewModel.OnboardingCompletion = ProviderSetupViewModel.OnboardingCompletion.NONE,
     val backupImportSuccess: Boolean = false,
     val hasExistingProvider: Boolean = false,
     val error: String? = null,
@@ -639,6 +696,8 @@ data class ProviderSetupState(
     val username: String = "",
     val password: String = "",
     val m3uUrl: String = "",
+    val httpUserAgent: String = "",
+    val httpHeaders: String = "",
     val stalkerMacAddress: String = "",
     val stalkerDeviceProfile: String = "",
     val stalkerDeviceTimezone: String = "",
@@ -652,6 +711,7 @@ data class ProviderSetupState(
     val pendingBackupUri: String? = null,
     val backupImportPlan: BackupImportPlan = BackupImportPlan(),
     val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+    val xtreamLiveSyncMode: ProviderXtreamLiveSyncMode = ProviderXtreamLiveSyncMode.AUTO,
     val hasCustomizedEpgSyncMode: Boolean = false,
     val m3uVodClassificationEnabled: Boolean = false
 )

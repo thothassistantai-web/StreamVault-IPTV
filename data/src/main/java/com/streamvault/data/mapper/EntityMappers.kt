@@ -3,6 +3,8 @@ package com.streamvault.data.mapper
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.streamvault.data.local.entity.*
+import com.streamvault.data.remote.xtream.XtreamStreamKind
+import com.streamvault.data.remote.xtream.XtreamUrlFactory
 import com.streamvault.domain.model.*
 
 private val qualityOptionsGson = Gson()
@@ -20,6 +22,8 @@ fun ProviderEntity.toDomain() = Provider(
     password = password,
     m3uUrl = m3uUrl,
     epgUrl = epgUrl,
+    httpUserAgent = httpUserAgent,
+    httpHeaders = httpHeaders,
     stalkerMacAddress = stalkerMacAddress,
     stalkerDeviceProfile = stalkerDeviceProfile,
     stalkerDeviceTimezone = stalkerDeviceTimezone,
@@ -31,6 +35,7 @@ fun ProviderEntity.toDomain() = Provider(
     allowedOutputFormats = decodeAllowedOutputFormats(allowedOutputFormatsJson),
     epgSyncMode = epgSyncMode,
     xtreamFastSyncEnabled = xtreamFastSyncEnabled,
+    xtreamLiveSyncMode = xtreamLiveSyncMode,
     m3uVodClassificationEnabled = m3uVodClassificationEnabled,
     status = status,
     lastSyncedAt = lastSyncedAt,
@@ -46,6 +51,8 @@ fun Provider.toEntity() = ProviderEntity(
     password = password,
     m3uUrl = m3uUrl,
     epgUrl = epgUrl,
+    httpUserAgent = httpUserAgent,
+    httpHeaders = httpHeaders,
     stalkerMacAddress = stalkerMacAddress,
     stalkerDeviceProfile = stalkerDeviceProfile,
     stalkerDeviceTimezone = stalkerDeviceTimezone,
@@ -57,6 +64,7 @@ fun Provider.toEntity() = ProviderEntity(
     allowedOutputFormatsJson = encodeAllowedOutputFormats(allowedOutputFormats),
     epgSyncMode = epgSyncMode,
     xtreamFastSyncEnabled = xtreamFastSyncEnabled,
+    xtreamLiveSyncMode = xtreamLiveSyncMode,
     m3uVodClassificationEnabled = m3uVodClassificationEnabled,
     status = status,
     lastSyncedAt = lastSyncedAt,
@@ -111,27 +119,39 @@ fun ChannelEntity.toDomain(): Channel {
     )
 }
 
-fun Channel.toEntity() = ChannelEntity(
-    id = id,
-    streamId = streamId.takeIf { it > 0 } ?: id,
-    name = name,
-    logoUrl = logoUrl,
-    groupTitle = groupTitle,
-    categoryId = categoryId,
-    categoryName = categoryName,
-    streamUrl = streamUrl,
-    epgChannelId = epgChannelId,
-    number = number,
-    catchUpSupported = catchUpSupported,
-    catchUpDays = catchUpDays,
-    catchUpSource = catchUpSource,
-    providerId = providerId,
-    isAdult = isAdult,
-    isUserProtected = isUserProtected,
-    logicalGroupId = logicalGroupId,
-    errorCount = errorCount,
-    qualityOptionsJson = encodeQualityOptions(qualityOptions)
-)
+fun Channel.toEntity(): ChannelEntity {
+    val xtreamLiveToken = XtreamUrlFactory.parseInternalStreamUrl(streamUrl)
+        ?.takeIf { it.kind == XtreamStreamKind.LIVE }
+    val persistedStreamUrl = xtreamLiveToken?.let { token ->
+        XtreamUrlFactory.buildInternalStreamUrl(
+            providerId = token.providerId,
+            kind = token.kind,
+            streamId = token.streamId,
+            containerExtension = token.containerExtension
+        )
+    } ?: streamUrl
+    return ChannelEntity(
+        id = id,
+        streamId = streamId.takeIf { it > 0 } ?: id,
+        name = name,
+        logoUrl = logoUrl,
+        groupTitle = groupTitle,
+        categoryId = categoryId,
+        categoryName = categoryName,
+        streamUrl = persistedStreamUrl,
+        epgChannelId = epgChannelId,
+        number = number,
+        catchUpSupported = catchUpSupported,
+        catchUpDays = catchUpDays,
+        catchUpSource = catchUpSource.takeUnless { xtreamLiveToken != null },
+        providerId = providerId,
+        isAdult = isAdult,
+        isUserProtected = isUserProtected,
+        logicalGroupId = logicalGroupId,
+        errorCount = errorCount,
+        qualityOptionsJson = if (xtreamLiveToken == null) encodeQualityOptions(qualityOptions) else null
+    )
+}
 
 // ── Movie ──────────────────────────────────────────────────────────
 

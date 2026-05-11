@@ -60,6 +60,9 @@ internal fun ProviderSettingsCard(
     provider: Provider,
     isActive: Boolean,
     isSyncing: Boolean,
+    xtreamLiveOnboardingPhase: String?,
+    xtreamLiveOnboarding: XtreamLiveOnboardingUiModel?,
+    xtreamIndexSectionStatuses: Map<String, ProviderCatalogCountStatus>,
     diagnostics: ProviderDiagnosticsUiModel?,
     databaseMaintenance: DatabaseMaintenanceUiModel?,
     syncWarnings: List<String>,
@@ -73,6 +76,14 @@ internal fun ProviderSettingsCard(
     onRefreshM3uClassification: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val liveOnboardingIncomplete = provider.type == ProviderType.XTREAM_CODES &&
+        provider.status == ProviderStatus.PARTIAL &&
+        !isActive
+    val liveOnboardingMessageRes = if (liveOnboardingIncomplete) {
+        xtreamLiveOnboardingMessageRes(xtreamLiveOnboardingPhase)
+    } else {
+        null
+    }
     // Use Column layout - provider info + buttons below as separate focusable items
     Column(
         modifier = Modifier
@@ -136,6 +147,21 @@ internal fun ProviderSettingsCard(
             color = if (expDate != null && expDate < System.currentTimeMillis() && expDate != Long.MAX_VALUE) ErrorColor else OnSurfaceDim
         )
 
+        if (liveOnboardingMessageRes != null) {
+            Text(
+                text = stringResource(liveOnboardingMessageRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = Secondary
+            )
+            xtreamLiveOnboarding?.let { onboarding ->
+                Text(
+                    text = onboarding.summary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = OnSurfaceDim
+                )
+            }
+        }
+
         diagnostics?.let { model ->
             Text(
                 text = listOf(model.sourceLabel, model.connectionSummary, model.expirySummary)
@@ -145,17 +171,36 @@ internal fun ProviderSettingsCard(
                 color = OnSurface
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProviderCompactStat(title = stringResource(R.string.settings_diagnostic_live), count = model.liveCount)
-                ProviderCompactStat(title = stringResource(R.string.settings_diagnostic_movies), count = model.movieCount)
+                ProviderCompactStat(
+                    title = stringResource(R.string.settings_diagnostic_live),
+                    value = model.liveCatalogCount(liveOnboardingIncomplete, xtreamLiveOnboardingPhase)
+                )
+                ProviderCompactStat(
+                    title = stringResource(R.string.settings_diagnostic_movies),
+                    value = model.movieCatalogCount(xtreamIndexSectionStatuses["MOVIE"]),
+                    syncingLabel = stringResource(R.string.settings_catalog_count_indexing)
+                )
                 if (provider.type == ProviderType.XTREAM_CODES) {
-                    ProviderCompactStat(title = stringResource(R.string.settings_diagnostic_series), count = model.seriesCount)
+                    ProviderCompactStat(
+                        title = stringResource(R.string.settings_diagnostic_series),
+                        value = model.seriesCatalogCount(xtreamIndexSectionStatuses["SERIES"]),
+                        syncingLabel = stringResource(R.string.settings_catalog_count_indexing)
+                    )
                 }
-                ProviderCompactStat(title = stringResource(R.string.settings_diagnostic_epg), count = model.epgCount)
+                ProviderCompactStat(
+                    title = stringResource(R.string.settings_diagnostic_epg),
+                    value = model.epgCatalogCount(xtreamIndexSectionStatuses["EPG"]),
+                    syncingLabel = stringResource(R.string.settings_catalog_count_indexing)
+                )
             }
 
             ProviderDiagnosticsPanel(
                 provider = provider,
                 diagnostics = model,
+                movieIndexInProgress = xtreamIndexSectionStatuses["MOVIE"] in setOf(
+                    ProviderCatalogCountStatus.QUEUED,
+                    ProviderCatalogCountStatus.SYNCING
+                ),
                 databaseMaintenance = databaseMaintenance
             )
         }
@@ -181,6 +226,7 @@ internal fun ProviderSettingsCard(
         ProviderActionButtons(
             isActive = isActive,
             isSyncing = isSyncing,
+            liveOnboardingIncomplete = liveOnboardingIncomplete,
             onConnect = onConnect,
             onRefresh = onRefresh,
             onEdit = onEdit,
@@ -190,6 +236,79 @@ internal fun ProviderSettingsCard(
 
     }
 }
+
+
+
+internal fun xtreamLiveOnboardingMessageRes(phase: String?): Int = when (phase?.uppercase()) {
+    "STARTING" -> R.string.settings_provider_live_onboarding_starting
+    "FETCHING" -> R.string.settings_provider_live_onboarding_fetching
+    "RECOVERING" -> R.string.settings_provider_live_onboarding_recovering
+    "STAGED" -> R.string.settings_provider_live_onboarding_staged
+    "COMMITTING" -> R.string.settings_provider_live_onboarding_committing
+    "FAILED" -> R.string.settings_provider_live_onboarding_failed
+    else -> R.string.settings_provider_live_onboarding_incomplete
+}
+
+internal fun ProviderDiagnosticsUiModel.liveCatalogCount(
+    liveOnboardingIncomplete: Boolean,
+    xtreamLiveOnboardingPhase: String?
+): ProviderCatalogCountUiModel {
+    if (liveOnboardingIncomplete) {
+        return ProviderCatalogCountUiModel(
+            count = liveCount,
+            status = when (xtreamLiveOnboardingPhase?.uppercase()) {
+                "FAILED" -> ProviderCatalogCountStatus.FAILED
+                "STARTING", "FETCHING", "RECOVERING", "STAGED", "COMMITTING" -> ProviderCatalogCountStatus.SYNCING
+                else -> ProviderCatalogCountStatus.PENDING
+            }
+        )
+    }
+    return if (lastLiveSuccess > 0L || liveCount > 0) {
+        ProviderCatalogCountUiModel(liveCount, ProviderCatalogCountStatus.READY)
+    } else {
+        ProviderCatalogCountUiModel(liveCount, ProviderCatalogCountStatus.PENDING)
+    }
+}
+
+internal fun ProviderDiagnosticsUiModel.movieCatalogCount(
+    jobStatus: ProviderCatalogCountStatus?
+): ProviderCatalogCountUiModel = sectionCatalogCount(
+    count = movieCount,
+    lastSuccess = lastMovieSuccess,
+    jobStatus = jobStatus
+)
+
+internal fun ProviderDiagnosticsUiModel.seriesCatalogCount(
+    jobStatus: ProviderCatalogCountStatus?
+): ProviderCatalogCountUiModel = sectionCatalogCount(
+    count = seriesCount,
+    lastSuccess = lastSeriesSuccess,
+    jobStatus = jobStatus
+)
+
+internal fun ProviderDiagnosticsUiModel.epgCatalogCount(
+    jobStatus: ProviderCatalogCountStatus?
+): ProviderCatalogCountUiModel = sectionCatalogCount(
+    count = epgCount,
+    lastSuccess = lastEpgSuccess,
+    jobStatus = jobStatus
+)
+
+internal fun sectionCatalogCount(
+    count: Int,
+    lastSuccess: Long,
+    jobStatus: ProviderCatalogCountStatus?
+): ProviderCatalogCountUiModel {
+    if (jobStatus != null && jobStatus != ProviderCatalogCountStatus.READY) {
+        return ProviderCatalogCountUiModel(count, jobStatus)
+    }
+    return if (lastSuccess > 0L || count > 0) {
+        ProviderCatalogCountUiModel(count, ProviderCatalogCountStatus.READY)
+    } else {
+        ProviderCatalogCountUiModel(count, ProviderCatalogCountStatus.PENDING)
+    }
+}
+
 
 
 

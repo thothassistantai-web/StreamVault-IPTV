@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
 import com.streamvault.app.cast.CastManager
 import com.streamvault.app.cast.CastRouteChooserActivity
+import com.streamvault.app.backup.BackupFileBridge
 import com.streamvault.app.device.isTelevisionDevice
 import com.streamvault.app.localization.resolveAppLocale
 import com.streamvault.app.navigation.AppNavigation
@@ -290,6 +291,7 @@ class MainActivity : ComponentActivity() {
             return ExternalNavigationRequest.Destination(ExternalDestination.Home)
         }
         readImportedPlaylistUri()?.let { return ExternalNavigationRequest.ImportM3u(it) }
+        readImportedBackupUri()?.let { return ExternalNavigationRequest.ImportBackup(it) }
 
         val query = when (action) {
             Intent.ACTION_SEARCH,
@@ -329,6 +331,36 @@ class MainActivity : ComponentActivity() {
             "content", "file" -> targetUri.toString()
             else -> null
         }
+    }
+
+    private fun Intent.readImportedBackupUri(): String? {
+        val targetUri = when (action) {
+            Intent.ACTION_VIEW -> data
+            Intent.ACTION_SEND -> readStreamUriExtra()
+            else -> null
+        } ?: return null
+        if (!isBackupJsonCandidate(targetUri)) return null
+        return BackupFileBridge.copyToImportInbox(this@MainActivity, targetUri)?.toString()
+            ?: targetUri.toString()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun Intent.readStreamUriExtra(): Uri? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+        } ?: clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+    }
+
+    private fun Intent.isBackupJsonCandidate(uri: Uri): Boolean {
+        val normalizedPath = uri.toString().substringBefore('?').lowercase(Locale.ROOT)
+        val mimeType = type?.lowercase(Locale.ROOT).orEmpty()
+        val isJsonMime = mimeType in setOf("application/json", "text/json", "application/x-json")
+        val isJsonPath = normalizedPath.endsWith(".json")
+        val isGenericJsonFile = mimeType == "application/octet-stream" && isJsonPath
+        if (!isJsonMime && !isJsonPath && !isGenericJsonFile) return false
+        return uri.scheme?.lowercase(Locale.ROOT) in setOf("content", "file")
     }
 
     @Suppress("DEPRECATION")

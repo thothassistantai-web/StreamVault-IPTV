@@ -1286,7 +1286,7 @@ data class MoviesUiState(
     val selectedLibraryFilterType: LibraryFilterType = LibraryFilterType.ALL,
     val selectedLibrarySortBy: LibrarySortBy = LibrarySortBy.LIBRARY,
     val vodViewMode: VodViewMode = VodViewMode.MODERN,
-    val vodInfiniteScroll: Boolean = false,
+    val vodInfiniteScroll: Boolean = true,
     val continueWatching: List<PlaybackHistory> = emptyList(),
     val hasProviders: Boolean = false,
     val hasActiveProvider: Boolean = false,

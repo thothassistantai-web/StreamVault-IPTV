@@ -7,6 +7,7 @@ import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.request.crossfade
+import com.streamvault.app.diagnostics.CrashReportStore
 import com.streamvault.app.diagnostics.RuntimeDiagnosticsManager
 import com.streamvault.app.update.GitHubReleaseChecker
 import com.streamvault.app.ui.accessibility.isReducedMotionEnabled
@@ -44,6 +45,7 @@ class StreamVaultApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        CrashReportStore.install(this)
         runtimeDiagnosticsManager.start()
         applicationScope.launch {
             // Clean up any timeshift temp directories left behind by crashes, OOM kills, or

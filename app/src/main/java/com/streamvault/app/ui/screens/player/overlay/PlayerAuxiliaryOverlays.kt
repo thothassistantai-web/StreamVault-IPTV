@@ -814,6 +814,7 @@ fun CategoryListOverlay(
     categories: List<com.streamvault.domain.model.Category>,
     currentCategoryId: Long,
     overlayFocusRequester: FocusRequester = remember { FocusRequester() },
+    isCategoryLocked: (com.streamvault.domain.model.Category) -> Boolean = { false },
     onSelectCategory: (com.streamvault.domain.model.Category) -> Unit,
     onDismiss: () -> Unit,
     onOverlayInteracted: () -> Unit = {}
@@ -875,6 +876,7 @@ fun CategoryListOverlay(
                         items(categories.size) { index ->
                             val category = categories[index]
                             val isSelected = category.id == currentCategoryId
+                            val isLocked = isCategoryLocked(category)
                             var isFocused by remember { mutableStateOf(false) }
                             val shouldRequestFocus = isSelected
                             val bgColor = when {
@@ -922,6 +924,14 @@ fun CategoryListOverlay(
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
+                                    if (isLocked) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = stringResource(R.string.home_locked_short),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White.copy(alpha = 0.68f)
+                                        )
+                                    }
                                     if (isSelected) {
                                         Text(
                                             text = "●",

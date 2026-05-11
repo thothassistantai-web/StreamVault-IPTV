@@ -5,6 +5,7 @@ import android.util.Log
 import com.streamvault.data.local.dao.*
 import com.streamvault.data.local.entity.*
 import com.streamvault.data.mapper.*
+import com.streamvault.data.remote.http.toGenericRequestProfile
 import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.stalker.StalkerProvider
 import com.streamvault.data.remote.xtream.XtreamApiService
@@ -1358,7 +1359,8 @@ class SeriesRepositoryImpl @Inject constructor(
                             username = provider.username,
                             password = decryptedPassword,
                             allowedOutputFormats = provider.toDomain().allowedOutputFormats,
-                            enableBase64TextCompatibility = enableBase64TextCompatibility
+                            enableBase64TextCompatibility = enableBase64TextCompatibility,
+                            requestProfile = provider.toGenericRequestProfile(ownerTag = "provider:$providerId/xtream")
                         )
                     )
                 }

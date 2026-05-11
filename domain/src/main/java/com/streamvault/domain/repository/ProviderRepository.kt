@@ -3,6 +3,7 @@ package com.streamvault.domain.repository
 import com.streamvault.domain.model.Program
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderEpgSyncMode
+import com.streamvault.domain.model.ProviderXtreamLiveSyncMode
 import com.streamvault.domain.model.Result
 import kotlinx.coroutines.flow.Flow
 
@@ -19,8 +20,8 @@ interface ProviderRepository {
     suspend fun updateProvider(provider: Provider): Result<Unit>
     suspend fun deleteProvider(id: Long): Result<Unit>
     suspend fun setActiveProvider(id: Long): Result<Unit>
-    suspend fun loginXtream(serverUrl: String, username: String, password: String, name: String, xtreamFastSyncEnabled: Boolean, epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND, onProgress: ((String) -> Unit)? = null, id: Long? = null): Result<Provider>
-    suspend fun validateM3u(url: String, name: String, epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND, m3uVodClassificationEnabled: Boolean = false, onProgress: ((String) -> Unit)? = null, id: Long? = null): Result<Provider>
+    suspend fun loginXtream(serverUrl: String, username: String, password: String, name: String, httpUserAgent: String = "", httpHeaders: String = "", xtreamFastSyncEnabled: Boolean, epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND, xtreamLiveSyncMode: ProviderXtreamLiveSyncMode = ProviderXtreamLiveSyncMode.AUTO, onProgress: ((String) -> Unit)? = null, id: Long? = null): Result<Provider>
+    suspend fun validateM3u(url: String, name: String, httpUserAgent: String = "", httpHeaders: String = "", epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND, m3uVodClassificationEnabled: Boolean = false, onProgress: ((String) -> Unit)? = null, id: Long? = null): Result<Provider>
     suspend fun loginStalker(
         portalUrl: String,
         macAddress: String,

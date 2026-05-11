@@ -68,6 +68,26 @@
                 <data android:scheme="file" android:pathPattern=".*\\.m3u8" />
             </intent-filter>
 
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="text/json" />
+                <data android:mimeType="application/x-json" />
+                <data android:scheme="content" android:pathPattern=".*\\.json" />
+                <data android:scheme="file" android:pathPattern=".*\\.json" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="text/json" />
+                <data android:mimeType="application/x-json" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+
             <meta-data
                 android:name="android.app.searchable"
                 android:resource="@xml/searchable" />

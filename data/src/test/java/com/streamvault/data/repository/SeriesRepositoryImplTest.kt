@@ -104,7 +104,7 @@ class SeriesRepositoryImplTest {
         assertThat(result).isEmpty()
         verify(syncManager).prioritizeXtreamIndexCategory(7L, ContentType.SERIES, 77L)
         verify(seriesDao, never()).replaceCategory(eq(7L), eq(77L), any())
-        verify(xtreamApiService, never()).getSeriesList(any())
+        verify(xtreamApiService, never()).getSeriesList(any(), any())
         verify(episodeDao, never()).deleteOrphans()
     }
 
@@ -136,7 +136,7 @@ class SeriesRepositoryImplTest {
         val result = createRepository().getSeriesDetails(7L, 99L)
 
         assertThat(result.getOrNull()?.name).isEqualTo("Cached Series")
-        verify(xtreamApiService, never()).getSeriesInfo(any())
+        verify(xtreamApiService, never()).getSeriesInfo(any(), any())
         verify(xtreamContentIndexDao, never()).markDetailHydrated(any(), any(), any(), any(), anyOrNull(), any())
     }
 
@@ -307,7 +307,7 @@ class SeriesRepositoryImplTest {
         verify(syncManager).prioritizeXtreamIndexCategory(7L, ContentType.SERIES, 77L)
         verify(seriesDao, never()).replaceCategory(eq(7L), eq(77L), any())
         verify(seriesCategoryHydrationDao, never()).upsert(any())
-        verify(xtreamApiService, never()).getSeriesList(any())
+        verify(xtreamApiService, never()).getSeriesList(any(), any())
     }
 
     @Test
@@ -368,7 +368,7 @@ class SeriesRepositoryImplTest {
             )
         )
         whenever(episodeDao.getBySeriesSync(15L)).thenReturn(emptyList())
-        whenever(xtreamApiService.getSeriesInfo(any())).thenThrow(RuntimeException("bad response"))
+        whenever(xtreamApiService.getSeriesInfo(any(), any())).thenThrow(RuntimeException("bad response"))
 
         val repository = createRepository()
 

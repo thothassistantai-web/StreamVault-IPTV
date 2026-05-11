@@ -3,6 +3,7 @@ package com.streamvault.domain.usecase
 import com.streamvault.domain.manager.ProviderSetupInputValidator
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderEpgSyncMode
+import com.streamvault.domain.model.ProviderXtreamLiveSyncMode
 import com.streamvault.domain.model.ProviderSavedWithSyncErrorException
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.repository.ProviderRepository
@@ -16,14 +17,19 @@ data class XtreamProviderSetupCommand(
     val username: String,
     val password: String,
     val name: String,
+    val httpUserAgent: String = "",
+    val httpHeaders: String = "",
     val xtreamFastSyncEnabled: Boolean = false,
     val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+    val xtreamLiveSyncMode: ProviderXtreamLiveSyncMode = ProviderXtreamLiveSyncMode.AUTO,
     val existingProviderId: Long? = null
 )
 
 data class M3uProviderSetupCommand(
     val url: String,
     val name: String,
+    val httpUserAgent: String = "",
+    val httpHeaders: String = "",
     val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
     val m3uVodClassificationEnabled: Boolean = false,
     val existingProviderId: Long? = null
@@ -68,7 +74,9 @@ class ValidateAndAddProvider @Inject constructor(
                 username = command.username,
                 password = command.password,
                 allowBlankPassword = command.existingProviderId != null,
-                name = command.name
+                name = command.name,
+                httpUserAgent = command.httpUserAgent,
+                httpHeaders = command.httpHeaders
             )
         ) {
             is Result.Error -> ValidateAndAddProviderResult.ValidationError(result.message)
@@ -85,7 +93,9 @@ class ValidateAndAddProvider @Inject constructor(
         return when (
             val result = providerSetupInputValidator.validateM3u(
                 url = command.url,
-                name = command.name
+                name = command.name,
+                httpUserAgent = command.httpUserAgent,
+                httpHeaders = command.httpHeaders
             )
         ) {
             is Result.Error -> ValidateAndAddProviderResult.ValidationError(result.message)
@@ -124,7 +134,9 @@ class ValidateAndAddProvider @Inject constructor(
                 username = command.username,
                 password = command.password,
                 allowBlankPassword = command.existingProviderId != null,
-                name = command.name
+                name = command.name,
+                httpUserAgent = command.httpUserAgent,
+                httpHeaders = command.httpHeaders
             )
         ) {
             is Result.Success -> providerRepository.loginXtream(
@@ -132,8 +144,11 @@ class ValidateAndAddProvider @Inject constructor(
                 username = validated.data.username,
                 password = validated.data.password,
                 name = validated.data.name,
+                httpUserAgent = validated.data.httpUserAgent,
+                httpHeaders = validated.data.httpHeaders,
                 xtreamFastSyncEnabled = command.xtreamFastSyncEnabled,
                 epgSyncMode = command.epgSyncMode,
+                xtreamLiveSyncMode = command.xtreamLiveSyncMode,
                 onProgress = onProgress,
                 id = command.existingProviderId
             ).toUseCaseResult()
@@ -150,7 +165,9 @@ class ValidateAndAddProvider @Inject constructor(
         return when (
             val validated = providerSetupInputValidator.validateM3u(
                 url = command.url,
-                name = command.name
+                name = command.name,
+                httpUserAgent = command.httpUserAgent,
+                httpHeaders = command.httpHeaders
             )
         ) {
             is Result.Success -> {
@@ -165,8 +182,11 @@ class ValidateAndAddProvider @Inject constructor(
                             username = parsedXtream.username,
                             password = parsedXtream.password,
                             name = validatedInput.name,
+                            httpUserAgent = validatedInput.httpUserAgent,
+                            httpHeaders = validatedInput.httpHeaders,
                             xtreamFastSyncEnabled = false,
                             epgSyncMode = command.epgSyncMode,
+                            xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.AUTO,
                             onProgress = onProgress,
                             id = command.existingProviderId
                         ).toUseCaseResult()
@@ -176,6 +196,8 @@ class ValidateAndAddProvider @Inject constructor(
                         providerRepository.validateM3u(
                             url = validatedInput.url,
                             name = validatedInput.name,
+                            httpUserAgent = validatedInput.httpUserAgent,
+                            httpHeaders = validatedInput.httpHeaders,
                             epgSyncMode = command.epgSyncMode,
                             m3uVodClassificationEnabled = command.m3uVodClassificationEnabled,
                             onProgress = onProgress,

@@ -4,6 +4,8 @@ import com.google.common.truth.Truth.assertThat
 import com.streamvault.data.local.entity.ChannelEntity
 import com.streamvault.data.local.entity.PlaybackHistoryEntity
 import com.streamvault.data.local.entity.ProviderEntity
+import com.streamvault.data.remote.xtream.XtreamStreamKind
+import com.streamvault.data.remote.xtream.XtreamUrlFactory
 import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.ChannelQualityOption
 import com.streamvault.domain.model.ContentType
@@ -111,6 +113,44 @@ class EntityMappersTest {
             ChannelQualityOption(label = "1080p", height = 1080, url = "http://stream.example.com/99_1080.ts")
         )
         assertThat(roundTripped.alternativeStreams).containsExactly("http://stream.example.com/99_1080.ts")
+    }
+
+    @Test
+    fun `channel_toEntity_thinsXtreamLiveRowsWithoutLosingPlaybackKeys`() {
+        val directSource = "https://cdn.example.com/live/777/master.m3u8?token=abc"
+        val channel = Channel(
+            id = 99L,
+            name = "Live Channel",
+            categoryId = 12L,
+            categoryName = "News",
+            streamUrl = XtreamUrlFactory.buildInternalStreamUrl(
+                providerId = 42L,
+                kind = XtreamStreamKind.LIVE,
+                streamId = 777L,
+                containerExtension = "m3u8",
+                directSource = directSource
+            ),
+            catchUpSource = "unused-live-source",
+            providerId = 42L,
+            qualityOptions = listOf(
+                ChannelQualityOption(label = "HLS", url = "xtream://42/live/777?ext=m3u8"),
+                ChannelQualityOption(label = "MPEG-TS", url = "xtream://42/live/777?ext=ts")
+            ),
+            streamId = 777L
+        )
+
+        val entity = channel.toEntity()
+        val token = XtreamUrlFactory.parseInternalStreamUrl(entity.streamUrl)
+
+        assertThat(entity.streamUrl).isEqualTo("xtream://42/live/777?ext=m3u8")
+        assertThat(entity.streamUrl).doesNotContain("src=")
+        assertThat(token?.providerId).isEqualTo(42L)
+        assertThat(token?.streamId).isEqualTo(777L)
+        assertThat(token?.containerExtension).isEqualTo("m3u8")
+        assertThat(entity.streamId).isEqualTo(777L)
+        assertThat(entity.categoryName).isEqualTo("News")
+        assertThat(entity.catchUpSource).isNull()
+        assertThat(entity.qualityOptionsJson).isNull()
     }
 
     // ── Movie ─────────────────────────────────────────────────────

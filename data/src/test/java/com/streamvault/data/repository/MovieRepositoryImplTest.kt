@@ -205,7 +205,7 @@ class MovieRepositoryImplTest {
         assertThat(result).isEmpty()
         verify(syncManager).prioritizeXtreamIndexCategory(7L, ContentType.MOVIE, 42L)
         verify(movieDao, never()).replaceCategory(eq(7L), eq(42L), any())
-        verify(xtreamApiService, never()).getVodStreams(any())
+        verify(xtreamApiService, never()).getVodStreams(any(), any())
     }
 
     @Test
@@ -236,7 +236,7 @@ class MovieRepositoryImplTest {
         verify(syncManager).prioritizeXtreamIndexCategory(7L, ContentType.MOVIE, 42L)
         verify(movieDao, never()).replaceCategory(eq(7L), eq(42L), any())
         verify(movieCategoryHydrationDao, never()).upsert(any())
-        verify(xtreamApiService, never()).getVodStreams(any())
+        verify(xtreamApiService, never()).getVodStreams(any(), any())
     }
 
     @Test
@@ -269,7 +269,7 @@ class MovieRepositoryImplTest {
         val result = createRepository().getMovieDetails(7L, 99L)
 
         assertThat(result.getOrNull()?.name).isEqualTo("Cached Movie")
-        verify(xtreamApiService, never()).getVodInfo(any())
+        verify(xtreamApiService, never()).getVodInfo(any(), any())
         verify(xtreamContentIndexDao, never()).markDetailHydrated(any(), any(), any(), any(), anyOrNull(), any())
     }
 

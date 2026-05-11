@@ -1,5 +1,6 @@
 package com.streamvault.data.repository
 
+import android.util.Log
 import com.streamvault.data.local.DatabaseTransactionRunner
 import com.streamvault.data.local.dao.ProgramDao
 import com.streamvault.data.local.dao.ProviderDao
@@ -8,6 +9,10 @@ import com.streamvault.data.local.entity.ProgramEntity
 import com.streamvault.data.mapper.toDomain
 import com.streamvault.data.mapper.toEntity
 import com.streamvault.data.parser.XmltvParser
+import com.streamvault.data.remote.http.HttpRequestProfile
+import com.streamvault.data.remote.http.safeRequestIdentitySummary
+import com.streamvault.data.remote.http.toGenericRequestProfile
+import com.streamvault.data.remote.http.withRequestProfile
 import com.streamvault.data.util.rankSearchResults
 import com.streamvault.domain.model.Program
 import com.streamvault.domain.model.Result
@@ -234,13 +239,21 @@ class EpgRepositoryImpl @Inject constructor(
                     yield()
                 }
                 try {
+                    val providerRequestProfile = providerDao.getById(providerId)
+                        ?.toGenericRequestProfile(ownerTag = "provider:$providerId/epg")
+                        ?: HttpRequestProfile(ownerTag = "provider:$providerId/epg")
                     val request = Request.Builder()
                         .url(epgUrl)
                         .header("Accept-Encoding", "identity")
                         .build()
+                        .withRequestProfile(providerRequestProfile)
                     val response = epgHttpClient.newCall(request).execute()
 
                     if (!response.isSuccessful) {
+                        Log.w(
+                            "EpgRepository",
+                            "EPG request failed for provider $providerId (${request.safeRequestIdentitySummary(providerRequestProfile)}): HTTP ${response.code}"
+                        )
                         return@withLock Result.error("Failed to download EPG: HTTP ${response.code}")
                     }
 

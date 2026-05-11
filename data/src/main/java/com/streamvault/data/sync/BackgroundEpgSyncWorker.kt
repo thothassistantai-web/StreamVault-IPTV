@@ -1,6 +1,5 @@
 package com.streamvault.data.sync
 
-import android.app.ActivityManager
 import android.content.Context
 import android.database.sqlite.SQLiteException
 import android.util.Log
@@ -41,7 +40,7 @@ class BackgroundEpgSyncWorker(
         // Stalker EPG path is heap-frugal but the surrounding sync work (channel inserts,
         // EPG resolution) can still allocate; retrying later avoids piling onto a stressed
         // system. WorkManager will re-enqueue with backoff.
-        if (isDeviceLowOnMemory()) {
+        if (applicationContext.isCurrentlyLowOnMemoryForSync()) {
             Log.w(TAG, "Deferring background EPG sync for provider $providerId: device low on memory")
             return Result.retry()
         }
@@ -83,16 +82,6 @@ class BackgroundEpgSyncWorker(
             Log.e(TAG, "Background EPG work failed for provider $providerId", e)
             if (shouldRetry(e)) Result.retry() else Result.failure()
         }
-    }
-
-    private fun isDeviceLowOnMemory(): Boolean {
-        val activityManager = applicationContext.getSystemService(Context.ACTIVITY_SERVICE)
-            as? ActivityManager ?: return false
-        val info = ActivityManager.MemoryInfo()
-        return runCatching {
-            activityManager.getMemoryInfo(info)
-            info.lowMemory
-        }.getOrDefault(false)
     }
 
     private fun shouldRetry(error: Throwable?): Boolean {

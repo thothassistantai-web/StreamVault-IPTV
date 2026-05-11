@@ -1,10 +1,15 @@
 package com.streamvault.app.ui.screens.settings
 
 import android.content.Context
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import com.streamvault.app.R
 import com.streamvault.app.ui.theme.OnSurface
@@ -227,6 +232,35 @@ internal fun SettingsScreenDialogs(
             dismissButton = {
                 TextButton(onClick = { dialogState.showClearHistoryDialog = false }) {
                     Text(text = stringResource(R.string.settings_cancel), color = OnSurface)
+                }
+            },
+            containerColor = SurfaceElevated,
+            titleContentColor = OnSurface,
+            textContentColor = TextSecondary
+        )
+    }
+
+    uiState.viewedCrashReport?.let { report ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissCrashReport,
+            title = { Text(text = stringResource(R.string.settings_crash_report_view_title)) },
+            text = {
+                Text(
+                    text = report.content,
+                    color = OnSurface,
+                    modifier = Modifier
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissCrashReport) {
+                    Text(text = stringResource(R.string.player_close), color = Primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::deleteCrashReport) {
+                    Text(text = stringResource(R.string.settings_crash_report_delete), color = OnSurface)
                 }
             },
             containerColor = SurfaceElevated,

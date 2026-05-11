@@ -6,6 +6,7 @@ import com.streamvault.data.local.entity.MovieEntity
 import com.streamvault.data.parser.M3uParser
 import com.streamvault.data.remote.http.HttpRequestProfile
 import com.streamvault.data.remote.http.safeRequestIdentitySummary
+import com.streamvault.data.remote.http.toGenericRequestProfile
 import com.streamvault.data.remote.http.withRequestProfile
 import com.streamvault.data.util.AdultContentClassifier
 import com.streamvault.data.util.UrlSecurityPolicy
@@ -207,7 +208,7 @@ internal class SyncManagerM3uImporter(
             return
         }
 
-        val requestProfile = HttpRequestProfile(ownerTag = "provider:${provider.id}/m3u")
+        val requestProfile = provider.toGenericRequestProfile(ownerTag = "provider:${provider.id}/m3u")
         retryTransient {
             val request = Request.Builder()
                 .url(urlStr)

@@ -66,6 +66,7 @@ object Routes {
     const val EPG = "epg"
     const val EPG_DESTINATION = "epg?categoryId={categoryId}&anchorTime={anchorTime}&favoritesOnly={favoritesOnly}"
     const val SETTINGS = "settings"
+    const val SETTINGS_DESTINATION = "settings?backupUri={backupUri}"
     const val PLAYER = "player"
     const val SEARCH = "search"
     const val SEARCH_DESTINATION = "search?query={query}"
@@ -142,6 +143,9 @@ object Routes {
 
     fun search(query: String? = null): String =
         if (query.isNullOrBlank()) SEARCH else "$SEARCH?query=${Uri.encode(query)}"
+
+    fun settings(backupUri: String? = null): String =
+        if (backupUri.isNullOrBlank()) SETTINGS else "$SETTINGS?backupUri=${Uri.encode(backupUri)}"
 
     fun player(
         streamUrl: String,
@@ -244,6 +248,12 @@ fun AppNavigation(mainActivity: MainActivity) {
 
             is ExternalNavigationRequest.ImportM3u -> {
                 if (navController.navigateIfResumed(Routes.providerSetup(importUri = request.uri)) { launchSingleTop = true }) {
+                    mainActivity.clearExternalNavigationRequest()
+                }
+            }
+
+            is ExternalNavigationRequest.ImportBackup -> {
+                if (navController.navigateIfResumed(Routes.settings(backupUri = request.uri)) { launchSingleTop = true }) {
                     mainActivity.clearExternalNavigationRequest()
                 }
             }
@@ -509,7 +519,13 @@ fun AppNavigation(mainActivity: MainActivity) {
             )
         }
 
-        composable(Routes.SETTINGS) {
+        composable(
+            route = Routes.SETTINGS_DESTINATION,
+            arguments = listOf(
+                navArgument("backupUri") { type = NavType.StringType; defaultValue = "" }
+            )
+        ) { backStackEntry ->
+            val backupUri = backStackEntry.arguments?.getString("backupUri")?.takeIf { it.isNotBlank() }
             SettingsScreen(
                 onNavigate = { route -> tabNavigate(route) },
                 onAddProvider = dropUnlessResumed {
@@ -521,7 +537,8 @@ fun AppNavigation(mainActivity: MainActivity) {
                 onNavigateToParentalControl = { providerId ->
                     navController.navigateIfResumed(Routes.parentalControlGroups(providerId))
                 },
-                currentRoute = Routes.SETTINGS
+                currentRoute = Routes.SETTINGS,
+                initialBackupImportUri = backupUri
             )
         }
 

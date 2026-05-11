@@ -1,20 +1,38 @@
 package com.streamvault.app.ui.screens.settings
 
+import com.streamvault.data.local.entity.XtreamLiveOnboardingStateEntity
 import com.streamvault.data.preferences.DatabaseMaintenanceSnapshot
 import com.streamvault.domain.model.Category
 import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.VodSyncMode
 
+enum class ProviderCatalogCountStatus {
+    PENDING,
+    QUEUED,
+    SYNCING,
+    PARTIAL,
+    FAILED,
+    READY
+}
+
+data class ProviderCatalogCountUiModel(
+    val count: Int = 0,
+    val status: ProviderCatalogCountStatus = ProviderCatalogCountStatus.PENDING
+)
+
 data class ProviderDiagnosticsUiModel(
     val lastSyncStatus: String = "NONE",
     val lastLiveSync: Long = 0L,
+    val lastLiveSuccess: Long = 0L,
     val lastMovieSync: Long = 0L,
     val lastMovieAttempt: Long = 0L,
     val lastMovieSuccess: Long = 0L,
     val lastMoviePartial: Long = 0L,
     val lastSeriesSync: Long = 0L,
+    val lastSeriesSuccess: Long = 0L,
     val lastEpgSync: Long = 0L,
+    val lastEpgSuccess: Long = 0L,
     val liveCount: Int = 0,
     val movieCount: Int = 0,
     val seriesCount: Int = 0,
@@ -41,6 +59,51 @@ data class ProviderDiagnosticsUiModel(
             movieCatalogStale ||
             movieWarningsCount > 0
 }
+
+data class XtreamLiveOnboardingUiModel(
+    val phase: String,
+    val importStrategy: String,
+    val acceptedRowCount: Int,
+    val stagedFlushCount: Int,
+    val profileTier: String,
+    val profileBatchSize: Int,
+    val profileStrategy: String,
+    val lowMemory: Boolean,
+    val memoryClassMb: Int,
+    val availableMemMb: Long,
+    val lastError: String?,
+    val updatedAt: Long
+) {
+    val summary: String
+        get() = buildList {
+            add("phase=$phase")
+            if (profileTier.isNotBlank()) add("profile=$profileTier")
+            if (profileBatchSize > 0) add("batch=$profileBatchSize")
+            if (profileStrategy.isNotBlank()) add("strategy=$profileStrategy")
+            add("accepted=$acceptedRowCount")
+            add("flushes=$stagedFlushCount")
+            if (memoryClassMb > 0) add("memory=${memoryClassMb}MB")
+            if (availableMemMb > 0L) add("available=${availableMemMb}MB")
+            if (lowMemory) add("lowMemory=true")
+            lastError?.takeIf { it.isNotBlank() }?.let { add("error=$it") }
+        }.joinToString(" • ")
+}
+
+internal fun XtreamLiveOnboardingStateEntity.toUiModel(): XtreamLiveOnboardingUiModel =
+    XtreamLiveOnboardingUiModel(
+        phase = phase,
+        importStrategy = importStrategy.orEmpty(),
+        acceptedRowCount = acceptedRowCount,
+        stagedFlushCount = stagedFlushCount,
+        profileTier = syncProfileTier.orEmpty(),
+        profileBatchSize = syncProfileBatchSize,
+        profileStrategy = syncProfileStrategy.orEmpty(),
+        lowMemory = syncProfileLowMemory,
+        memoryClassMb = syncProfileMemoryClassMb,
+        availableMemMb = syncProfileAvailableMemMb,
+        lastError = lastError,
+        updatedAt = updatedAt
+    )
 
 data class DatabaseMaintenanceUiModel(
     val ranAt: Long,

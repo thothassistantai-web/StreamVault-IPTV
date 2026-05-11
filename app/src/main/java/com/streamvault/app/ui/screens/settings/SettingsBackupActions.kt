@@ -20,10 +20,13 @@ internal class SettingsBackupActions(
     private val importBackup: ImportBackup,
     private val uiState: MutableStateFlow<SettingsUiState>
 ) {
-    fun exportConfig(scope: CoroutineScope, uriString: String) {
+    fun exportConfig(scope: CoroutineScope, uriString: String, onSuccess: (() -> Unit)? = null) {
         scope.launch {
             uiState.update { it.copy(isSyncing = true) }
             val result = exportBackup(ExportBackupCommand(uriString))
+            if (result is ExportBackupResult.Success) {
+                onSuccess?.invoke()
+            }
             uiState.update { state ->
                 state.copy(
                     isSyncing = false,

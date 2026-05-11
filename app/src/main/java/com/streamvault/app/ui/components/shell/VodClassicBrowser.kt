@@ -18,9 +18,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
@@ -29,9 +34,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.streamvault.app.R
+import com.streamvault.app.ui.components.FocusedMarqueeText
 import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.design.FocusSpec
-import androidx.compose.ui.res.stringResource
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.app.ui.interaction.TvIconButton
@@ -71,10 +76,13 @@ fun VodClassicSplitLayout(
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
             items(categories, key = { it.key }) { category ->
+                var isFocused by remember(category.key) { mutableStateOf(false) }
                 TvClickableSurface(
                     onClick = category.onClick,
                     onLongClick = category.onLongClick,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { isFocused = it.isFocused },
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = if (category.isSelected) AppColors.Brand.copy(alpha = 0.22f) else AppColors.SurfaceElevated,
@@ -97,12 +105,12 @@ fun VodClassicSplitLayout(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
+                        FocusedMarqueeText(
                             text = category.label,
+                            isFocused = isFocused,
                             style = MaterialTheme.typography.titleSmall,
                             color = if (category.isSelected) AppColors.BrandStrong else AppColors.TextPrimary,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
                         if (category.isLocked) {

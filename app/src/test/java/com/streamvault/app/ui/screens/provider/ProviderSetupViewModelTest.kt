@@ -79,17 +79,19 @@ class ProviderSetupViewModelTest {
             importBackup = importBackup
         )
 
-        viewModel.addM3u("https://example.com/list.m3u", "Playlist 7")
+        viewModel.addM3u("https://example.com/list.m3u", "Playlist 7", "", "")
         advanceUntilIdle()
 
         assertThat(viewModel.uiState.value.pendingCombinedAttachProfileId).isEqualTo(44L)
         assertThat(viewModel.uiState.value.pendingCombinedAttachProfileName).isEqualTo("Weekend Set")
         assertThat(viewModel.uiState.value.createdProviderName).isEqualTo("Playlist 7")
         assertThat(viewModel.uiState.value.loginSuccess).isFalse()
+        assertThat(viewModel.uiState.value.onboardingCompletion)
+            .isEqualTo(ProviderSetupViewModel.OnboardingCompletion.READY)
     }
 
     @Test
-    fun `login xtream saved with sync warning completes onboarding with warning state`() = runTest {
+    fun `login xtream saved with sync warning marks onboarding as resuming instead of ready`() = runTest {
         val createdProvider = Provider(
             id = 8L,
             name = "Premium",
@@ -110,10 +112,12 @@ class ProviderSetupViewModelTest {
             importBackup = importBackup
         )
 
-        viewModel.loginXtream("https://example.com", "alice", "secret", "Premium")
+        viewModel.loginXtream("https://example.com", "alice", "secret", "Premium", "", "")
         advanceUntilIdle()
 
-        assertThat(viewModel.uiState.value.loginSuccess).isTrue()
+        assertThat(viewModel.uiState.value.loginSuccess).isFalse()
+        assertThat(viewModel.uiState.value.onboardingCompletion)
+            .isEqualTo(ProviderSetupViewModel.OnboardingCompletion.SAVED_RESUMING)
         assertThat(viewModel.uiState.value.createdProviderId).isEqualTo(8L)
         assertThat(viewModel.uiState.value.completionWarning).contains("initial sync failed")
         assertThat(viewModel.uiState.value.error).isNull()
@@ -166,7 +170,8 @@ class ProviderSetupViewModelTest {
 
         val seededState = viewModel.uiState.value.copy(
             createdProviderId = 12L,
-            pendingCombinedAttachProfileId = 99L
+            pendingCombinedAttachProfileId = 99L,
+            onboardingCompletion = ProviderSetupViewModel.OnboardingCompletion.READY
         )
         val field = ProviderSetupViewModel::class.java.getDeclaredField("_uiState").apply { isAccessible = true }
         @Suppress("UNCHECKED_CAST")
@@ -179,7 +184,49 @@ class ProviderSetupViewModelTest {
         verify(combinedM3uRepository).addProvider(99L, 12L)
         verify(combinedM3uRepository).setActiveLiveSource(eq(ActiveLiveSource.CombinedM3uSource(99L)))
         assertThat(viewModel.uiState.value.loginSuccess).isTrue()
+        assertThat(viewModel.uiState.value.onboardingCompletion)
+            .isEqualTo(ProviderSetupViewModel.OnboardingCompletion.READY)
         assertThat(viewModel.uiState.value.pendingCombinedAttachProfileId).isNull()
+    }
+
+    @Test
+    fun `skipping combined attach after saved warning keeps onboarding in resuming state`() = runTest {
+        val createdProvider = Provider(
+            id = 7L,
+            name = "Playlist 7",
+            type = ProviderType.M3U,
+            serverUrl = "https://example.com",
+            m3uUrl = "https://example.com/list.m3u"
+        )
+        whenever(combinedM3uRepository.getActiveLiveSource()).thenReturn(
+            flowOf(ActiveLiveSource.CombinedM3uSource(44L))
+        )
+        whenever(combinedM3uRepository.getProfile(44L)).thenReturn(
+            CombinedM3uProfile(id = 44L, name = "Weekend Set")
+        )
+        whenever(validateAndAddProvider.addM3u(any(), any())).thenReturn(
+            ValidateAndAddProviderResult.SavedWithWarning(
+                provider = createdProvider,
+                warning = "Playlist saved, but initial sync failed. Resume has been queued."
+            )
+        )
+
+        val viewModel = ProviderSetupViewModel(
+            providerRepository = providerRepository,
+            combinedM3uRepository = combinedM3uRepository,
+            validateAndAddProvider = validateAndAddProvider,
+            importBackup = importBackup
+        )
+
+        viewModel.addM3u("https://example.com/list.m3u", "Playlist 7", "", "")
+        advanceUntilIdle()
+        viewModel.skipCreatedProviderCombinedAttach()
+
+        assertThat(viewModel.uiState.value.pendingCombinedAttachProfileId).isNull()
+        assertThat(viewModel.uiState.value.loginSuccess).isFalse()
+        assertThat(viewModel.uiState.value.onboardingCompletion)
+            .isEqualTo(ProviderSetupViewModel.OnboardingCompletion.SAVED_RESUMING)
+        assertThat(viewModel.uiState.value.completionWarning).contains("initial sync failed")
     }
 
     @Test
@@ -276,12 +323,14 @@ class ProviderSetupViewModelTest {
         val stateFlow = field.get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<ProviderSetupState>
         stateFlow.value = stateFlow.value.copy(isEditing = true, existingProviderId = 7L)
 
-        viewModel.addM3u("https://example.com/list.m3u", "Playlist 7")
+        viewModel.addM3u("https://example.com/list.m3u", "Playlist 7", "", "")
         advanceUntilIdle()
 
         // Edit flows must complete directly without the combined-attach dialog.
         assertThat(viewModel.uiState.value.pendingCombinedAttachProfileId).isNull()
         assertThat(viewModel.uiState.value.loginSuccess).isTrue()
+        assertThat(viewModel.uiState.value.onboardingCompletion)
+            .isEqualTo(ProviderSetupViewModel.OnboardingCompletion.READY)
     }
 
     @Test
@@ -299,7 +348,7 @@ class ProviderSetupViewModelTest {
             importBackup = importBackup
         )
 
-        viewModel.addM3u("https://example.com/list.m3u", "Playlist")
+        viewModel.addM3u("https://example.com/list.m3u", "Playlist", "", "")
         advanceUntilIdle()
 
         val error = viewModel.uiState.value.error

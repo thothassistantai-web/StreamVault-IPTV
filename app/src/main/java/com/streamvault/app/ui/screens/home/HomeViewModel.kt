@@ -114,8 +114,19 @@ class HomeViewModel @Inject constructor(
     init {
         loadAllProviders()
         viewModelScope.launch {
-            multiViewManager.slots.collect { slots ->
-                _uiState.update { it.copy(multiviewChannelCount = slots.count { it != null }) }
+            combine(
+                multiViewManager.slots,
+                preferencesRepository.multiViewCenterTwoSlotLayout
+            ) { slots, centeredCompactLayoutEnabled ->
+                val slotLimit = if (centeredCompactLayoutEnabled) 2 else MultiViewManager.MAX_SLOTS
+                slots.count { it != null } to slotLimit
+            }.collect { (slotCount, slotLimit) ->
+                _uiState.update {
+                    it.copy(
+                        multiviewChannelCount = slotCount,
+                        multiviewSlotCapacity = slotLimit
+                    )
+                }
             }
         }
         viewModelScope.launch {
@@ -1811,7 +1822,8 @@ data class HomeUiState(
     val isPreviewLoading: Boolean = false,
     val previewErrorMessage: String? = null,
     val errorMessage: String? = null,
-    val multiviewChannelCount: Int = 0
+    val multiviewChannelCount: Int = 0,
+    val multiviewSlotCapacity: Int = MultiViewManager.MAX_SLOTS
 )
 
 private data class CategorySelectionContext(

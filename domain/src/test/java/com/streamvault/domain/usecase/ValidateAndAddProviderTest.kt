@@ -161,7 +161,9 @@ class ValidateAndAddProviderTest {
                         serverUrl = "https://example.com",
                         username = "alice",
                         password = "normalized-secret",
-                        name = "Premium"
+                        name = "Premium",
+                        httpUserAgent = "StreamVaultTest/1.0",
+                        httpHeaders = "Referer: https://example.com"
                     )
                 )
             ),
@@ -174,6 +176,8 @@ class ValidateAndAddProviderTest {
                 username = " alice ",
                 password = "secret\u0000",
                 name = " Premium ",
+                httpUserAgent = " StreamVaultTest/1.0 ",
+                httpHeaders = " Referer: https://example.com ",
                 xtreamFastSyncEnabled = true,
                 epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
                 existingProviderId = 7L
@@ -187,6 +191,8 @@ class ValidateAndAddProviderTest {
                 username = "alice",
                 password = "normalized-secret",
                 name = "Premium",
+                httpUserAgent = "StreamVaultTest/1.0",
+                httpHeaders = "Referer: https://example.com",
                 xtreamFastSyncEnabled = true,
                 epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
                 id = 7L
@@ -204,7 +210,9 @@ class ValidateAndAddProviderTest {
                         serverUrl = "https://example.com",
                         username = "alice",
                         password = "",
-                        name = "Premium"
+                        name = "Premium",
+                        httpUserAgent = "",
+                        httpHeaders = ""
                     )
                 )
             ),
@@ -265,7 +273,9 @@ class ValidateAndAddProviderTest {
                 m3uResult = Result.success(
                     ValidatedM3uProviderInput(
                         url = "file://playlist.m3u",
-                        name = "Local Playlist"
+                        name = "Local Playlist",
+                        httpUserAgent = "PlaylistAgent/2.0",
+                        httpHeaders = "Referer: https://example.com"
                     )
                 )
             ),
@@ -276,6 +286,8 @@ class ValidateAndAddProviderTest {
             M3uProviderSetupCommand(
                 url = "file://playlist.m3u",
                 name = "Local Playlist",
+                httpUserAgent = "PlaylistAgent/2.0",
+                httpHeaders = "Referer: https://example.com",
                 epgSyncMode = ProviderEpgSyncMode.SKIP,
                 existingProviderId = 11L
             )
@@ -286,6 +298,8 @@ class ValidateAndAddProviderTest {
             M3uCall(
                 url = "file://playlist.m3u",
                 name = "Local Playlist",
+                httpUserAgent = "PlaylistAgent/2.0",
+                httpHeaders = "Referer: https://example.com",
                 epgSyncMode = ProviderEpgSyncMode.SKIP,
                 m3uVodClassificationEnabled = false,
                 id = 11L
@@ -301,7 +315,9 @@ class ValidateAndAddProviderTest {
                 m3uResult = Result.success(
                     ValidatedM3uProviderInput(
                         url = "http://extapk2302.shop:8080/get.php?username=Hakan1605&password=wg9daUwzfV&type=m3u_plus",
-                        name = "Imported Playlist"
+                        name = "Imported Playlist",
+                        httpUserAgent = "PlaylistAgent/2.0",
+                        httpHeaders = "Referer: https://example.com"
                     )
                 )
             ),
@@ -325,7 +341,9 @@ class ValidateAndAddProviderTest {
                 username = "Hakan1605",
                 password = "wg9daUwzfV",
                 name = "Imported Playlist",
-                xtreamFastSyncEnabled = true,
+                httpUserAgent = "PlaylistAgent/2.0",
+                httpHeaders = "Referer: https://example.com",
+                xtreamFastSyncEnabled = false,
                 epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
                 id = 19L
             )
@@ -340,7 +358,9 @@ class ValidateAndAddProviderTest {
                 m3uResult = Result.success(
                     ValidatedM3uProviderInput(
                         url = "http://tvappapk@extapk2302.shop:8080/get.php?username=Hakan1605&password=wg9daUwzfV&type=m3u_plus",
-                        name = "Imported Playlist"
+                        name = "Imported Playlist",
+                        httpUserAgent = "",
+                        httpHeaders = ""
                     )
                 )
             ),
@@ -370,7 +390,9 @@ class ValidateAndAddProviderTest {
                 m3uResult = Result.success(
                     ValidatedM3uProviderInput(
                         url = "https://example.com/get.php?username=user&password=$encodedPassword&type=m3u_plus",
-                        name = "Imported Playlist"
+                        name = "Imported Playlist",
+                        httpUserAgent = "",
+                        httpHeaders = ""
                     )
                 )
             ),
@@ -445,13 +467,17 @@ private class FakeProviderSetupInputValidator(
             serverUrl = "https://example.com",
             username = "user",
             password = "secret",
-            name = "Provider"
+            name = "Provider",
+            httpUserAgent = "",
+            httpHeaders = ""
         )
     ),
     private val m3uResult: Result<ValidatedM3uProviderInput> = Result.success(
         ValidatedM3uProviderInput(
             url = "https://example.com/playlist.m3u",
-            name = "Playlist"
+            name = "Playlist",
+            httpUserAgent = "",
+            httpHeaders = ""
         )
     ),
     private val stalkerResult: Result<ValidatedStalkerProviderInput> = Result.success(
@@ -470,12 +496,16 @@ private class FakeProviderSetupInputValidator(
         username: String,
         password: String,
         allowBlankPassword: Boolean,
-        name: String
+        name: String,
+        httpUserAgent: String,
+        httpHeaders: String
     ): Result<ValidatedXtreamProviderInput> = xtreamResult
 
     override fun validateM3u(
         url: String,
-        name: String
+        name: String,
+        httpUserAgent: String,
+        httpHeaders: String
     ): Result<ValidatedM3uProviderInput> = m3uResult
 
     override fun validateStalker(
@@ -493,6 +523,8 @@ private data class XtreamCall(
     val username: String,
     val password: String,
     val name: String,
+    val httpUserAgent: String,
+    val httpHeaders: String,
     val xtreamFastSyncEnabled: Boolean,
     val epgSyncMode: ProviderEpgSyncMode,
     val id: Long?
@@ -501,6 +533,8 @@ private data class XtreamCall(
 private data class M3uCall(
     val url: String,
     val name: String,
+    val httpUserAgent: String,
+    val httpHeaders: String,
     val epgSyncMode: ProviderEpgSyncMode,
     val m3uVodClassificationEnabled: Boolean,
     val id: Long?
@@ -544,24 +578,28 @@ private class FakeProviderRepository : ProviderRepository {
         username: String,
         password: String,
         name: String,
+        httpUserAgent: String,
+        httpHeaders: String,
         xtreamFastSyncEnabled: Boolean,
         epgSyncMode: ProviderEpgSyncMode,
         onProgress: ((String) -> Unit)?,
         id: Long?
     ): Result<Provider> {
-        lastXtreamCall = XtreamCall(serverUrl, username, password, name, xtreamFastSyncEnabled, epgSyncMode, id)
+        lastXtreamCall = XtreamCall(serverUrl, username, password, name, httpUserAgent, httpHeaders, xtreamFastSyncEnabled, epgSyncMode, id)
         return xtreamResult ?: Result.success(provider(id = id ?: 1L, name = name, type = ProviderType.XTREAM_CODES))
     }
 
     override suspend fun validateM3u(
         url: String,
         name: String,
+        httpUserAgent: String,
+        httpHeaders: String,
         epgSyncMode: ProviderEpgSyncMode,
         m3uVodClassificationEnabled: Boolean,
         onProgress: ((String) -> Unit)?,
         id: Long?
     ): Result<Provider> {
-        lastM3uCall = M3uCall(url, name, epgSyncMode, m3uVodClassificationEnabled, id)
+        lastM3uCall = M3uCall(url, name, httpUserAgent, httpHeaders, epgSyncMode, m3uVodClassificationEnabled, id)
         return m3uResult ?: Result.success(provider(id = id ?: 2L, name = name, type = ProviderType.M3U, m3uUrl = url))
     }
 

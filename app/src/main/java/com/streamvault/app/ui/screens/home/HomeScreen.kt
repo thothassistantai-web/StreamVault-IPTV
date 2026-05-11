@@ -863,6 +863,7 @@ fun HomeScreen(
                                 if (hasSplitChannels) {
                                     CompactSplitLauncherButton(
                                         slotCount = uiState.multiviewChannelCount,
+                                        slotLimit = uiState.multiviewSlotCapacity,
                                         onClick = { showSplitManagerDialog = true },
                                         modifier = Modifier.padding(start = 12.dp)
                                     )

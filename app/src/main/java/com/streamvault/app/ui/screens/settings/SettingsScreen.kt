@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.documentfile.provider.DocumentFile
+import com.streamvault.app.backup.BackupFileBridge
+import com.streamvault.app.diagnostics.CrashReportStore
 import com.streamvault.app.util.OfficialBuildVerifier
 import com.streamvault.app.ui.components.shell.AppNavigationChrome
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
@@ -37,6 +39,7 @@ fun SettingsScreen(
     onEditProvider: (Provider) -> Unit = {},
     onNavigateToParentalControl: (Long) -> Unit = {},
     currentRoute: String,
+    initialBackupImportUri: String? = null,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -54,6 +57,7 @@ fun SettingsScreen(
     )
     val dialogState = rememberSettingsScreenDialogState()
     val providerState = rememberSettingsProviderSectionState(dialogState)
+    var handledInitialBackupImportUri by remember { mutableStateOf<String?>(null) }
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -65,6 +69,31 @@ fun SettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { viewModel.inspectBackup(it.toString()) }
+    }
+
+    fun shareBackup() {
+        val file = runCatching { BackupFileBridge.createExportFile(context) }.getOrNull()
+        if (file == null) {
+            viewModel.showUserMessage(context.getString(R.string.settings_backup_share_prepare_failed))
+            return
+        }
+        val uri = BackupFileBridge.providerUriForFile(context, file)
+        viewModel.exportConfig(uri.toString()) {
+            runCatching { context.startActivity(BackupFileBridge.buildShareIntent(uri)) }
+                .onFailure { viewModel.showUserMessage(context.getString(R.string.settings_backup_share_failed)) }
+        }
+    }
+
+    fun shareCrashReport() {
+        val file = CrashReportStore.latestReportFile(context)
+        if (!file.isFile || file.length() <= 0L) {
+            viewModel.showUserMessage(context.getString(R.string.settings_crash_report_missing))
+            viewModel.refreshCrashReport()
+            return
+        }
+        val uri = CrashReportStore.providerUriForFile(context, file)
+        runCatching { context.startActivity(CrashReportStore.buildShareIntent(uri)) }
+            .onFailure { viewModel.showUserMessage(context.getString(R.string.settings_crash_report_share_failed)) }
     }
 
     val recordingFolderLauncher = rememberLauncherForActivityResult(
@@ -99,6 +128,14 @@ fun SettingsScreen(
             uiState.recordingItems.any { item -> item.id == dialogState.selectedRecordingId } -> dialogState.selectedRecordingId
             else -> uiState.recordingItems.first().id
         }
+    }
+
+    LaunchedEffect(initialBackupImportUri) {
+        val uri = initialBackupImportUri?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (handledInitialBackupImportUri == uri) return@LaunchedEffect
+        handledInitialBackupImportUri = uri
+        dialogState.selectedCategory = 5
+        viewModel.inspectBackup(uri)
     }
 
     LaunchedEffect(currentRoute, dialogState.selectedCategory) {
@@ -143,7 +180,15 @@ fun SettingsScreen(
                     onNavigateToParentalControl = onNavigateToParentalControl,
                     onChooseRecordingFolder = { recordingFolderLauncher.launch(null) },
                     onCreateBackup = { createDocumentLauncher.launch("streamvault_backup.json") },
-                    onRestoreBackup = { openDocumentLauncher.launch(arrayOf("application/json")) },
+                    onShareBackup = ::shareBackup,
+                    onViewCrashReport = viewModel::viewCrashReport,
+                    onShareCrashReport = ::shareCrashReport,
+                    onDeleteCrashReport = viewModel::deleteCrashReport,
+                    onRestoreBackup = {
+                        openDocumentLauncher.launch(
+                            arrayOf("application/json", "text/json", "application/x-json", "application/octet-stream", "*/*")
+                        )
+                    },
                     onOpenUri = uriHandler::openUri,
                     modifier = Modifier.weight(1f)
                 )

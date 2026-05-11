@@ -10,6 +10,7 @@ import com.streamvault.domain.model.Result
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
+import okhttp3.Headers
 
 @Singleton
 class ProviderSetupInputValidatorImpl @Inject constructor() : ProviderSetupInputValidator {
@@ -19,12 +20,16 @@ class ProviderSetupInputValidatorImpl @Inject constructor() : ProviderSetupInput
         username: String,
         password: String,
         allowBlankPassword: Boolean,
-        name: String
+        name: String,
+        httpUserAgent: String,
+        httpHeaders: String
     ): Result<ValidatedXtreamProviderInput> {
         val normalizedServerUrl = ProviderInputSanitizer.normalizeUrl(serverUrl)
         val normalizedUsername = ProviderInputSanitizer.normalizeUsername(username)
         val normalizedPassword = ProviderInputSanitizer.normalizePassword(password)
         val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
+        val normalizedHttpUserAgent = ProviderInputSanitizer.normalizeHttpUserAgent(httpUserAgent)
+        val normalizedHttpHeaders = ProviderInputSanitizer.normalizeHttpHeaders(httpHeaders)
 
         if (normalizedServerUrl.isBlank()) {
             return Result.error("Please enter server URL")
@@ -41,23 +46,32 @@ class ProviderSetupInputValidatorImpl @Inject constructor() : ProviderSetupInput
         ProviderInputSanitizer.validatePassword(password, allowBlankPassword)?.let { message ->
             return Result.error(message)
         }
+        validateHttpOverrides(normalizedHttpUserAgent, normalizedHttpHeaders)?.let { message ->
+            return Result.error(message)
+        }
 
         return Result.success(
             ValidatedXtreamProviderInput(
                 serverUrl = normalizedServerUrl,
                 username = normalizedUsername,
                 password = normalizedPassword,
-                name = normalizedName
+                name = normalizedName,
+                httpUserAgent = normalizedHttpUserAgent,
+                httpHeaders = normalizedHttpHeaders
             )
         )
     }
 
     override fun validateM3u(
         url: String,
-        name: String
+        name: String,
+        httpUserAgent: String,
+        httpHeaders: String
     ): Result<ValidatedM3uProviderInput> {
         val normalizedUrl = ProviderInputSanitizer.normalizeUrl(url)
         val normalizedName = ProviderInputSanitizer.normalizeProviderName(name)
+        val normalizedHttpUserAgent = ProviderInputSanitizer.normalizeHttpUserAgent(httpUserAgent)
+        val normalizedHttpHeaders = ProviderInputSanitizer.normalizeHttpHeaders(httpHeaders)
 
         if (normalizedUrl.isBlank()) {
             return Result.error("Please enter M3U URL")
@@ -68,11 +82,16 @@ class ProviderSetupInputValidatorImpl @Inject constructor() : ProviderSetupInput
         UrlSecurityPolicy.validatePlaylistSourceUrl(normalizedUrl)?.let { message ->
             return Result.error(message)
         }
+        validateHttpOverrides(normalizedHttpUserAgent, normalizedHttpHeaders)?.let { message ->
+            return Result.error(message)
+        }
 
         return Result.success(
             ValidatedM3uProviderInput(
                 url = normalizedUrl,
-                name = normalizedName
+                name = normalizedName,
+                httpUserAgent = normalizedHttpUserAgent,
+                httpHeaders = normalizedHttpHeaders
             )
         )
     }
@@ -145,6 +164,15 @@ class ProviderSetupInputValidatorImpl @Inject constructor() : ProviderSetupInput
     }
 
     private companion object {
+        private val HEADER_SEPARATOR_REGEX = Regex("\\s*\\|\\s*|[\\r\\n]+")
+        private val DISALLOWED_GENERIC_HEADER_NAMES = setOf(
+            "authorization",
+            "cookie",
+            "proxy-authorization",
+            "set-cookie",
+            "user-agent"
+        )
+
         // Safe ASCII token for device profiles (MAG250, MAG254, etc.). Excludes cookie
         // delimiters (;, ,, =, ") and HTTP header-breaking characters.
         private val DEVICE_PROFILE_SAFE_REGEX = Regex("^[A-Za-z0-9._-]+$")
@@ -158,5 +186,49 @@ class ProviderSetupInputValidatorImpl @Inject constructor() : ProviderSetupInput
         // BCP-47 language tag: primary subtag (2–8 letters) optionally followed by
         // hyphen-separated extension subtags (1–8 alphanumeric characters each).
         private val LOCALE_SAFE_REGEX = Regex("^[a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*$")
+    }
+
+    private fun validateHttpOverrides(httpUserAgent: String, httpHeaders: String): String? {
+        if (httpUserAgent.any { it == '\r' || it == '\n' }) {
+            return "User-Agent must stay on a single line."
+        }
+        if (httpHeaders.isBlank()) {
+            return null
+        }
+        val entries = httpHeaders
+            .split(HEADER_SEPARATOR_REGEX)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        if (entries.size > 12) {
+            return "Too many custom headers. Limit the override to 12 entries."
+        }
+        val seenNames = linkedSetOf<String>()
+        entries.forEach { entry ->
+            val separatorIndex = entry.indexOf(':')
+            if (separatorIndex <= 0 || separatorIndex == entry.lastIndex) {
+                return "Custom headers must use 'Header-Name: value' format. Separate multiple headers with '|'."
+            }
+            val name = entry.substring(0, separatorIndex).trim()
+            val value = entry.substring(separatorIndex + 1).trim()
+            if (name.isEmpty() || value.isEmpty()) {
+                return "Custom headers must include both a header name and a value."
+            }
+            if (name.lowercase() in DISALLOWED_GENERIC_HEADER_NAMES) {
+                return if (name.equals("User-Agent", ignoreCase = true)) {
+                    "Set the User-Agent in the dedicated field instead of custom headers."
+                } else {
+                    "$name cannot be overridden here."
+                }
+            }
+            try {
+                Headers.Builder().add(name, value)
+            } catch (_: IllegalArgumentException) {
+                return "Invalid custom header: $name"
+            }
+            if (!seenNames.add(name.lowercase())) {
+                return "Duplicate custom header: $name"
+            }
+        }
+        return null
     }
 }

@@ -13,6 +13,7 @@ import com.streamvault.data.local.dao.SeriesDao
 import com.streamvault.data.local.dao.TmdbIdentityDao
 import com.streamvault.data.local.dao.XtreamContentIndexDao
 import com.streamvault.data.local.dao.XtreamIndexJobDao
+import com.streamvault.data.local.dao.XtreamLiveOnboardingDao
 import com.streamvault.data.local.entity.CategoryEntity
 import com.streamvault.data.local.entity.ChannelEntity
 import com.streamvault.data.local.entity.ChannelGuideSyncEntity
@@ -20,10 +21,12 @@ import com.streamvault.data.local.entity.MovieEntity
 import com.streamvault.data.local.entity.SeriesEntity
 import com.streamvault.data.local.entity.XtreamContentIndexEntity
 import com.streamvault.data.local.entity.XtreamIndexJobEntity
+import com.streamvault.data.local.entity.XtreamLiveOnboardingStateEntity
 import com.streamvault.data.mapper.toDomain
 import com.streamvault.data.mapper.toEntity
 import com.streamvault.data.parser.M3uParser
 import com.streamvault.data.remote.http.buildAppRequestProfile
+import com.streamvault.data.remote.http.toGenericRequestProfile
 import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.stalker.StalkerProvider
 import com.streamvault.data.remote.stalker.StalkerProviderProfile
@@ -89,7 +92,15 @@ private const val XTREAM_RECOVERY_ABORT_WARNING_SUFFIX =
 private const val XTREAM_AVOID_FULL_CATALOG_COOLDOWN_MILLIS = 6 * 60 * 60 * 1000L
 private const val XTREAM_MOVIE_REQUEST_TIMEOUT_MILLIS = 60_000L
 private const val XTREAM_SERIES_REQUEST_TIMEOUT_MILLIS = 60_000L
+private const val XTREAM_SQLITE_LOOKUP_CHUNK_SIZE = 900
 private const val STALKER_GUIDE_PROGRAM_BATCH_SIZE = 500
+private const val XTREAM_ONBOARDING_PHASE_STARTING = "STARTING"
+private const val XTREAM_ONBOARDING_PHASE_FETCHING = "FETCHING"
+private const val XTREAM_ONBOARDING_PHASE_RECOVERING = "RECOVERING"
+private const val XTREAM_ONBOARDING_PHASE_STAGED = "STAGED"
+private const val XTREAM_ONBOARDING_PHASE_COMMITTING = "COMMITTING"
+private const val XTREAM_ONBOARDING_PHASE_COMPLETED = "COMPLETED"
+private const val XTREAM_ONBOARDING_PHASE_FAILED = "FAILED"
 /**
  * Maximum number of programs we will accept from a single per-channel `get_epg_info`
  * call before treating the response as a portal that ignores `ch_id` and returns the
@@ -105,6 +116,25 @@ private const val STALKER_PER_CHANNEL_RECORD_SANITY_CAP = 5_000
  */
 private class StalkerBrokenPerChannelEpgException(channelName: String) :
     RuntimeException("Stalker portal returned bulk-shaped EPG for per-channel request ($channelName)")
+
+internal suspend fun <K, V> chunkedLookupById(
+    ids: List<K>,
+    chunkSize: Int,
+    fetch: suspend (List<K>) -> List<V>,
+    keySelector: (V) -> K
+): Map<K, V> {
+    if (ids.isEmpty()) return emptyMap()
+    return ids
+        .distinct()
+        .chunked(chunkSize)
+        .flatMap { chunk -> fetch(chunk) }
+        .associateBy(keySelector)
+}
+
+private data class XtreamLiveCommitResult(
+    val acceptedCount: Int,
+    val warnings: List<String>
+)
 
 enum class SyncRepairSection {
     LIVE,
@@ -126,6 +156,7 @@ class SyncManager @Inject constructor(
     private val tmdbIdentityDao: TmdbIdentityDao,
     private val xtreamContentIndexDao: XtreamContentIndexDao,
     private val xtreamIndexJobDao: XtreamIndexJobDao,
+    private val xtreamLiveOnboardingDao: XtreamLiveOnboardingDao,
     private val stalkerApiService: StalkerApiService,
     private val xtreamJson: Json,
     private val m3uParser: M3uParser,
@@ -183,6 +214,7 @@ class SyncManager @Inject constructor(
     private val xtreamFetcher: SyncManagerXtreamFetcher by lazy {
         SyncManagerXtreamFetcher(
             xtreamCatalogApiService = xtreamCatalogApiService,
+            xtreamCatalogHttpService = xtreamCatalogHttpService,
             xtreamSupport = xtreamSupport,
             sanitizeThrowableMessage = ::sanitizeThrowableMessage
         )
@@ -209,8 +241,8 @@ class SyncManager @Inject constructor(
             fullCatalogFallbackWarning = ::fullCatalogFallbackWarning,
             categoryFailureWarning = ::categoryFailureWarning,
             liveCategorySequentialModeWarning = LIVE_CATEGORY_SEQUENTIAL_MODE_WARNING,
-            stageChannelItems = catalogStager::stageChannelItems,
-            fallbackStageBatchSize = XTREAM_FALLBACK_STAGE_BATCH_SIZE
+            isCurrentlyLowOnMemory = applicationContext::isCurrentlyLowOnMemoryForSync,
+            stageChannelItems = catalogStager::stageChannelItems
         )
     }
 
@@ -257,6 +289,14 @@ class SyncManager @Inject constructor(
 
     fun scheduleBackgroundEpgSync(providerId: Long) {
         BackgroundEpgSyncWorker.enqueue(applicationContext, providerId)
+    }
+
+    fun scheduleProviderSyncResume(providerId: Long) {
+        runCatching {
+            ProviderSyncWorker.enqueueProvider(applicationContext, providerId)
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to schedule provider resume work for provider $providerId: ${sanitizeThrowableMessage(error)}")
+        }
     }
 
     fun scheduleXtreamIndexSync(providerId: Long, section: ContentType? = null, force: Boolean = false) {
@@ -413,7 +453,8 @@ class SyncManager @Inject constructor(
         force: Boolean = false,
         movieFastSyncOverride: Boolean? = null,
         epgSyncModeOverride: ProviderEpgSyncMode? = null,
-        onProgress: ((String) -> Unit)? = null
+        onProgress: ((String) -> Unit)? = null,
+        trackInitialLiveOnboarding: Boolean = false
     ): com.streamvault.domain.model.Result<Unit> = withProviderLock(providerId) lock@{
         val providerEntity = providerDao.getById(providerId)
             ?: return@lock com.streamvault.domain.model.Result.error("Provider $providerId not found")
@@ -432,7 +473,17 @@ class SyncManager @Inject constructor(
         try {
             val outcome = withContext(Dispatchers.IO) {
                 when (provider.type) {
-                    ProviderType.XTREAM_CODES -> syncXtreamIndexFirst(provider, force, onProgress)
+                    ProviderType.XTREAM_CODES -> syncXtreamIndexFirst(
+                        provider = provider,
+                        force = force,
+                        onProgress = onProgress,
+                        trackInitialLiveOnboarding = trackInitialLiveOnboarding,
+                        syncReason = if (trackInitialLiveOnboarding) {
+                            XtreamLiveSyncReason.INITIAL_ONBOARDING
+                        } else {
+                            XtreamLiveSyncReason.FOREGROUND
+                        }
+                    )
                     ProviderType.M3U -> syncM3u(provider, force, onProgress)
                     ProviderType.STALKER_PORTAL -> syncStalker(provider, force, onProgress)
                 }
@@ -454,6 +505,13 @@ class SyncManager @Inject constructor(
         } catch (e: Exception) {
             val safeMessage = syncErrorSanitizer.userMessage(e, "Sync failed")
             Log.e(TAG, "Sync failed for provider $providerId: ${syncErrorSanitizer.throwableMessage(e)}")
+            if (provider.type == ProviderType.XTREAM_CODES && trackInitialLiveOnboarding) {
+                recordXtreamLiveOnboardingState(
+                    provider = provider,
+                    phase = XTREAM_ONBOARDING_PHASE_FAILED,
+                    lastError = sanitizeThrowableMessage(e)
+                )
+            }
             updateSyncStatusMetadata(providerId = providerId, status = "ERROR")
             publishSyncState(providerId, SyncState.Error(safeMessage, e))
             com.streamvault.domain.model.Result.error(safeMessage, e)
@@ -572,6 +630,7 @@ class SyncManager @Inject constructor(
         providerId: Long,
         section: SyncRepairSection,
         movieFastSyncOverride: Boolean? = null,
+        syncReason: XtreamLiveSyncReason = XtreamLiveSyncReason.MANUAL_SETTINGS,
         onProgress: ((String) -> Unit)? = null
     ): com.streamvault.domain.model.Result<Unit> = withProviderLock(providerId) lock@{
         val providerEntity = providerDao.getById(providerId)
@@ -589,7 +648,7 @@ class SyncManager @Inject constructor(
         try {
             val outcome = withContext(Dispatchers.IO) {
                 when (section) {
-                    SyncRepairSection.LIVE -> syncLiveOnly(provider, onProgress)
+                    SyncRepairSection.LIVE -> syncLiveOnly(provider, syncReason, onProgress)
                     SyncRepairSection.EPG -> {
                         syncEpgOnly(provider, onProgress)
                         SyncOutcome()
@@ -626,7 +685,9 @@ class SyncManager @Inject constructor(
     private suspend fun syncXtreamIndexFirst(
         provider: Provider,
         force: Boolean,
-        onProgress: ((String) -> Unit)?
+        onProgress: ((String) -> Unit)?,
+        trackInitialLiveOnboarding: Boolean = false,
+        syncReason: XtreamLiveSyncReason = XtreamLiveSyncReason.FOREGROUND
     ): SyncOutcome {
         val warnings = mutableListOf<String>()
         UrlSecurityPolicy.validateXtreamServerUrl(provider.serverUrl)?.let { message ->
@@ -638,8 +699,19 @@ class SyncManager @Inject constructor(
         val enableBase64TextCompatibility = preferencesRepository.xtreamBase64TextCompatibility.first()
         val hiddenLiveCategoryIds = preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE).first()
         val api = createXtreamSyncProvider(provider, useTextClassification, enableBase64TextCompatibility)
+        val runtimeProfile = CatalogSyncRuntimeProfile.from(applicationContext)
         val now = System.currentTimeMillis()
         var metadata = syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)
+
+        if (trackInitialLiveOnboarding) {
+            recordXtreamLiveOnboardingState(
+                provider = provider,
+                phase = XTREAM_ONBOARDING_PHASE_STARTING,
+                now = now,
+                clearError = true,
+                runtimeProfile = runtimeProfile
+            )
+        }
 
         upsertXtreamIndexJob(
             providerId = provider.id,
@@ -649,14 +721,77 @@ class SyncManager @Inject constructor(
             lastAttemptAt = now
         )
         val liveOutcome = runCatching {
+            val recoveredLiveCommit = if (trackInitialLiveOnboarding) {
+                recoverXtreamLiveOnboardingSession(
+                    provider = provider,
+                    hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                )
+            } else {
+                null
+            }
+            if (recoveredLiveCommit != null) {
+                warnings += recoveredLiveCommit.warnings
+                val acceptedCount = recoveredLiveCommit.acceptedCount
+                val completedAt = System.currentTimeMillis()
+                recordXtreamLiveOnboardingState(
+                    provider = provider,
+                    phase = XTREAM_ONBOARDING_PHASE_COMPLETED,
+                    now = completedAt,
+                    acceptedRowCount = acceptedCount,
+                    stagedFlushCount = stagedFlushCountFor(acceptedCount),
+                    clearError = true,
+                    completedAt = completedAt,
+                    clearStagedSession = true,
+                    runtimeProfile = runtimeProfile
+                )
+                metadata = metadata.copy(
+                    lastLiveSync = now,
+                    lastLiveSuccess = now,
+                    liveCount = acceptedCount
+                )
+                syncMetadataRepository.updateMetadata(metadata)
+                return@runCatching acceptedCount
+            }
+
+            if (trackInitialLiveOnboarding) {
+                recordXtreamLiveOnboardingState(
+                    provider = provider,
+                    phase = XTREAM_ONBOARDING_PHASE_FETCHING,
+                    now = System.currentTimeMillis(),
+                    clearError = true,
+                    runtimeProfile = runtimeProfile
+                )
+            }
             progress(provider.id, onProgress, "Downloading Live TV...")
             val liveSyncResult = syncXtreamLiveCatalog(
                 provider = provider,
                 api = api,
                 existingMetadata = metadata,
                 hiddenLiveCategoryIds = hiddenLiveCategoryIds,
-                onProgress = onProgress
+                onProgress = onProgress,
+                runtimeProfile = runtimeProfile,
+                trackInitialLiveOnboarding = trackInitialLiveOnboarding,
+                syncReason = syncReason
             )
+            if (trackInitialLiveOnboarding) {
+                val stagedAcceptedCount = liveSyncResult.stagedAcceptedCount
+                recordXtreamLiveOnboardingState(
+                    provider = provider,
+                    phase = if (liveSyncResult.stagedSessionId != null) {
+                        XTREAM_ONBOARDING_PHASE_STAGED
+                    } else {
+                        XTREAM_ONBOARDING_PHASE_COMMITTING
+                    },
+                    now = System.currentTimeMillis(),
+                    stagedSessionId = liveSyncResult.stagedSessionId,
+                    importStrategy = liveSyncResult.catalogResult.strategyNameOrNull(),
+                    acceptedRowCount = stagedAcceptedCount,
+                    stagedFlushCount = stagedFlushCountFor(stagedAcceptedCount),
+                    clearError = true,
+                    runtimeProfile = runtimeProfile,
+                    syncProfileStrategy = liveSyncResult.profileStrategyName(runtimeProfile, trackInitialLiveOnboarding)
+                )
+            }
             val liveSequentialStress = liveSyncResult.strategyFeedback.segmentedStressDetected
             val liveProviderAdaptation = updateSequentialProviderAdaptation(
                 previousRemembered = metadata.liveSequentialFailuresRemembered,
@@ -671,46 +806,51 @@ class SyncManager @Inject constructor(
 
             val acceptedCount = when (val liveResult = liveSyncResult.catalogResult) {
                 is CatalogStrategyResult.Success -> {
-                    val accepted = liveSyncResult.stagedSessionId?.let { sessionId ->
-                        if (hiddenLiveCategoryIds.isNotEmpty()) {
-                            mergeHiddenChannelsIntoStaging(provider.id, sessionId, hiddenLiveCategoryIds)
-                        }
-                        syncCatalogStore.applyStagedLiveCatalog(
-                            provider.id,
-                            sessionId,
-                            liveSyncResult.categories
-                        )
-                        liveSyncResult.stagedAcceptedCount
-                    } ?: run {
-                        val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
-                            providerId = provider.id,
-                            visibleCategories = liveSyncResult.categories,
-                            visibleChannels = liveResult.items.map { it.toEntity() },
-                            hiddenLiveCategoryIds = hiddenLiveCategoryIds
-                        )
-                        syncCatalogStore.replaceLiveCatalog(
-                            providerId = provider.id,
-                            categories = liveCatalog.categories,
-                            channels = liveCatalog.channels
+                    if (trackInitialLiveOnboarding) {
+                        recordXtreamLiveOnboardingState(
+                            provider = provider,
+                            phase = XTREAM_ONBOARDING_PHASE_COMMITTING,
+                            now = System.currentTimeMillis(),
+                            stagedSessionId = liveSyncResult.stagedSessionId,
+                            importStrategy = liveResult.strategyName,
+                            acceptedRowCount = liveSyncResult.stagedAcceptedCount,
+                            stagedFlushCount = stagedFlushCountFor(liveSyncResult.stagedAcceptedCount),
+                            clearError = true,
+                            runtimeProfile = runtimeProfile,
+                            syncProfileStrategy = liveSyncResult.profileStrategyName(runtimeProfile, trackInitialLiveOnboarding)
                         )
                     }
-                    warnings += liveSyncResult.warnings + liveResult.warnings
-                    accepted
+                    finalizeXtreamLiveCatalog(
+                        providerId = provider.id,
+                        liveSyncResult = liveSyncResult,
+                        hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                    ).also { commitResult ->
+                        warnings += commitResult.warnings
+                    }.acceptedCount
                 }
                 is CatalogStrategyResult.Partial -> {
-                    val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
-                        providerId = provider.id,
-                        visibleCategories = liveSyncResult.categories,
-                        visibleChannels = liveResult.items.map { it.toEntity() },
-                        hiddenLiveCategoryIds = hiddenLiveCategoryIds
-                    )
-                    syncCatalogStore.upsertLiveCatalog(
-                        providerId = provider.id,
-                        categories = liveCatalog.categories,
-                        channels = liveCatalog.channels
-                    ).also {
-                        warnings += liveSyncResult.warnings + liveResult.warnings + "Live TV sync completed partially."
+                    if (trackInitialLiveOnboarding) {
+                        recordXtreamLiveOnboardingState(
+                            provider = provider,
+                            phase = XTREAM_ONBOARDING_PHASE_COMMITTING,
+                            now = System.currentTimeMillis(),
+                            stagedSessionId = liveSyncResult.stagedSessionId,
+                            importStrategy = liveResult.strategyName,
+                            acceptedRowCount = liveSyncResult.stagedAcceptedCount,
+                            stagedFlushCount = stagedFlushCountFor(liveSyncResult.stagedAcceptedCount),
+                            clearError = true,
+                            runtimeProfile = runtimeProfile,
+                            syncProfileStrategy = liveSyncResult.profileStrategyName(runtimeProfile, trackInitialLiveOnboarding)
+                        )
                     }
+                    finalizeXtreamLiveCatalog(
+                        providerId = provider.id,
+                        liveSyncResult = liveSyncResult,
+                        hiddenLiveCategoryIds = hiddenLiveCategoryIds,
+                        partialCompletionWarning = "Live TV sync completed partially."
+                    ).also { commitResult ->
+                        warnings += commitResult.warnings
+                    }.acceptedCount
                 }
                 is CatalogStrategyResult.EmptyValid -> {
                     val existingChannelCount = channelDao.getCount(provider.id).first()
@@ -734,6 +874,34 @@ class SyncManager @Inject constructor(
                 }
             }
 
+            if (trackInitialLiveOnboarding) {
+                if (acceptedCount > 0) {
+                    val completedAt = System.currentTimeMillis()
+                    recordXtreamLiveOnboardingState(
+                        provider = provider,
+                        phase = XTREAM_ONBOARDING_PHASE_COMPLETED,
+                        now = completedAt,
+                        acceptedRowCount = acceptedCount,
+                        stagedFlushCount = stagedFlushCountFor(acceptedCount),
+                        clearError = true,
+                        completedAt = completedAt,
+                        clearStagedSession = true,
+                        runtimeProfile = runtimeProfile,
+                        syncProfileStrategy = liveSyncResult.profileStrategyName(runtimeProfile, trackInitialLiveOnboarding)
+                    )
+                } else {
+                    recordXtreamLiveOnboardingState(
+                        provider = provider,
+                        phase = XTREAM_ONBOARDING_PHASE_FAILED,
+                        acceptedRowCount = acceptedCount,
+                        lastError = "Live TV did not finish with any committed channels.",
+                        clearStagedSession = true,
+                        runtimeProfile = runtimeProfile,
+                        syncProfileStrategy = liveSyncResult.profileStrategyName(runtimeProfile, trackInitialLiveOnboarding)
+                    )
+                }
+            }
+
             metadata = metadata.copy(
                 lastLiveSync = now,
                 lastLiveSuccess = now,
@@ -746,6 +914,14 @@ class SyncManager @Inject constructor(
             acceptedCount
         }
         val liveCount = liveOutcome.getOrElse { error ->
+            if (trackInitialLiveOnboarding) {
+                recordXtreamLiveOnboardingState(
+                    provider = provider,
+                    phase = XTREAM_ONBOARDING_PHASE_FAILED,
+                    lastError = sanitizeThrowableMessage(error),
+                    runtimeProfile = runtimeProfile
+                )
+            }
             upsertXtreamIndexJob(
                 providerId = provider.id,
                 section = ContentType.LIVE.name,
@@ -841,6 +1017,155 @@ class SyncManager @Inject constructor(
             Log.i(TAG, "Xtream index-first sync completed for provider ${provider.id}; VOD and series index jobs are queued.")
         }
         return if (warnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = warnings.distinct())
+    }
+
+    private suspend fun recordXtreamLiveOnboardingState(
+        provider: Provider,
+        phase: String,
+        now: Long = System.currentTimeMillis(),
+        stagedSessionId: Long? = null,
+        importStrategy: String? = null,
+        nextCategoryIndex: Int? = null,
+        acceptedRowCount: Int? = null,
+        stagedFlushCount: Int? = null,
+        lastError: String? = null,
+        clearError: Boolean = false,
+        completedAt: Long? = null,
+        clearStagedSession: Boolean = false,
+        runtimeProfile: CatalogSyncRuntimeProfile? = null,
+        syncProfileStrategy: String? = null
+    ) {
+        val existing = xtreamLiveOnboardingDao.getByProvider(provider.id)
+        xtreamLiveOnboardingDao.upsert(
+            XtreamLiveOnboardingStateEntity(
+                providerId = provider.id,
+                providerType = provider.type.name,
+                contentType = ContentType.LIVE.name,
+                phase = phase,
+                stagedSessionId = if (clearStagedSession) null else stagedSessionId ?: existing?.stagedSessionId,
+                importStrategy = importStrategy ?: existing?.importStrategy,
+                nextCategoryIndex = nextCategoryIndex ?: existing?.nextCategoryIndex ?: 0,
+                acceptedRowCount = acceptedRowCount ?: existing?.acceptedRowCount ?: 0,
+                stagedFlushCount = stagedFlushCount ?: existing?.stagedFlushCount ?: 0,
+                syncProfileTier = runtimeProfile?.tier?.name ?: existing?.syncProfileTier,
+                syncProfileBatchSize = runtimeProfile?.stageBatchSize ?: existing?.syncProfileBatchSize ?: 0,
+                syncProfileStrategy = syncProfileStrategy ?: existing?.syncProfileStrategy,
+                syncProfileLowMemory = runtimeProfile?.snapshot?.isCurrentlyLowOnMemory ?: existing?.syncProfileLowMemory ?: false,
+                syncProfileMemoryClassMb = runtimeProfile?.snapshot?.memoryClassMb ?: existing?.syncProfileMemoryClassMb ?: 0,
+                syncProfileAvailableMemMb = runtimeProfile?.snapshot?.availableMemMb ?: existing?.syncProfileAvailableMemMb ?: 0L,
+                lastError = when {
+                    clearError -> null
+                    lastError != null -> lastError
+                    else -> existing?.lastError
+                },
+                createdAt = existing?.createdAt?.takeIf { it > 0L } ?: now,
+                updatedAt = now,
+                completedAt = completedAt
+            )
+        )
+    }
+
+    private fun CatalogStrategyResult<*>.strategyNameOrNull(): String? = when (this) {
+        is CatalogStrategyResult.Success -> strategyName
+        is CatalogStrategyResult.Partial -> strategyName
+        is CatalogStrategyResult.EmptyValid -> strategyName
+        is CatalogStrategyResult.Failure -> strategyName
+    }
+
+    private fun stagedFlushCountFor(acceptedCount: Int): Int =
+        if (acceptedCount <= 0) 0 else (acceptedCount + XTREAM_FALLBACK_STAGE_BATCH_SIZE - 1) / XTREAM_FALLBACK_STAGE_BATCH_SIZE
+
+    private fun CatalogSyncPayload<Channel>.profileStrategyName(
+        runtimeProfile: CatalogSyncRuntimeProfile,
+        trackInitialLiveOnboarding: Boolean
+    ): String {
+        val baseStrategy = catalogResult.strategyNameOrNull() ?: "unknown"
+        val fullPolicy = if (strategyFeedback.preferredSegmentedFirst) {
+            "segmented_first"
+        } else if (runtimeProfile.shouldAttemptFullLiveCatalog(trackInitialLiveOnboarding)) {
+            "full_allowed"
+        } else {
+            "full_blocked"
+        }
+        return "$baseStrategy;$fullPolicy"
+    }
+
+    private suspend fun recoverXtreamLiveOnboardingSession(
+        provider: Provider,
+        hiddenLiveCategoryIds: Set<Long>
+    ): XtreamLiveCommitResult? {
+        val state = xtreamLiveOnboardingDao.getIncompleteByProvider(provider.id) ?: return null
+        val sessionId = state.stagedSessionId ?: return null
+        if (state.providerType != ProviderType.XTREAM_CODES.name || state.contentType != ContentType.LIVE.name) {
+            discardXtreamLiveOnboardingSession(provider, sessionId, "Saved Live TV import did not match this provider.")
+            return null
+        }
+        if (state.importStrategy != null && state.importStrategy != "full") {
+            discardXtreamLiveOnboardingSession(provider, sessionId, "Saved Live TV import strategy could not be resumed.")
+            return null
+        }
+
+        val stagedState = syncCatalogStore.stagedLiveImportState(provider.id, sessionId)
+        val discardReason = when {
+            stagedState.channelCount <= 0 -> "Saved Live TV import was missing staged channels."
+            stagedState.movieCount > 0 || stagedState.seriesCount > 0 -> "Saved Live TV import contained rows for another catalog type."
+            else -> null
+        }
+        if (discardReason != null) {
+            discardXtreamLiveOnboardingSession(provider, sessionId, discardReason)
+            return null
+        }
+
+        recordXtreamLiveOnboardingState(
+            provider = provider,
+            phase = XTREAM_ONBOARDING_PHASE_RECOVERING,
+            stagedSessionId = sessionId,
+            importStrategy = state.importStrategy ?: "full",
+            acceptedRowCount = stagedState.channelCount,
+            stagedFlushCount = stagedFlushCountFor(stagedState.channelCount),
+            clearError = true
+        )
+        if (hiddenLiveCategoryIds.isNotEmpty()) {
+            mergeHiddenChannelsIntoStaging(provider.id, sessionId, hiddenLiveCategoryIds)
+        }
+        val commitState = if (hiddenLiveCategoryIds.isNotEmpty()) {
+            syncCatalogStore.stagedLiveImportState(provider.id, sessionId)
+        } else {
+            stagedState
+        }
+        recordXtreamLiveOnboardingState(
+            provider = provider,
+            phase = XTREAM_ONBOARDING_PHASE_COMMITTING,
+            stagedSessionId = sessionId,
+            importStrategy = state.importStrategy ?: "full",
+            acceptedRowCount = stagedState.channelCount,
+            stagedFlushCount = stagedFlushCountFor(stagedState.channelCount),
+            clearError = true
+        )
+        syncCatalogStore.applyStagedLiveCatalog(
+            providerId = provider.id,
+            sessionId = sessionId,
+            categories = commitState.categories.takeIf { it.isNotEmpty() }
+        )
+        return XtreamLiveCommitResult(
+            acceptedCount = stagedState.channelCount,
+            warnings = listOf("Live TV import resumed from saved staged session.")
+        )
+    }
+
+    private suspend fun discardXtreamLiveOnboardingSession(
+        provider: Provider,
+        sessionId: Long,
+        reason: String
+    ) {
+        Log.w(TAG, "Discarding saved Xtream Live onboarding session for provider ${provider.id}: $reason")
+        syncCatalogStore.discardStagedImport(provider.id, sessionId)
+        recordXtreamLiveOnboardingState(
+            provider = provider,
+            phase = XTREAM_ONBOARDING_PHASE_STARTING,
+            lastError = reason,
+            clearStagedSession = true
+        )
     }
 
     private suspend fun syncXtreamCategoryShell(
@@ -1316,14 +1641,14 @@ class SyncManager @Inject constructor(
     ): Int {
         if (movies.isEmpty()) return 0
         val incoming = movies.map { movie -> movie.toEntity().copy(cacheState = "SUMMARY_ONLY", detailHydratedAt = 0L, remoteStaleAt = 0L) }
-        val existingByStreamId = movieDao.getByStreamIds(providerId, incoming.map { it.streamId }).associateBy { it.streamId }
+        val existingByStreamId = loadMoviesByStreamIds(providerId, incoming.map { it.streamId })
         val merged = incoming.map { summary ->
             val existing = existingByStreamId[summary.streamId]
             mergeMovieSummary(existing, summary)
         }
         transactionRunner.inTransaction {
             movieDao.insertAll(merged)
-            val persistedByStreamId = movieDao.getByStreamIds(providerId, merged.map { it.streamId }).associateBy { it.streamId }
+            val persistedByStreamId = loadMoviesByStreamIds(providerId, merged.map { it.streamId })
             xtreamContentIndexDao.upsertAll(
                 merged.map { movie ->
                     val persisted = persistedByStreamId[movie.streamId] ?: movie
@@ -1342,14 +1667,14 @@ class SyncManager @Inject constructor(
     ): Int {
         if (series.isEmpty()) return 0
         val incoming = series.map { item -> item.toEntity().copy(cacheState = "SUMMARY_ONLY", detailHydratedAt = 0L, remoteStaleAt = 0L) }
-        val existingBySeriesId = seriesDao.getBySeriesIds(providerId, incoming.map { it.seriesId }).associateBy { it.seriesId }
+        val existingBySeriesId = loadSeriesByIds(providerId, incoming.map { it.seriesId })
         val merged = incoming.map { summary ->
             val existing = existingBySeriesId[summary.seriesId]
             mergeSeriesSummary(existing, summary)
         }
         transactionRunner.inTransaction {
             seriesDao.insertAll(merged)
-            val persistedBySeriesId = seriesDao.getBySeriesIds(providerId, merged.map { it.seriesId }).associateBy { it.seriesId }
+            val persistedBySeriesId = loadSeriesByIds(providerId, merged.map { it.seriesId })
             xtreamContentIndexDao.upsertAll(
                 merged.map { item ->
                     val persisted = persistedBySeriesId[item.seriesId] ?: item
@@ -1358,6 +1683,30 @@ class SyncManager @Inject constructor(
             )
         }
         return merged.size
+    }
+
+    private suspend fun loadMoviesByStreamIds(
+        providerId: Long,
+        streamIds: List<Long>
+    ): Map<Long, MovieEntity> {
+        return chunkedLookupById(
+            ids = streamIds,
+            chunkSize = XTREAM_SQLITE_LOOKUP_CHUNK_SIZE,
+            fetch = { chunk -> movieDao.getByStreamIds(providerId, chunk) },
+            keySelector = MovieEntity::streamId
+        )
+    }
+
+    private suspend fun loadSeriesByIds(
+        providerId: Long,
+        seriesIds: List<Long>
+    ): Map<Long, SeriesEntity> {
+        return chunkedLookupById(
+            ids = seriesIds,
+            chunkSize = XTREAM_SQLITE_LOOKUP_CHUNK_SIZE,
+            fetch = { chunk -> seriesDao.getBySeriesIds(providerId, chunk) },
+            keySelector = SeriesEntity::seriesId
+        )
     }
 
     private fun mergeMovieSummary(existing: MovieEntity?, summary: MovieEntity): MovieEntity {
@@ -2248,6 +2597,7 @@ class SyncManager @Inject constructor(
 
     private suspend fun syncLiveOnly(
         provider: Provider,
+        syncReason: XtreamLiveSyncReason,
         onProgress: ((String) -> Unit)?
     ): SyncOutcome {
         val now = System.currentTimeMillis()
@@ -2260,12 +2610,16 @@ class SyncManager @Inject constructor(
                 val hiddenLiveCategoryIds = preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE).first()
                 val api = createXtreamSyncProvider(provider, useTextClassification, enableBase64TextCompatibility)
                 val currentMetadata = syncMetadataRepository.getMetadata(provider.id) ?: SyncMetadata(provider.id)
+                val runtimeProfile = CatalogSyncRuntimeProfile.from(applicationContext)
                 val liveSyncResult = syncXtreamLiveCatalog(
                     provider = provider,
                     api = api,
                     existingMetadata = currentMetadata,
                     hiddenLiveCategoryIds = hiddenLiveCategoryIds,
-                    onProgress = onProgress
+                    onProgress = onProgress,
+                    runtimeProfile = runtimeProfile,
+                    trackInitialLiveOnboarding = false,
+                    syncReason = syncReason
                 )
                 val liveSequentialStress = liveSyncResult.strategyFeedback.segmentedStressDetected
                 val liveProviderAdaptation = updateSequentialProviderAdaptation(
@@ -2281,17 +2635,11 @@ class SyncManager @Inject constructor(
 
                 when (val liveResult = liveSyncResult.catalogResult) {
                     is CatalogStrategyResult.Success -> {
-                        val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
+                        val acceptedCount = finalizeXtreamLiveCatalog(
                             providerId = provider.id,
-                            visibleCategories = liveSyncResult.categories,
-                            visibleChannels = liveResult.items.map { it.toEntity() },
+                            liveSyncResult = liveSyncResult,
                             hiddenLiveCategoryIds = hiddenLiveCategoryIds
-                        )
-                        val acceptedCount = syncCatalogStore.replaceLiveCatalog(
-                            providerId = provider.id,
-                            categories = liveCatalog.categories,
-                            channels = liveCatalog.channels
-                        )
+                        ).acceptedCount
                         syncMetadataRepository.updateMetadata(
                             currentMetadata.copy(
                                 lastLiveSync = now,
@@ -2304,18 +2652,13 @@ class SyncManager @Inject constructor(
                         )
                     }
                     is CatalogStrategyResult.Partial -> {
-                        // Partial snapshot: upsert only so channels not in the subset are preserved.
-                        val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
+                        val commitResult = finalizeXtreamLiveCatalog(
                             providerId = provider.id,
-                            visibleCategories = liveSyncResult.categories,
-                            visibleChannels = liveResult.items.map { it.toEntity() },
-                            hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                            liveSyncResult = liveSyncResult,
+                            hiddenLiveCategoryIds = hiddenLiveCategoryIds,
+                            partialCompletionWarning = "Live TV retry completed partially."
                         )
-                        val acceptedCount = syncCatalogStore.upsertLiveCatalog(
-                            providerId = provider.id,
-                            categories = liveCatalog.categories,
-                            channels = liveCatalog.channels
-                        )
+                        val acceptedCount = commitResult.acceptedCount
                         syncMetadataRepository.updateMetadata(
                             currentMetadata.copy(
                                 lastLiveSync = now,
@@ -2325,8 +2668,7 @@ class SyncManager @Inject constructor(
                                 liveHealthySyncStreak = 0
                             )
                         )
-                        sectionWarnings += liveSyncResult.warnings + liveResult.warnings +
-                            listOf("Live TV retry completed partially.")
+                        sectionWarnings += commitResult.warnings
                     }
                     is CatalogStrategyResult.EmptyValid -> {
                         val existingLiveCount = channelDao.getCount(provider.id).first()
@@ -2575,14 +2917,39 @@ class SyncManager @Inject constructor(
         api: XtreamProvider,
         existingMetadata: SyncMetadata,
         hiddenLiveCategoryIds: Set<Long>,
-        onProgress: ((String) -> Unit)?
-    ): CatalogSyncPayload<Channel> =
-        xtreamLiveStrategy.syncXtreamLiveCatalog(provider, api, existingMetadata, hiddenLiveCategoryIds, onProgress)
+        onProgress: ((String) -> Unit)?,
+        runtimeProfile: CatalogSyncRuntimeProfile = CatalogSyncRuntimeProfile.from(applicationContext),
+        trackInitialLiveOnboarding: Boolean = false,
+        syncReason: XtreamLiveSyncReason = XtreamLiveSyncReason.FOREGROUND
+    ): CatalogSyncPayload<Channel> {
+        val effectiveLiveSyncMethod = XtreamLiveSyncPolicy.resolve(
+            userMode = provider.xtreamLiveSyncMode,
+            runtimeProfile = runtimeProfile,
+            syncReason = syncReason,
+            metadata = existingMetadata,
+            now = System.currentTimeMillis(),
+            hiddenLiveCategoryIds = hiddenLiveCategoryIds
+        )
+        Log.i(
+            TAG,
+            "Xtream live sync method for provider ${provider.id}: user=${provider.xtreamLiveSyncMode} effective=$effectiveLiveSyncMethod reason=$syncReason profile=${runtimeProfile.diagnosticsLabel}."
+        )
+        return xtreamLiveStrategy.syncXtreamLiveCatalog(
+            provider,
+            api,
+            existingMetadata,
+            hiddenLiveCategoryIds,
+            onProgress,
+            runtimeProfile,
+            trackInitialLiveOnboarding,
+            effectiveLiveSyncMethod
+        )
+    }
 
     private suspend fun loadXtreamLiveFull(
         provider: Provider,
         api: XtreamProvider
-    ): CatalogSyncPayload<Channel> = xtreamLiveStrategy.loadXtreamLiveFull(provider, api)
+    ): CatalogSyncPayload<Channel> = xtreamLiveStrategy.loadXtreamLiveFull(provider, api, CatalogSyncRuntimeProfile.from(applicationContext))
 
     private suspend fun loadXtreamLiveByCategory(
         provider: Provider,
@@ -2590,8 +2957,8 @@ class SyncManager @Inject constructor(
         rawCategories: List<XtreamCategory>,
         onProgress: ((String) -> Unit)?,
         preferSequential: Boolean
-    ): CatalogStrategyResult<Channel> =
-        xtreamLiveStrategy.loadXtreamLiveByCategory(provider, api, rawCategories, onProgress, preferSequential)
+    ): CatalogSyncPayload<Channel> =
+        xtreamLiveStrategy.loadXtreamLiveByCategory(provider, api, rawCategories, onProgress, preferSequential, CatalogSyncRuntimeProfile.from(applicationContext))
 
     private suspend fun updateSyncStatusMetadata(providerId: Long, status: String) {
         val metadata = (syncMetadataRepository.getMetadata(providerId) ?: SyncMetadata(providerId))
@@ -2670,6 +3037,71 @@ class SyncManager @Inject constructor(
         fallback: List<CategoryEntity>?
     ): List<CategoryEntity>? = catalogStrategySupport.mergePreferredAndFallbackCategories(preferred, fallback)
 
+    private suspend fun finalizeXtreamLiveCatalog(
+        providerId: Long,
+        liveSyncResult: CatalogSyncPayload<Channel>,
+        hiddenLiveCategoryIds: Set<Long>,
+        partialCompletionWarning: String? = null
+    ): XtreamLiveCommitResult {
+        val warnings = buildList {
+            addAll(liveSyncResult.warnings)
+            addAll(catalogStrategySupport.strategyWarnings(liveSyncResult.catalogResult))
+            partialCompletionWarning?.let(::add)
+        }
+        val acceptedCount = when (val liveResult = liveSyncResult.catalogResult) {
+            is CatalogStrategyResult.Success -> {
+                liveSyncResult.stagedSessionId?.let { sessionId ->
+                    val mergedCategories = mergeVisibleLiveCategoriesWithHiddenStoredContent(
+                        providerId = providerId,
+                        visibleCategories = liveSyncResult.categories,
+                        hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                    )
+                    if (hiddenLiveCategoryIds.isNotEmpty()) {
+                        mergeHiddenChannelsIntoStaging(providerId, sessionId, hiddenLiveCategoryIds)
+                    }
+                    syncCatalogStore.applyStagedLiveCatalog(
+                        providerId = providerId,
+                        sessionId = sessionId,
+                        categories = mergedCategories
+                    )
+                    liveSyncResult.stagedAcceptedCount
+                } ?: run {
+                    val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
+                        providerId = providerId,
+                        visibleCategories = liveSyncResult.categories,
+                        visibleChannels = liveResult.items.map { it.toEntity() },
+                        hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                    )
+                    syncCatalogStore.replaceLiveCatalog(
+                        providerId = providerId,
+                        categories = liveCatalog.categories,
+                        channels = liveCatalog.channels
+                    )
+                }
+            }
+            is CatalogStrategyResult.Partial -> {
+                val liveCatalog = mergeVisibleLiveSyncWithHiddenStoredContent(
+                    providerId = providerId,
+                    visibleCategories = liveSyncResult.categories,
+                    visibleChannels = liveResult.items.map { it.toEntity() },
+                    hiddenLiveCategoryIds = hiddenLiveCategoryIds
+                )
+                syncCatalogStore.upsertLiveCatalog(
+                    providerId = providerId,
+                    categories = liveCatalog.categories,
+                    channels = liveCatalog.channels
+                )
+            }
+            is CatalogStrategyResult.EmptyValid,
+            is CatalogStrategyResult.Failure -> {
+                throw IllegalArgumentException(
+                    "finalizeXtreamLiveCatalog only supports success or partial results"
+                )
+            }
+        }
+        return XtreamLiveCommitResult(acceptedCount = acceptedCount, warnings = warnings)
+    }
+
     private suspend fun mergeHiddenChannelsIntoStaging(
         providerId: Long,
         sessionId: Long,
@@ -2680,6 +3112,22 @@ class SyncManager @Inject constructor(
         if (hiddenChannels.isNotEmpty()) {
             syncCatalogStore.stageChannelBatch(providerId, sessionId, hiddenChannels)
         }
+    }
+
+    private suspend fun mergeVisibleLiveCategoriesWithHiddenStoredContent(
+        providerId: Long,
+        visibleCategories: List<CategoryEntity>?,
+        hiddenLiveCategoryIds: Set<Long>
+    ): List<CategoryEntity>? {
+        if (hiddenLiveCategoryIds.isEmpty()) {
+            return visibleCategories
+        }
+
+        return ((visibleCategories ?: emptyList()) + categoryDao.getByProviderAndTypeSync(providerId, ContentType.LIVE.name)
+            .filter { category -> category.categoryId in hiddenLiveCategoryIds })
+            .distinctBy { it.categoryId to it.type }
+            .sortedBy { it.categoryId }
+            .takeIf { it.isNotEmpty() }
     }
 
     private suspend fun mergeVisibleLiveSyncWithHiddenStoredContent(
@@ -2826,7 +3274,8 @@ class SyncManager @Inject constructor(
             password = provider.password,
             allowedOutputFormats = provider.allowedOutputFormats,
             useTextClassification = useTextClassification,
-            enableBase64TextCompatibility = enableBase64TextCompatibility
+            enableBase64TextCompatibility = enableBase64TextCompatibility,
+            requestProfile = provider.toGenericRequestProfile(ownerTag = "provider:${provider.id}/xtream")
         )
     }
 

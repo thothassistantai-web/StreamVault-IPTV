@@ -11,7 +11,9 @@ import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.VodSyncMode
 import com.streamvault.domain.repository.CategoryRepository
+import com.streamvault.domain.repository.MovieRepository
 import com.streamvault.domain.repository.ProviderRepository
+import com.streamvault.domain.repository.SeriesRepository
 import com.streamvault.domain.repository.SyncMetadataRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +28,8 @@ import java.util.Locale
 internal fun observeProviderDiagnostics(
     providerRepository: ProviderRepository,
     syncMetadataRepository: SyncMetadataRepository,
+    movieRepository: MovieRepository,
+    seriesRepository: SeriesRepository,
     application: Application
 ): Flow<Map<Long, ProviderDiagnosticsUiModel>> {
     return providerRepository.getProviders()
@@ -35,19 +39,26 @@ internal fun observeProviderDiagnostics(
             } else {
                 combine(
                     providers.map { provider ->
-                        syncMetadataRepository.observeMetadata(provider.id).map { metadata ->
+                        combine(
+                            syncMetadataRepository.observeMetadata(provider.id),
+                            movieRepository.getLibraryCount(provider.id),
+                            seriesRepository.getLibraryCount(provider.id)
+                        ) { metadata, movieCount, seriesCount ->
                             provider.id to ProviderDiagnosticsUiModel(
                                 lastSyncStatus = metadata?.lastSyncStatus ?: "NONE",
                                 lastLiveSync = metadata?.lastLiveSync ?: 0L,
+                                lastLiveSuccess = metadata?.lastLiveSuccess ?: 0L,
                                 lastMovieSync = metadata?.lastMovieSync ?: 0L,
                                 lastMovieAttempt = metadata?.lastMovieAttempt ?: 0L,
                                 lastMovieSuccess = metadata?.lastMovieSuccess ?: 0L,
                                 lastMoviePartial = metadata?.lastMoviePartial ?: 0L,
                                 lastSeriesSync = metadata?.lastSeriesSync ?: 0L,
+                                lastSeriesSuccess = metadata?.lastSeriesSuccess ?: 0L,
                                 lastEpgSync = metadata?.lastEpgSync ?: 0L,
+                                lastEpgSuccess = metadata?.lastEpgSuccess ?: 0L,
                                 liveCount = metadata?.liveCount ?: 0,
-                                movieCount = metadata?.movieCount ?: 0,
-                                seriesCount = metadata?.seriesCount ?: 0,
+                                movieCount = movieCount,
+                                seriesCount = seriesCount,
                                 epgCount = metadata?.epgCount ?: 0,
                                 movieSyncMode = metadata?.movieSyncMode ?: VodSyncMode.UNKNOWN,
                                 movieWarningsCount = metadata?.movieWarningsCount ?: 0,

@@ -170,20 +170,20 @@ class ChannelRepositoryImpl @Inject constructor(
             parentalControlManager.unlockedCategoriesForProvider(providerId)
         ) { categories: List<CategoryEntity>, categoryCounts: List<CategoryCount>, level: Int, unlockedCats: Set<Long> ->
             val countMap = categoryCounts.associate { count -> count.categoryId to count.item_count }
-            val mappedCategories = categories.map { entity ->
-                val domain = entity.toDomain().copy(count = countMap[entity.categoryId] ?: 0)
-                if (unlockedCats.contains(entity.categoryId)) {
-                    domain.copy(isUserProtected = false)
-                } else {
-                    domain
-                }
+            val countedCategories = categories.map { entity ->
+                entity.toDomain().copy(count = countMap[entity.categoryId] ?: 0)
             }
-            val filteredCategories = if (level >= 3) {
-                mappedCategories.filter { category ->
-                    (!category.isAdult && !category.isUserProtected) || unlockedCats.contains(category.id)
-                }
+            val visibleCategories = if (level >= 3) {
+                countedCategories.filter { category -> !category.isAdult && !category.isUserProtected }
             } else {
-                mappedCategories
+                countedCategories
+            }
+            val filteredCategories = visibleCategories.map { category ->
+                if (level < 3 && unlockedCats.contains(category.id)) {
+                    category.copy(isUserProtected = false)
+                } else {
+                    category
+                }
             }
 
             val allChannelsCategory = Category(

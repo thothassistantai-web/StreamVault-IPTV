@@ -155,6 +155,7 @@ class PreferencesRepository @Inject constructor(
         val RECORDING_PADDING_AFTER_MINUTES = intPreferencesKey("recording_padding_after_minutes")
         val LAST_APP_UPDATE_CHECK_TIMESTAMP = longPreferencesKey("last_app_update_check_timestamp")
         val APP_UPDATE_DOWNLOAD_ID = longPreferencesKey("app_update_download_id")
+        val APP_UPDATE_DOWNLOAD_VERSION_NAME = stringPreferencesKey("app_update_download_version_name")
         val APP_UPDATE_DOWNLOADED_VERSION_NAME = stringPreferencesKey("app_update_downloaded_version_name")
         val APP_UPDATE_LATEST_VERSION_NAME = stringPreferencesKey("app_update_latest_version_name")
         val APP_UPDATE_LATEST_VERSION_CODE = intPreferencesKey("app_update_latest_version_code")
@@ -500,6 +501,10 @@ class PreferencesRepository @Inject constructor(
         preferences[PreferencesKeys.APP_UPDATE_DOWNLOAD_ID]?.takeIf { it > 0L }
     }
 
+    val appUpdateDownloadVersionName: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.APP_UPDATE_DOWNLOAD_VERSION_NAME]?.takeIf { it.isNotBlank() }
+    }
+
     val downloadedAppUpdateVersionName: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.APP_UPDATE_DOWNLOADED_VERSION_NAME]?.takeIf { it.isNotBlank() }
     }
@@ -631,6 +636,16 @@ class PreferencesRepository @Inject constructor(
                 preferences.remove(PreferencesKeys.APP_UPDATE_DOWNLOAD_ID)
             } else {
                 preferences[PreferencesKeys.APP_UPDATE_DOWNLOAD_ID] = downloadId
+            }
+        }
+    }
+
+    suspend fun setAppUpdateDownloadVersionName(versionName: String?) {
+        context.dataStore.edit { preferences ->
+            if (versionName.isNullOrBlank()) {
+                preferences.remove(PreferencesKeys.APP_UPDATE_DOWNLOAD_VERSION_NAME)
+            } else {
+                preferences[PreferencesKeys.APP_UPDATE_DOWNLOAD_VERSION_NAME] = versionName
             }
         }
     }
@@ -1274,7 +1289,7 @@ class PreferencesRepository @Inject constructor(
     }
 
     val vodInfiniteScroll: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[PreferencesKeys.VOD_INFINITE_SCROLL] ?: false
+        preferences[PreferencesKeys.VOD_INFINITE_SCROLL] ?: true
     }
 
     suspend fun setVodInfiniteScroll(enabled: Boolean) {

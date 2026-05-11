@@ -110,6 +110,18 @@ internal fun ProviderCompactStat(
     title: String,
     count: Int
 ) {
+    ProviderCompactStat(
+        title = title,
+        value = ProviderCatalogCountUiModel(count, ProviderCatalogCountStatus.READY)
+    )
+}
+
+@Composable
+internal fun ProviderCompactStat(
+    title: String,
+    value: ProviderCatalogCountUiModel,
+    syncingLabel: String = stringResource(R.string.settings_catalog_count_syncing)
+) {
     Surface(
         shape = RoundedCornerShape(10.dp),
         colors = SurfaceDefaults.colors(containerColor = Color.White.copy(alpha = 0.06f))
@@ -124,13 +136,36 @@ internal fun ProviderCompactStat(
                 color = OnSurfaceDim
             )
             Text(
-                text = count.toString(),
+                text = value.count.toString(),
                 style = MaterialTheme.typography.labelMedium,
                 color = OnBackground
             )
+            providerCatalogStatusTagText(value, syncingLabel)?.let { tag ->
+                Text(
+                    text = tag,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Secondary
+                )
+            }
         }
     }
 }
+
+@Composable
+private fun providerCatalogStatusTagText(
+    value: ProviderCatalogCountUiModel,
+    syncingLabel: String
+): String? = when (value.status) {
+    ProviderCatalogCountStatus.QUEUED -> stringResource(R.string.settings_catalog_count_queued)
+    ProviderCatalogCountStatus.SYNCING -> syncingLabel
+    ProviderCatalogCountStatus.PARTIAL -> stringResource(R.string.settings_catalog_count_partial)
+    ProviderCatalogCountStatus.FAILED -> stringResource(R.string.settings_catalog_count_failed)
+    ProviderCatalogCountStatus.PENDING,
+    ProviderCatalogCountStatus.READY -> null
+}
+
+internal fun ProviderCatalogCountUiModel.shouldShowCatalogStatusTag(): Boolean =
+    status != ProviderCatalogCountStatus.PENDING && status != ProviderCatalogCountStatus.READY
 
 @Composable
 internal fun ProviderStatusBadge(status: ProviderStatus) {

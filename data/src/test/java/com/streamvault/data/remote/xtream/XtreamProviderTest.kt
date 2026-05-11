@@ -8,6 +8,7 @@ import com.streamvault.data.remote.dto.XtreamEpgListing
 import com.streamvault.data.remote.dto.XtreamEpgResponse
 import com.streamvault.data.remote.dto.XtreamEpisode
 import com.streamvault.data.remote.dto.XtreamEpisodeInfo
+import com.streamvault.data.remote.dto.XtreamLiveStreamRow
 import com.streamvault.data.remote.dto.XtreamSeriesInfoResponse
 import com.streamvault.data.remote.dto.XtreamSeriesItem
 import com.streamvault.data.remote.dto.XtreamServerInfo
@@ -116,6 +117,98 @@ class XtreamProviderTest {
             "HLS" to "xtream://42/live/777?ext=m3u8",
             "MPEG-TS" to "xtream://42/live/777?ext=ts"
         ).inOrder()
+    }
+
+    @Test
+    fun `mapLiveStreamsResponse keeps sync live rows lightweight`() = runBlocking {
+        val provider = XtreamProvider(
+            providerId = 42,
+            api = FakeXtreamApiService(),
+            serverUrl = "https://example.com",
+            username = "user",
+            password = "pass",
+            allowedOutputFormats = listOf("ts", "m3u8")
+        )
+
+        val channel = provider.mapLiveStreamsResponse(
+            listOf(
+                XtreamStream(
+                    name = "Live Channel",
+                    streamId = 777,
+                    containerExtension = ".M3U8",
+                    directSource = "https://cdn.example.com/live/777/master.m3u8?token=abc"
+                )
+            )
+        ).single()
+
+        assertThat(channel.streamUrl).isEqualTo("xtream://42/live/777?ext=m3u8")
+        assertThat(channel.streamUrl).doesNotContain("src=")
+        assertThat(channel.qualityOptions).isEmpty()
+        assertThat(channel.alternativeStreams).isEmpty()
+    }
+
+    @Test
+    fun `mapLiveStreamRowsSequence matches legacy sync core fields without playback variants`() = runBlocking {
+        val provider = XtreamProvider(
+            providerId = 42,
+            api = FakeXtreamApiService(),
+            serverUrl = "https://example.com",
+            username = "user",
+            password = "pass",
+            allowedOutputFormats = listOf("ts", "m3u8")
+        )
+        val legacyChannel = provider.mapLiveStreamsSequence(
+            sequenceOf(
+                XtreamStream(
+                    num = 12,
+                    name = "Live Channel",
+                    streamId = 777,
+                    streamIcon = "https://img.example.com/live.png",
+                    epgChannelId = "live.us",
+                    categoryId = "0",
+                    categoryName = "News",
+                    categoryIds = listOf("123"),
+                    tvArchive = 1,
+                    tvArchiveDuration = 3,
+                    containerExtension = ".M3U8",
+                    directSource = "https://cdn.example.com/live/777/master.m3u8?token=abc",
+                    isAdult = false
+                )
+            )
+        ).single()
+        val thinChannel = provider.mapLiveStreamRowsSequence(
+            sequenceOf(
+                XtreamLiveStreamRow(
+                    num = 12,
+                    name = "Live Channel",
+                    streamId = 777,
+                    streamIcon = "https://img.example.com/live.png",
+                    epgChannelId = "live.us",
+                    categoryId = "0",
+                    categoryName = "News",
+                    categoryIds = listOf("123"),
+                    tvArchive = 1,
+                    tvArchiveDuration = 3,
+                    containerExtension = ".M3U8",
+                    isAdult = false
+                )
+            )
+        ).single()
+
+        assertThat(thinChannel.streamId).isEqualTo(legacyChannel.streamId)
+        assertThat(thinChannel.name).isEqualTo(legacyChannel.name)
+        assertThat(thinChannel.categoryId).isEqualTo(legacyChannel.categoryId)
+        assertThat(thinChannel.categoryName).isEqualTo(legacyChannel.categoryName)
+        assertThat(thinChannel.logoUrl).isEqualTo(legacyChannel.logoUrl)
+        assertThat(thinChannel.epgChannelId).isEqualTo(legacyChannel.epgChannelId)
+        assertThat(thinChannel.number).isEqualTo(legacyChannel.number)
+        assertThat(thinChannel.catchUpSupported).isEqualTo(legacyChannel.catchUpSupported)
+        assertThat(thinChannel.catchUpDays).isEqualTo(legacyChannel.catchUpDays)
+        assertThat(thinChannel.isAdult).isEqualTo(legacyChannel.isAdult)
+        assertThat(thinChannel.streamUrl).isEqualTo("xtream://42/live/777?ext=m3u8")
+        assertThat(thinChannel.streamUrl).doesNotContain("src=")
+        assertThat(thinChannel.qualityOptions).isEmpty()
+        assertThat(thinChannel.alternativeStreams).isEmpty()
     }
 
     @Test

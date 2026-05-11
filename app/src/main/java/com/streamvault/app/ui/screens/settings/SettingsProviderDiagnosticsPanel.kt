@@ -3,7 +3,6 @@ package com.streamvault.app.ui.screens.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,12 +14,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Surface
-import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.streamvault.app.R
 import com.streamvault.app.ui.theme.ErrorColor
-import com.streamvault.app.ui.theme.OnBackground
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
 import com.streamvault.app.ui.theme.Primary
@@ -35,6 +31,7 @@ import java.util.Locale
 internal fun ProviderDiagnosticsPanel(
     provider: Provider,
     diagnostics: ProviderDiagnosticsUiModel,
+    movieIndexInProgress: Boolean,
     databaseMaintenance: DatabaseMaintenanceUiModel?
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -63,36 +60,12 @@ internal fun ProviderDiagnosticsPanel(
             style = MaterialTheme.typography.bodySmall,
             color = OnSurfaceDim
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ProviderDiagnosticPill(
-                title = stringResource(R.string.settings_diagnostic_live),
-                count = diagnostics.liveCount,
-                timestamp = diagnostics.lastLiveSync
-            )
-            ProviderDiagnosticPill(
-                title = stringResource(R.string.settings_diagnostic_movies),
-                count = diagnostics.movieCount,
-                timestamp = diagnostics.lastMovieSync
-            )
-            if (provider.type == ProviderType.XTREAM_CODES) {
-                ProviderDiagnosticPill(
-                    title = stringResource(R.string.settings_diagnostic_series),
-                    count = diagnostics.seriesCount,
-                    timestamp = diagnostics.lastSeriesSync
-                )
-            }
-            ProviderDiagnosticPill(
-                title = stringResource(R.string.settings_diagnostic_epg),
-                count = diagnostics.epgCount,
-                timestamp = diagnostics.lastEpgSync
-            )
-        }
         Text(
             text = stringResource(R.string.settings_diagnostic_status, diagnostics.lastSyncStatus),
             style = MaterialTheme.typography.labelSmall,
             color = OnSurface
         )
-        diagnostics.healthSummary(provider.type)?.let { summary ->
+        diagnostics.healthSummary(provider.type, movieIndexInProgress)?.let { summary ->
             Text(
                 text = summary,
                 style = MaterialTheme.typography.bodySmall,
@@ -187,45 +160,10 @@ private fun DatabaseMaintenancePanel(report: DatabaseMaintenanceUiModel) {
     }
 }
 
-@Composable
-private fun ProviderDiagnosticPill(
-    title: String,
-    count: Int,
-    timestamp: Long
-) {
-    val appTimeFormat = LocalAppTimeFormat.current
-    val dateTimeFormat = remember(appTimeFormat) { appTimeFormat.createDateTimeFormat() }
-    val syncLabel = remember(timestamp, dateTimeFormat) { formatDiagnosticTimestamp(timestamp, dateTimeFormat) }
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        colors = SurfaceDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.06f)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelSmall,
-                color = OnSurfaceDim
-            )
-            Text(
-                text = stringResource(R.string.settings_diagnostic_items, count),
-                style = MaterialTheme.typography.labelLarge,
-                color = OnBackground
-            )
-            Text(
-                text = syncLabel ?: stringResource(R.string.settings_diagnostic_never),
-                style = MaterialTheme.typography.labelSmall,
-                color = OnSurface
-            )
-        }
-    }
-}
-
-private fun ProviderDiagnosticsUiModel.healthSummary(providerType: ProviderType): String? {
+private fun ProviderDiagnosticsUiModel.healthSummary(
+    providerType: ProviderType,
+    movieIndexInProgress: Boolean
+): String? {
     val warnings = buildList {
         if (liveSequentialFailuresRemembered) {
             add("Live sync needs attention")
@@ -239,7 +177,7 @@ private fun ProviderDiagnosticsUiModel.healthSummary(providerType: ProviderType)
                 }
             )
         }
-        if (movieCatalogStale) {
+        if (movieCatalogStale && !movieIndexInProgress) {
             add("Movie catalog is running stale")
         }
         if (providerType == ProviderType.XTREAM_CODES && seriesSequentialFailuresRemembered) {

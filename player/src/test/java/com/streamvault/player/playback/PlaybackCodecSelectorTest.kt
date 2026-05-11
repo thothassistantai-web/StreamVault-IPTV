@@ -43,6 +43,93 @@ class PlaybackCodecSelectorTest {
         assertThat(shouldUseManagedCodecSelector(DecoderMode.COMPATIBILITY, ActiveDecoderPolicy.COMPATIBILITY)).isTrue()
     }
 
+    @Test
+    fun `auto default with av sync off uses stock media3 render path`() {
+        val plan = buildPlaybackRendererPlan(
+            requestedMode = DecoderMode.AUTO,
+            decoderPolicy = ActiveDecoderPolicy.AUTO,
+            useAudioVideoSyncSink = false,
+            useVideoRendererWorkaround = false
+        )
+
+        assertThat(plan.renderPath).isEqualTo("stock-media3")
+        assertThat(plan.useStockRenderersFactory).isTrue()
+        assertThat(plan.useAudioVideoSyncSink).isFalse()
+        assertThat(plan.useManagedCodecSelector).isFalse()
+    }
+
+    @Test
+    fun `auto ignores decoder reuse workaround to keep default startup stock`() {
+        val plan = buildPlaybackRendererPlan(
+            requestedMode = DecoderMode.AUTO,
+            decoderPolicy = ActiveDecoderPolicy.AUTO,
+            useAudioVideoSyncSink = false,
+            useVideoRendererWorkaround = true
+        )
+
+        assertThat(plan.renderPath).isEqualTo("stock-media3")
+        assertThat(plan.useStockRenderersFactory).isTrue()
+        assertThat(plan.useAudioVideoSyncSink).isFalse()
+        assertThat(plan.useVideoRendererWorkaround).isFalse()
+        assertThat(plan.useManagedCodecSelector).isFalse()
+    }
+
+    @Test
+    fun `auto with av sync on only requests audio video offset sink`() {
+        val plan = buildPlaybackRendererPlan(
+            requestedMode = DecoderMode.AUTO,
+            decoderPolicy = ActiveDecoderPolicy.AUTO,
+            useAudioVideoSyncSink = true,
+            useVideoRendererWorkaround = true
+        )
+
+        assertThat(plan.renderPath).isEqualTo("av-sync-sink")
+        assertThat(plan.useStockRenderersFactory).isFalse()
+        assertThat(plan.useAudioVideoSyncSink).isTrue()
+        assertThat(plan.useVideoRendererWorkaround).isFalse()
+        assertThat(plan.useManagedCodecSelector).isFalse()
+    }
+
+    @Test
+    fun `explicit hardware uses managed codec selector`() {
+        val plan = buildPlaybackRendererPlan(
+            requestedMode = DecoderMode.HARDWARE,
+            decoderPolicy = ActiveDecoderPolicy.HARDWARE_PREFERRED,
+            useAudioVideoSyncSink = false,
+            useVideoRendererWorkaround = false
+        )
+
+        assertThat(plan.useManagedCodecSelector).isTrue()
+        assertThat(plan.renderPath).isEqualTo("managed-codec-selector")
+    }
+
+    @Test
+    fun `explicit software uses managed codec selector`() {
+        val plan = buildPlaybackRendererPlan(
+            requestedMode = DecoderMode.SOFTWARE,
+            decoderPolicy = ActiveDecoderPolicy.SOFTWARE_PREFERRED,
+            useAudioVideoSyncSink = false,
+            useVideoRendererWorkaround = false
+        )
+
+        assertThat(plan.useManagedCodecSelector).isTrue()
+        assertThat(plan.renderPath).isEqualTo("managed-codec-selector")
+    }
+
+    @Test
+    fun `explicit compatibility can combine managed selector and renderer workaround`() {
+        val plan = buildPlaybackRendererPlan(
+            requestedMode = DecoderMode.COMPATIBILITY,
+            decoderPolicy = ActiveDecoderPolicy.COMPATIBILITY,
+            useAudioVideoSyncSink = false,
+            useVideoRendererWorkaround = true
+        )
+
+        assertThat(plan.useManagedCodecSelector).isTrue()
+        assertThat(plan.useVideoRendererWorkaround).isTrue()
+        assertThat(plan.renderPath).isEqualTo("decoder-reuse-workaround+managed-codec-selector")
+    }
+
     private fun compatibilityRecord(
         decoderName: String,
         failures: Int,

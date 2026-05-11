@@ -83,6 +83,7 @@ class HomeViewModelTest {
         whenever(preferencesRepository.showRecentChannelsCategory).thenReturn(flowOf(true))
         whenever(preferencesRepository.showAllChannelsCategory).thenReturn(flowOf(true))
         whenever(preferencesRepository.showLiveSourceSwitcher).thenReturn(flowOf(false))
+        whenever(preferencesRepository.multiViewCenterTwoSlotLayout).thenReturn(flowOf(false))
         whenever(preferencesRepository.liveChannelNumberingMode).thenReturn(flowOf(ChannelNumberingMode.PROVIDER))
         whenever(preferencesRepository.isIncognitoMode).thenReturn(flowOf(false))
         whenever(preferencesRepository.getHiddenCategoryIds(any(), any())).thenReturn(flowOf(emptySet()))

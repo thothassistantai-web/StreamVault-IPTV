@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamvault.app.R
 import com.streamvault.app.BuildConfig
+import com.streamvault.app.diagnostics.CrashReportStore
 import com.streamvault.app.tv.LauncherRecommendationsManager
 import com.streamvault.app.tv.WatchNextManager
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
@@ -17,6 +18,7 @@ import com.streamvault.app.update.AppUpdateInstaller
 import com.streamvault.app.update.GitHubReleaseChecker
 import com.streamvault.app.update.GitHubReleaseInfo
 import com.streamvault.data.local.dao.XtreamIndexJobDao
+import com.streamvault.data.local.dao.XtreamLiveOnboardingDao
 import com.streamvault.data.local.entity.XtreamIndexJobEntity
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.data.sync.SyncManager
@@ -57,6 +59,8 @@ import com.streamvault.domain.repository.ProviderRepository
 import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.CategoryRepository
 import com.streamvault.domain.repository.ChannelRepository
+import com.streamvault.domain.repository.MovieRepository
+import com.streamvault.domain.repository.SeriesRepository
 import com.streamvault.domain.repository.SyncMetadataRepository
 import com.streamvault.domain.usecase.GetCustomCategories
 import com.streamvault.domain.usecase.SyncProvider
@@ -79,6 +83,8 @@ class SettingsViewModel @Inject constructor(
     private val combinedM3uRepository: CombinedM3uRepository,
     private val categoryRepository: CategoryRepository,
     private val channelRepository: ChannelRepository,
+    private val movieRepository: MovieRepository,
+    private val seriesRepository: SeriesRepository,
     private val preferencesRepository: PreferencesRepository,
     private val internetSpeedTestRunner: InternetSpeedTestRunner,
     private val backupManager: BackupManager,
@@ -86,6 +92,7 @@ class SettingsViewModel @Inject constructor(
     private val parentalControlManager: ParentalControlManager,
     private val syncManager: SyncManager,
     private val xtreamIndexJobDao: XtreamIndexJobDao,
+    private val xtreamLiveOnboardingDao: XtreamLiveOnboardingDao,
     private val syncMetadataRepository: SyncMetadataRepository,
     private val playbackHistoryRepository: com.streamvault.domain.repository.PlaybackHistoryRepository,
     private val watchNextManager: WatchNextManager,
@@ -146,8 +153,10 @@ class SettingsViewModel @Inject constructor(
     )
 
     init {
+        refreshCrashReport()
         registerPreferenceObservers()
         registerXtreamIndexJobObserver()
+        registerXtreamLiveOnboardingObserver()
         registerSettingsAppUpdateObservers(
             scope = viewModelScope,
             preferencesRepository = preferencesRepository,
@@ -164,6 +173,8 @@ class SettingsViewModel @Inject constructor(
             scope = viewModelScope,
             providerRepository = providerRepository,
             syncMetadataRepository = syncMetadataRepository,
+            movieRepository = movieRepository,
+            seriesRepository = seriesRepository,
             application = appContext,
             preferencesRepository = preferencesRepository,
             activeProviderIdFlow = activeProviderIdFlow,
@@ -185,6 +196,50 @@ class SettingsViewModel @Inject constructor(
             uiState = _uiState
         )
     }
+
+    fun refreshCrashReport() {
+        val report = CrashReportStore.latestReport(appContext)
+        _uiState.update { state ->
+            state.copy(
+                crashReport = report?.toUiModel() ?: CrashReportUiModel(),
+                viewedCrashReport = state.viewedCrashReport?.let { report?.toUiModel() }
+            )
+        }
+    }
+
+    fun viewCrashReport() {
+        refreshCrashReport()
+        _uiState.update { state ->
+            state.copy(viewedCrashReport = state.crashReport.takeIf { it.hasReport })
+        }
+    }
+
+    fun dismissCrashReport() {
+        _uiState.update { it.copy(viewedCrashReport = null) }
+    }
+
+    fun deleteCrashReport() {
+        val deleted = CrashReportStore.deleteLatestReport(appContext)
+        _uiState.update {
+            it.copy(
+                crashReport = CrashReportUiModel(),
+                viewedCrashReport = null,
+                userMessage = if (deleted) {
+                    appContext.getString(R.string.settings_crash_report_deleted)
+                } else {
+                    appContext.getString(R.string.settings_crash_report_delete_failed)
+                }
+            )
+        }
+    }
+
+    private fun com.streamvault.app.diagnostics.CrashReportSummary.toUiModel(): CrashReportUiModel =
+        CrashReportUiModel(
+            timestamp = timestamp,
+            exception = exception,
+            fileName = fileName,
+            content = content
+        )
 
     private fun registerPreferenceObservers() {
         viewModelScope.launch {
@@ -210,7 +265,7 @@ class SettingsViewModel @Inject constructor(
                 val jobWarningsByProvider = jobs
                     .groupBy { it.providerId }
                     .mapValues { (_, providerJobs) ->
-                        providerJobs.mapNotNull { job -> job.toSettingsStatusMessage() }
+                        providerJobs.mapNotNull { job -> job.toSettingsWarningMessage() }
                     }
                     .filterValues { it.isNotEmpty() }
 
@@ -222,13 +277,58 @@ class SettingsViewModel @Inject constructor(
                             warnings.filterNot { warning -> warning.startsWith(XTREAM_INDEX_STATUS_PREFIX) }
                         }
                         .filterValues { it.isNotEmpty() }
-                    state.copy(syncWarningsByProvider = preservedWarnings + jobWarningsByProvider)
+                    state.copy(
+                        syncWarningsByProvider = preservedWarnings + jobWarningsByProvider,
+                        xtreamIndexSectionStatusByProvider = jobs
+                            .filter { job -> job.providerId in providerIds }
+                            .mapNotNull { job ->
+                                val section = job.section.toCatalogSectionKey() ?: return@mapNotNull null
+                                job.providerId to (section to job.state.toCatalogCountStatus())
+                            }
+                            .groupBy({ it.first }, { it.second })
+                            .mapValues { (_, pairs) -> pairs.toMap() }
+                    )
                 }
             }
         }
     }
 
-    private fun XtreamIndexJobEntity.toSettingsStatusMessage(): String? {
+    private fun String.toCatalogSectionKey(): String? = when (uppercase()) {
+        "LIVE" -> "LIVE"
+        "MOVIE" -> "MOVIE"
+        "SERIES" -> "SERIES"
+        "EPG" -> "EPG"
+        else -> null
+    }
+
+    private fun String.toCatalogCountStatus(): ProviderCatalogCountStatus = when (uppercase()) {
+        "QUEUED", "STALE" -> ProviderCatalogCountStatus.QUEUED
+        "RUNNING" -> ProviderCatalogCountStatus.SYNCING
+        "PARTIAL" -> ProviderCatalogCountStatus.PARTIAL
+        "FAILED_RETRYABLE", "FAILED_PERMANENT" -> ProviderCatalogCountStatus.FAILED
+        "SUCCESS" -> ProviderCatalogCountStatus.READY
+        else -> ProviderCatalogCountStatus.PENDING
+    }
+
+    private fun registerXtreamLiveOnboardingObserver() {
+        viewModelScope.launch {
+            xtreamLiveOnboardingDao.observeIncomplete().collect { states ->
+                _uiState.update { state ->
+                    val providerIds = state.providers.map { it.id }.toSet()
+                    state.copy(
+                        xtreamLiveOnboardingPhaseByProvider = states
+                            .filter { onboarding -> onboarding.providerId in providerIds }
+                            .associate { onboarding -> onboarding.providerId to onboarding.phase },
+                        xtreamLiveOnboardingByProvider = states
+                            .filter { onboarding -> onboarding.providerId in providerIds }
+                            .associate { onboarding -> onboarding.providerId to onboarding.toUiModel() }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun XtreamIndexJobEntity.toSettingsWarningMessage(): String? {
         val label = when (section) {
             "LIVE" -> "Live TV"
             "MOVIE" -> "Movies"
@@ -237,10 +337,7 @@ class SettingsViewModel @Inject constructor(
             else -> section.lowercase().replaceFirstChar { it.titlecase() }
         }
         return when (state) {
-            "QUEUED" -> "$XTREAM_INDEX_STATUS_PREFIX $label queued"
-            "RUNNING" -> "$XTREAM_INDEX_STATUS_PREFIX $label indexing"
             "PARTIAL" -> "$XTREAM_INDEX_STATUS_PREFIX $label partial: ${indexedRows} indexed"
-            "STALE" -> "$XTREAM_INDEX_STATUS_PREFIX $label stale"
             "FAILED_RETRYABLE" -> "$XTREAM_INDEX_STATUS_PREFIX $label retryable failed${lastError?.let { ": $it" }.orEmpty()}"
             "FAILED_PERMANENT" -> "$XTREAM_INDEX_STATUS_PREFIX $label permanently failed${lastError?.let { ": $it" }.orEmpty()}"
             else -> null
@@ -742,6 +839,10 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(userMessage = null) }
     }
 
+    fun showUserMessage(message: String) {
+        _uiState.update { it.copy(userMessage = message) }
+    }
+
     fun refreshProvider(
         providerId: Long,
         syncMode: SettingsProviderSyncMode = SettingsProviderSyncMode.SYNC_NOW
@@ -769,8 +870,8 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(userMessage = null) }
     }
 
-    fun exportConfig(uriString: String) {
-        backupActions.exportConfig(viewModelScope, uriString)
+    fun exportConfig(uriString: String, onSuccess: (() -> Unit)? = null) {
+        backupActions.exportConfig(viewModelScope, uriString, onSuccess)
     }
 
     fun inspectBackup(uriString: String) {

@@ -165,6 +165,7 @@ private fun ProviderWarningRetryButton(
 internal fun ProviderActionButtons(
     isActive: Boolean,
     isSyncing: Boolean,
+    liveOnboardingIncomplete: Boolean,
     onConnect: () -> Unit,
     onRefresh: () -> Unit,
     onEdit: () -> Unit,
@@ -174,11 +175,15 @@ internal fun ProviderActionButtons(
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         if (!isActive) {
             ProviderActionButton(
-                label = stringResource(R.string.settings_connect),
+                label = when {
+                    liveOnboardingIncomplete && isSyncing -> stringResource(R.string.settings_syncing_btn)
+                    liveOnboardingIncomplete -> stringResource(R.string.settings_sync_btn)
+                    else -> stringResource(R.string.settings_connect)
+                },
                 accent = Primary,
                 filled = true,
                 contentColor = Color.White,
-                onClick = onConnect
+                onClick = if (liveOnboardingIncomplete) onRefresh else onConnect
             )
         } else {
             ProviderActionButton(

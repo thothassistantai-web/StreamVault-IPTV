@@ -80,6 +80,7 @@ internal class SyncManagerCatalogStrategySupport(
     fun shouldAvoidFullCatalogStrategy(error: Throwable): Boolean {
         return when (error) {
             is XtreamResponseTooLargeException,
+            is LowMemoryCatalogAbortException,
             is XtreamParsingException -> true
             is java.net.SocketTimeoutException,
             is java.io.InterruptedIOException -> true

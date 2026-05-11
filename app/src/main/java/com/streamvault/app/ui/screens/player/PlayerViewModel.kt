@@ -182,6 +182,9 @@ class PlayerViewModel @Inject constructor(
     internal val availableCategoriesFlow = MutableStateFlow<List<Category>>(emptyList())
     val availableCategories: StateFlow<List<Category>> = availableCategoriesFlow.asStateFlow()
 
+    internal val parentalControlLevelFlow = MutableStateFlow(0)
+    val parentalControlLevel: StateFlow<Int> = parentalControlLevelFlow.asStateFlow()
+
     internal val activeCategoryIdFlow = MutableStateFlow(-1L)
     val activeCategoryId: StateFlow<Long> = activeCategoryIdFlow.asStateFlow()
 
@@ -520,6 +523,9 @@ class PlayerViewModel @Inject constructor(
         }
         viewModelScope.launch {
             preferencesRepository.autoPlayNextEpisode.collect { autoPlayNextEpisodeEnabled = it }
+        }
+        viewModelScope.launch {
+            preferencesRepository.parentalControlLevel.collect { parentalControlLevelFlow.value = it }
         }
         viewModelScope.launch {
             preferencesRepository.defaultStopPlaybackTimerMinutes.collect {

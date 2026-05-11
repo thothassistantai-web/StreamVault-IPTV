@@ -186,6 +186,7 @@ fun PlayerScreen(
     val showChannelListOverlay by viewModel.showChannelListOverlay.collectAsStateWithLifecycle()
     val showCategoryListOverlay by viewModel.showCategoryListOverlay.collectAsStateWithLifecycle()
     val availableCategories by viewModel.availableCategories.collectAsStateWithLifecycle()
+    val parentalControlLevel by viewModel.parentalControlLevel.collectAsStateWithLifecycle()
     val activeCategoryId by viewModel.activeCategoryId.collectAsStateWithLifecycle()
     val showEpgOverlay by viewModel.showEpgOverlay.collectAsStateWithLifecycle()
     val currentChannelList by viewModel.currentChannelList.collectAsStateWithLifecycle()
@@ -1241,6 +1242,9 @@ fun PlayerScreen(
                     categories = availableCategories,
                     currentCategoryId = activeCategoryId,
                     overlayFocusRequester = categoryListFocusRequester,
+                    isCategoryLocked = { category ->
+                        parentalControlLevel in 1..2 && (category.isAdult || category.isUserProtected)
+                    },
                     onSelectCategory = { category ->
                         viewModel.selectCategoryFromOverlay(category)
                     },

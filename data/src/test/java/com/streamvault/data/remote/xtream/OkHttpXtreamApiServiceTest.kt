@@ -95,6 +95,41 @@ class OkHttpXtreamApiServiceTest {
     }
 
     @Test
+    fun `streamLiveStreamRows decodes thin live rows incrementally`() = runTest {
+        val service = OkHttpXtreamApiService(
+            client = clientReturning(
+                statusCode = 200,
+                body = """
+                    [
+                      {
+                        "stream_id": "101",
+                        "name": "Live One",
+                        "category_ids": ["10"],
+                        "direct_source": "https://cdn.example.test/live/101/master.m3u8?token=abc",
+                        "rating": "9.1"
+                      },
+                      {
+                        "stream_id": "102",
+                        "name": "Live Two",
+                        "container_extension": "ts",
+                        "cover_big": "https://img.example.test/cover.jpg"
+                      }
+                    ]
+                """.trimIndent()
+            ),
+            json = json
+        )
+        val seen = mutableListOf<Pair<Long, String>>()
+
+        val count = service.streamLiveStreamRows("https://example.test/player_api.php?action=get_live_streams") { row ->
+            seen += row.streamId to row.name
+        }
+
+        assertThat(count).isEqualTo(2)
+        assertThat(seen).containsExactly(101L to "Live One", 102L to "Live Two").inOrder()
+    }
+
+    @Test
     fun `get applies request profile user agent`() = runTest {
         var seenUserAgent: String? = null
         val service = OkHttpXtreamApiService(

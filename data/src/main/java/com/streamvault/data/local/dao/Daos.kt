@@ -536,26 +536,39 @@ interface PlaybackCompatibilityDao {
         resolutionBucket: String
     ): List<PlaybackCompatibilityRecordEntity>
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertCompatibilityRecordIgnore(record: PlaybackCompatibilityRecordEntity): Long
+
     @Query(
         """
-        INSERT INTO playback_compatibility_records(
-            device_fingerprint, device_model, android_sdk, stream_type, video_mime_type,
-            resolution_bucket, decoder_name, surface_type, failure_type, last_failed_at,
-            last_succeeded_at, failure_count, success_count
-        ) VALUES (
-            :deviceFingerprint, :deviceModel, :androidSdk, :streamType, :videoMimeType,
-            :resolutionBucket, :decoderName, :surfaceType, :failureType, :failedAt,
-            0, 1, 0
-        )
-        ON CONFLICT(device_fingerprint, stream_type, video_mime_type, resolution_bucket, decoder_name, surface_type)
-        DO UPDATE SET
-            device_model = excluded.device_model,
-            android_sdk = excluded.android_sdk,
-            failure_type = excluded.failure_type,
-            last_failed_at = excluded.last_failed_at,
-            failure_count = playback_compatibility_records.failure_count + 1
+        UPDATE playback_compatibility_records
+        SET device_model = :deviceModel,
+            android_sdk = :androidSdk,
+            failure_type = :failureType,
+            last_failed_at = :failedAt,
+            failure_count = failure_count + 1
+        WHERE device_fingerprint = :deviceFingerprint
+          AND stream_type = :streamType
+          AND video_mime_type = :videoMimeType
+          AND resolution_bucket = :resolutionBucket
+          AND decoder_name = :decoderName
+          AND surface_type = :surfaceType
         """
     )
+    suspend fun updateFailureRecord(
+        deviceFingerprint: String,
+        deviceModel: String,
+        androidSdk: Int,
+        streamType: String,
+        videoMimeType: String,
+        resolutionBucket: String,
+        decoderName: String,
+        surfaceType: String,
+        failureType: String,
+        failedAt: Long
+    ): Int
+
+    @Transaction
     suspend fun recordFailure(
         deviceFingerprint: String,
         deviceModel: String,
@@ -567,26 +580,80 @@ interface PlaybackCompatibilityDao {
         surfaceType: String,
         failureType: String,
         failedAt: Long
-    )
+    ) {
+        val updated = updateFailureRecord(
+            deviceFingerprint = deviceFingerprint,
+            deviceModel = deviceModel,
+            androidSdk = androidSdk,
+            streamType = streamType,
+            videoMimeType = videoMimeType,
+            resolutionBucket = resolutionBucket,
+            decoderName = decoderName,
+            surfaceType = surfaceType,
+            failureType = failureType,
+            failedAt = failedAt
+        )
+        if (updated > 0) return
+
+        val inserted = insertCompatibilityRecordIgnore(
+            PlaybackCompatibilityRecordEntity(
+                deviceFingerprint = deviceFingerprint,
+                deviceModel = deviceModel,
+                androidSdk = androidSdk,
+                streamType = streamType,
+                videoMimeType = videoMimeType,
+                resolutionBucket = resolutionBucket,
+                decoderName = decoderName,
+                surfaceType = surfaceType,
+                failureType = failureType,
+                lastFailedAt = failedAt,
+                failureCount = 1
+            )
+        )
+        if (inserted == -1L) {
+            updateFailureRecord(
+                deviceFingerprint = deviceFingerprint,
+                deviceModel = deviceModel,
+                androidSdk = androidSdk,
+                streamType = streamType,
+                videoMimeType = videoMimeType,
+                resolutionBucket = resolutionBucket,
+                decoderName = decoderName,
+                surfaceType = surfaceType,
+                failureType = failureType,
+                failedAt = failedAt
+            )
+        }
+    }
 
     @Query(
         """
-        INSERT INTO playback_compatibility_records(
-            device_fingerprint, device_model, android_sdk, stream_type, video_mime_type,
-            resolution_bucket, decoder_name, surface_type, failure_type, last_failed_at,
-            last_succeeded_at, failure_count, success_count
-        ) VALUES (
-            :deviceFingerprint, :deviceModel, :androidSdk, :streamType, :videoMimeType,
-            :resolutionBucket, :decoderName, :surfaceType, '', 0, :succeededAt, 0, 1
-        )
-        ON CONFLICT(device_fingerprint, stream_type, video_mime_type, resolution_bucket, decoder_name, surface_type)
-        DO UPDATE SET
-            device_model = excluded.device_model,
-            android_sdk = excluded.android_sdk,
-            last_succeeded_at = excluded.last_succeeded_at,
-            success_count = playback_compatibility_records.success_count + 1
+        UPDATE playback_compatibility_records
+        SET device_model = :deviceModel,
+            android_sdk = :androidSdk,
+            last_succeeded_at = :succeededAt,
+            success_count = success_count + 1
+        WHERE device_fingerprint = :deviceFingerprint
+          AND stream_type = :streamType
+          AND video_mime_type = :videoMimeType
+          AND resolution_bucket = :resolutionBucket
+          AND decoder_name = :decoderName
+          AND surface_type = :surfaceType
         """
     )
+    suspend fun updateSuccessRecord(
+        deviceFingerprint: String,
+        deviceModel: String,
+        androidSdk: Int,
+        streamType: String,
+        videoMimeType: String,
+        resolutionBucket: String,
+        decoderName: String,
+        surfaceType: String,
+        succeededAt: Long
+    ): Int
+
+    @Transaction
     suspend fun recordSuccess(
         deviceFingerprint: String,
         deviceModel: String,
@@ -597,7 +664,48 @@ interface PlaybackCompatibilityDao {
         decoderName: String,
         surfaceType: String,
         succeededAt: Long
-    )
+    ) {
+        val updated = updateSuccessRecord(
+            deviceFingerprint = deviceFingerprint,
+            deviceModel = deviceModel,
+            androidSdk = androidSdk,
+            streamType = streamType,
+            videoMimeType = videoMimeType,
+            resolutionBucket = resolutionBucket,
+            decoderName = decoderName,
+            surfaceType = surfaceType,
+            succeededAt = succeededAt
+        )
+        if (updated > 0) return
+
+        val inserted = insertCompatibilityRecordIgnore(
+            PlaybackCompatibilityRecordEntity(
+                deviceFingerprint = deviceFingerprint,
+                deviceModel = deviceModel,
+                androidSdk = androidSdk,
+                streamType = streamType,
+                videoMimeType = videoMimeType,
+                resolutionBucket = resolutionBucket,
+                decoderName = decoderName,
+                surfaceType = surfaceType,
+                lastSucceededAt = succeededAt,
+                successCount = 1
+            )
+        )
+        if (inserted == -1L) {
+            updateSuccessRecord(
+                deviceFingerprint = deviceFingerprint,
+                deviceModel = deviceModel,
+                androidSdk = androidSdk,
+                streamType = streamType,
+                videoMimeType = videoMimeType,
+                resolutionBucket = resolutionBucket,
+                decoderName = decoderName,
+                surfaceType = surfaceType,
+                succeededAt = succeededAt
+            )
+        }
+    }
 
     @Query("DELETE FROM playback_compatibility_records WHERE last_failed_at < :olderThanMs AND last_succeeded_at < :olderThanMs")
     suspend fun deleteOlderThan(olderThanMs: Long): Int
@@ -3102,16 +3210,39 @@ interface SearchHistoryDao {
     )
     fun observeRecent(contentScope: String, providerId: Long, limit: Int): Flow<List<SearchHistoryEntity>>
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(entity: SearchHistoryEntity): Long
+
     @Query(
         """
-        INSERT INTO search_history(query, content_scope, provider_id, used_at, use_count)
-        VALUES (:query, :contentScope, :providerId, :usedAt, 1)
-        ON CONFLICT(query, content_scope, provider_id) DO UPDATE SET
-            used_at = excluded.used_at,
-            use_count = search_history.use_count + 1
+        UPDATE search_history
+        SET used_at = :usedAt,
+            use_count = use_count + 1
+        WHERE query = :query
+          AND content_scope = :contentScope
+          AND provider_id = :providerId
         """
     )
-    suspend fun record(query: String, contentScope: String, providerId: Long, usedAt: Long)
+    suspend fun incrementUseCount(query: String, contentScope: String, providerId: Long, usedAt: Long): Int
+
+    @Transaction
+    suspend fun record(query: String, contentScope: String, providerId: Long, usedAt: Long) {
+        val updated = incrementUseCount(query, contentScope, providerId, usedAt)
+        if (updated > 0) return
+
+        val inserted = insertIgnore(
+            SearchHistoryEntity(
+                query = query,
+                contentScope = contentScope,
+                providerId = providerId,
+                usedAt = usedAt,
+                useCount = 1
+            )
+        )
+        if (inserted == -1L) {
+            incrementUseCount(query, contentScope, providerId, usedAt)
+        }
+    }
 
     @Query("DELETE FROM search_history WHERE content_scope = :contentScope AND provider_id = :providerId")
     suspend fun deleteByScope(contentScope: String, providerId: Long)

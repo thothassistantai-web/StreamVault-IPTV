@@ -24,6 +24,10 @@ internal fun SettingsContentPane(
     onNavigateToParentalControl: (Long) -> Unit,
     onChooseRecordingFolder: () -> Unit,
     onCreateBackup: () -> Unit,
+    onShareBackup: () -> Unit,
+    onViewCrashReport: () -> Unit,
+    onShareCrashReport: () -> Unit,
+    onDeleteCrashReport: () -> Unit,
     onRestoreBackup: () -> Unit,
     onOpenUri: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -132,6 +136,7 @@ internal fun SettingsContentPane(
         } else if (dialogState.selectedCategory == 5) {
             settingsBackupSection(
                 onCreateBackup = onCreateBackup,
+                onShareBackup = onShareBackup,
                 onRestoreBackup = onRestoreBackup
             )
         } else if (dialogState.selectedCategory == 6) {
@@ -150,7 +155,10 @@ internal fun SettingsContentPane(
                 onDownloadLatestUpdate = viewModel::downloadLatestUpdate,
                 onSetAutoCheckAppUpdates = viewModel::setAutoCheckAppUpdates,
                 onSetAutoDownloadAppUpdates = viewModel::setAutoDownloadAppUpdates,
-                onRefreshDownloadState = viewModel::refreshDownloadState
+                onRefreshDownloadState = viewModel::refreshDownloadState,
+                onViewCrashReport = onViewCrashReport,
+                onShareCrashReport = onShareCrashReport,
+                onDeleteCrashReport = onDeleteCrashReport
             )
         }
     }

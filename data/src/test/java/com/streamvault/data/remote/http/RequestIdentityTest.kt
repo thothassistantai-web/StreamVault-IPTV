@@ -1,6 +1,8 @@
 package com.streamvault.data.remote.http
 
 import com.google.common.truth.Truth.assertThat
+import com.streamvault.domain.model.Provider
+import com.streamvault.domain.model.ProviderType
 import okhttp3.Request
 import org.junit.Test
 
@@ -37,5 +39,25 @@ class RequestIdentityTest {
         assertThat(summary).doesNotContain("Authorization")
         assertThat(summary).doesNotContain("Cookie")
         assertThat(summary).doesNotContain("secret")
+    }
+
+    @Test
+    fun `toGenericRequestProfile maps persisted header overrides`() {
+        val provider = Provider(
+            name = "Example",
+            type = ProviderType.M3U,
+            serverUrl = "https://example.test",
+            httpUserAgent = "ProviderAgent/2.0",
+            httpHeaders = "Referer: https://portal.example.test | Accept-Language: en-US"
+        )
+
+        val profile = provider.toGenericRequestProfile(ownerTag = "provider:9/m3u")
+
+        assertThat(profile.ownerTag).isEqualTo("provider:9/m3u")
+        assertThat(profile.userAgent).isEqualTo("ProviderAgent/2.0")
+        assertThat(profile.headers).containsExactly(
+            "Referer", "https://portal.example.test",
+            "Accept-Language", "en-US"
+        )
     }
 }

@@ -22,6 +22,7 @@ import com.streamvault.domain.model.SyncState
 import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.repository.SyncMetadataRepository
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import org.mockito.kotlin.any
@@ -31,6 +32,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -154,7 +156,7 @@ class ProviderRepositoryImplTest {
     }
 
     @Test
-    fun `validateM3u uses transactional activation api`() = runTest {
+    fun `validateM3u marks provider active only after successful onboarding`() = runTest {
         val existingProvider = ProviderEntity(
             id = 5L,
             name = "Playlist",
@@ -189,7 +191,19 @@ class ProviderRepositoryImplTest {
         whenever(providerDao.getByUrlAndUser("https://example.com/list.m3u", "", "")).thenReturn(null)
         whenever(credentialCrypto.encryptIfNeeded("")).thenReturn("")
         whenever(providerDao.insert(any())).thenReturn(9L)
-        whenever(syncManager.sync(eq(9L), eq(false), anyOrNull(), anyOrNull(), any())).thenReturn(Result.error("timeout"))
+        whenever(providerDao.getById(9L)).thenReturn(
+            ProviderEntity(
+                id = 9L,
+                name = "Playlist",
+                type = ProviderType.M3U,
+                serverUrl = "https://example.com/list.m3u",
+                m3uUrl = "https://example.com/list.m3u",
+                isActive = false,
+                status = ProviderStatus.PARTIAL
+            )
+        )
+        whenever(syncManager.sync(eq(9L), eq(false), anyOrNull(), anyOrNull(), anyOrNull(), eq(false)))
+            .thenReturn(Result.error("timeout"))
 
         val result = repository.validateM3u(
             url = "https://example.com/list.m3u",
@@ -203,9 +217,82 @@ class ProviderRepositoryImplTest {
         assertThat(result.isError).isTrue()
         val failure = (result as Result.Error).exception as ProviderSavedWithSyncErrorException
         assertThat(failure.provider.id).isEqualTo(9L)
-        assertThat(failure.provider.status).isEqualTo(ProviderStatus.ERROR)
+        assertThat(failure.provider.status).isEqualTo(ProviderStatus.PARTIAL)
+        assertThat(failure.provider.isActive).isFalse()
         assertThat(failure.message).contains("Playlist saved, but initial sync failed")
+        verify(providerDao, never()).setActive(9L)
+        verify(syncManager).scheduleProviderSyncResume(9L)
+    }
+
+    @Test
+    fun `validateM3u persists new provider inactive until onboarding succeeds`() = runTest {
+        whenever(providerDao.getByUrlAndUser("https://example.com/list.m3u", "", "")).thenReturn(null)
+        whenever(credentialCrypto.encryptIfNeeded("")).thenReturn("")
+        whenever(providerDao.insert(any())).thenReturn(9L)
+        whenever(providerDao.getById(9L)).thenReturn(
+            ProviderEntity(
+                id = 9L,
+                name = "Playlist",
+                type = ProviderType.M3U,
+                serverUrl = "https://example.com/list.m3u",
+                m3uUrl = "https://example.com/list.m3u",
+                isActive = false,
+                status = ProviderStatus.PARTIAL
+            )
+        )
+        whenever(syncManager.sync(9L, false, null)).thenReturn(Result.success(Unit))
+        whenever(syncManager.currentSyncState(9L)).thenReturn(SyncState.Success(123L))
+
+        val result = repository.validateM3u(
+            url = "https://example.com/list.m3u",
+            name = "Playlist",
+            epgSyncMode = ProviderEpgSyncMode.UPFRONT,
+            m3uVodClassificationEnabled = false,
+            onProgress = null,
+            id = null
+        )
+
+        assertThat(result.isSuccess).isTrue()
+        val insertedProviders = argumentCaptor<ProviderEntity>()
+        verify(providerDao).insert(insertedProviders.capture())
+        assertThat(insertedProviders.firstValue.isActive).isFalse()
         verify(providerDao).setActive(9L)
+    }
+
+    @Test
+    fun `refreshProviderData leaves xtream provider inactive partial when sync commits no live channels`() = runTest {
+        whenever(providerDao.getById(9L)).thenReturn(
+            ProviderEntity(
+                id = 9L,
+                name = "Xtream",
+                type = ProviderType.XTREAM_CODES,
+                serverUrl = "https://example.com",
+                username = "user",
+                isActive = false,
+                status = ProviderStatus.PARTIAL,
+                lastSyncedAt = 0L
+            )
+        )
+        whenever(syncManager.sync(9L, false, null, null, null)).thenReturn(Result.success(Unit))
+        whenever(syncManager.currentSyncState(9L)).thenReturn(SyncState.Success(123L))
+        whenever(channelDao.getCount(9L)).thenReturn(flowOf(0))
+
+        val result = repository.refreshProviderData(
+            providerId = 9L,
+            force = false,
+            movieFastSyncOverride = null,
+            epgSyncModeOverride = null,
+            onProgress = null
+        )
+
+        assertThat(result.isSuccess).isTrue()
+        val updatedProvider = argumentCaptor<ProviderEntity>()
+        verify(providerDao).update(updatedProvider.capture())
+        assertThat(updatedProvider.firstValue.isActive).isFalse()
+        assertThat(updatedProvider.firstValue.status).isEqualTo(ProviderStatus.PARTIAL)
+        assertThat(updatedProvider.firstValue.lastSyncedAt).isGreaterThan(0L)
+        verify(syncManager).scheduleProviderSyncResume(9L)
+        verify(providerDao, never()).setActive(9L)
     }
 
     @Test
@@ -274,11 +361,65 @@ class ProviderRepositoryImplTest {
 
     @Test
     fun `setActiveProvider uses transactional activation api`() = runTest {
+        whenever(providerDao.getById(9L)).thenReturn(
+            ProviderEntity(
+                id = 9L,
+                name = "Playlist",
+                type = ProviderType.M3U,
+                serverUrl = "https://example.com/list.m3u",
+                m3uUrl = "https://example.com/list.m3u"
+            )
+        )
+
         val result = repository.setActiveProvider(9L)
 
         assertThat(result.isSuccess).isTrue()
         verify(providerDao).setActive(9L)
         verify(providerDao, never()).deactivateAll()
         verify(providerDao, never()).activate(9L)
+    }
+
+    @Test
+    fun `setActiveProvider rejects xtream provider while live onboarding is incomplete`() = runTest {
+        whenever(providerDao.getById(9L)).thenReturn(
+            ProviderEntity(
+                id = 9L,
+                name = "Xtream",
+                type = ProviderType.XTREAM_CODES,
+                serverUrl = "https://example.com",
+                username = "user",
+                isActive = false,
+                status = ProviderStatus.PARTIAL
+            )
+        )
+        whenever(channelDao.getCount(9L)).thenReturn(flowOf(0))
+
+        val result = repository.setActiveProvider(9L)
+
+        assertThat(result.isError).isTrue()
+        assertThat((result as Result.Error).message).contains("still importing")
+        verify(providerDao, never()).setActive(9L)
+        verify(syncManager).scheduleProviderSyncResume(9L)
+    }
+
+    @Test
+    fun `setActiveProvider allows xtream provider with committed live channels`() = runTest {
+        whenever(providerDao.getById(9L)).thenReturn(
+            ProviderEntity(
+                id = 9L,
+                name = "Xtream",
+                type = ProviderType.XTREAM_CODES,
+                serverUrl = "https://example.com",
+                username = "user",
+                status = ProviderStatus.PARTIAL
+            )
+        )
+        whenever(channelDao.getCount(9L)).thenReturn(flowOf(12))
+
+        val result = repository.setActiveProvider(9L)
+
+        assertThat(result.isSuccess).isTrue()
+        verify(providerDao).setActive(9L)
+        verify(syncManager, never()).scheduleProviderSyncResume(9L)
     }
 }

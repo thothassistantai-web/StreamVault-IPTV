@@ -46,9 +46,10 @@ import com.streamvault.data.local.entity.*
         RecordingStorageEntity::class,
         PlaybackCompatibilityRecordEntity::class,
         XtreamContentIndexEntity::class,
-        XtreamIndexJobEntity::class
+        XtreamIndexJobEntity::class,
+        XtreamLiveOnboardingStateEntity::class
     ],
-    version = 48,
+    version = 52,
     exportSchema = true   // ← was false; schema JSON now tracked in version control
 )
 @TypeConverters(RoomEnumConverters::class)
@@ -85,6 +86,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
     abstract fun playbackCompatibilityDao(): PlaybackCompatibilityDao
     abstract fun xtreamContentIndexDao(): XtreamContentIndexDao
     abstract fun xtreamIndexJobDao(): XtreamIndexJobDao
+    abstract fun xtreamLiveOnboardingDao(): XtreamLiveOnboardingDao
 
     companion object {
         /**
@@ -2464,6 +2466,64 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                 )
 
                 validateForeignKeys(database, "xtream_content_index", "xtream_index_jobs")
+            }
+        }
+
+        val MIGRATION_48_49 = object : Migration(48, 49) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE providers ADD COLUMN http_user_agent TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE providers ADD COLUMN http_headers TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_49_50 = object : Migration(49, 50) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS xtream_live_onboarding_state (
+                        provider_id INTEGER NOT NULL,
+                        provider_type TEXT NOT NULL DEFAULT 'XTREAM_CODES',
+                        content_type TEXT NOT NULL DEFAULT 'LIVE',
+                        phase TEXT NOT NULL DEFAULT 'STARTING',
+                        staged_session_id INTEGER,
+                        import_strategy TEXT,
+                        next_category_index INTEGER NOT NULL DEFAULT 0,
+                        accepted_row_count INTEGER NOT NULL DEFAULT 0,
+                        staged_flush_count INTEGER NOT NULL DEFAULT 0,
+                        last_error TEXT,
+                        created_at INTEGER NOT NULL DEFAULT 0,
+                        updated_at INTEGER NOT NULL DEFAULT 0,
+                        completed_at INTEGER,
+                        PRIMARY KEY(provider_id),
+                        FOREIGN KEY(provider_id) REFERENCES providers(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_xtream_live_onboarding_state_provider_id ON xtream_live_onboarding_state(provider_id)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_xtream_live_onboarding_state_phase ON xtream_live_onboarding_state(phase)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_xtream_live_onboarding_state_updated_at ON xtream_live_onboarding_state(updated_at)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_xtream_live_onboarding_state_staged_session_id ON xtream_live_onboarding_state(staged_session_id)")
+
+                validateForeignKeys(database, "xtream_live_onboarding_state")
+            }
+        }
+
+        val MIGRATION_50_51 = object : Migration(50, 51) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE xtream_live_onboarding_state ADD COLUMN sync_profile_tier TEXT")
+                database.execSQL("ALTER TABLE xtream_live_onboarding_state ADD COLUMN sync_profile_batch_size INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE xtream_live_onboarding_state ADD COLUMN sync_profile_strategy TEXT")
+                database.execSQL("ALTER TABLE xtream_live_onboarding_state ADD COLUMN sync_profile_low_memory INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE xtream_live_onboarding_state ADD COLUMN sync_profile_memory_class_mb INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE xtream_live_onboarding_state ADD COLUMN sync_profile_available_mem_mb INTEGER NOT NULL DEFAULT 0")
+                validateForeignKeys(database, "xtream_live_onboarding_state")
+            }
+        }
+
+        val MIGRATION_51_52 = object : Migration(51, 52) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE providers ADD COLUMN xtream_live_sync_mode TEXT NOT NULL DEFAULT 'AUTO'")
+                validateForeignKeys(database, "providers")
             }
         }
     }

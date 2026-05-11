@@ -138,6 +138,137 @@ class StreamVaultDatabaseMigrationTest {
     }
 
     @Test
+    fun migrate44To51_publicMasterUpgradeValidatesLatestSchema() {
+        migrationTestHelper.createDatabase("streamvault-public-master-44-51-test", 44).apply {
+            execSQL(
+                """
+                INSERT INTO providers (
+                    id, name, type, server_url, username, password, m3u_url, epg_url,
+                    is_active, max_connections, allowed_output_formats_json, epg_sync_mode,
+                    xtream_fast_sync_enabled, m3u_vod_classification_enabled, status,
+                    last_synced_at, created_at
+                ) VALUES (1, 'Public Master Provider', 'XTREAM_CODES', 'https://provider.example.com', 'demo', 'secret', '', '', 1, 1, '[]', 'UPFRONT', 1, 0, 'ACTIVE', 0, 0)
+                """.trimIndent()
+            )
+            close()
+        }
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-public-master-44-51-test",
+            52,
+            true,
+            StreamVaultDatabase.MIGRATION_44_45,
+            StreamVaultDatabase.MIGRATION_45_46,
+            StreamVaultDatabase.MIGRATION_46_47,
+            StreamVaultDatabase.MIGRATION_47_48,
+            StreamVaultDatabase.MIGRATION_48_49,
+            StreamVaultDatabase.MIGRATION_49_50,
+            StreamVaultDatabase.MIGRATION_50_51,
+            StreamVaultDatabase.MIGRATION_51_52
+        )
+
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM providers WHERE id = 1 AND name = 'Public Master Provider'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'http_user_agent'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'xtream_live_onboarding_state'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('xtream_live_onboarding_state') WHERE name = 'sync_profile_tier'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('xtream_live_onboarding_state') WHERE name = 'sync_profile_available_mem_mb'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'xtream_live_sync_mode'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM providers WHERE id = 1 AND xtream_live_sync_mode = 'AUTO'"))
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun migrate48To49_addsProviderHttpProfileColumns() {
+        migrationTestHelper.createDatabase("streamvault-48-49-test", 48).apply {
+            execSQL(
+                """
+                INSERT INTO providers (
+                    id, name, type, server_url, username, password, m3u_url, epg_url,
+                    stalker_mac_address, stalker_device_profile, stalker_device_timezone, stalker_device_locale,
+                    is_active, max_connections, expiration_date, api_version, allowed_output_formats_json,
+                    epg_sync_mode, xtream_fast_sync_enabled, m3u_vod_classification_enabled, status,
+                    last_synced_at, created_at
+                ) VALUES (
+                    1, 'Provider', 'XTREAM_CODES', 'https://provider.example.com', 'demo', 'secret', '', '',
+                    '', '', '', '', 1, 1, NULL, NULL, '[]',
+                    'UPFRONT', 1, 0, 'ACTIVE', 0, 0
+                )
+                """.trimIndent()
+            )
+            close()
+        }
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-48-49-test",
+            49,
+            true,
+            StreamVaultDatabase.MIGRATION_48_49
+        )
+
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'http_user_agent'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'http_headers'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM providers WHERE id = 1 AND http_user_agent = '' AND http_headers = ''"))
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun migrate49To50_createsXtreamLiveOnboardingStateTable() {
+        migrationTestHelper.createDatabase("streamvault-49-50-test", 49).close()
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-49-50-test",
+            50,
+            true,
+            StreamVaultDatabase.MIGRATION_49_50
+        )
+
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'xtream_live_onboarding_state'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'index_xtream_live_onboarding_state_provider_id'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('xtream_live_onboarding_state') WHERE name = 'staged_flush_count'"))
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun migrate50To51_addsXtreamLiveOnboardingProfileDiagnostics() {
+        migrationTestHelper.createDatabase("streamvault-50-51-test", 50).close()
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-50-51-test",
+            51,
+            true,
+            StreamVaultDatabase.MIGRATION_50_51
+        )
+
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('xtream_live_onboarding_state') WHERE name = 'sync_profile_tier'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('xtream_live_onboarding_state') WHERE name = 'sync_profile_batch_size'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('xtream_live_onboarding_state') WHERE name = 'sync_profile_strategy'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('xtream_live_onboarding_state') WHERE name = 'sync_profile_low_memory'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('xtream_live_onboarding_state') WHERE name = 'sync_profile_memory_class_mb'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('xtream_live_onboarding_state') WHERE name = 'sync_profile_available_mem_mb'"))
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun migrate51To52_addsXtreamLiveSyncMode() {
+        migrationTestHelper.createDatabase("streamvault-51-52-test", 51).close()
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-51-52-test",
+            52,
+            true,
+            StreamVaultDatabase.MIGRATION_51_52
+        )
+
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'xtream_live_sync_mode'"))
+
+        migratedDb.close()
+    }
+
+    @Test
     fun migrate40To41_addsAudioVideoOffsetColumn() {
         migrationTestHelper.createDatabase("streamvault-40-41-test", 40).close()
 

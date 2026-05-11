@@ -14,17 +14,70 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkRequest
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.streamvault.data.local.dao.ProviderDao
+import com.streamvault.data.local.dao.ChannelDao
 import com.streamvault.data.local.dao.XtreamIndexJobDao
+import com.streamvault.data.local.dao.XtreamLiveOnboardingDao
+import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.ProviderEpgSyncMode
 import com.streamvault.domain.model.ProviderType
+import com.streamvault.domain.model.SyncState
 import com.streamvault.domain.repository.SyncMetadataRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import java.util.concurrent.TimeUnit
+
+internal suspend fun reconcileTargetedProviderStatus(
+    providerDao: ProviderDao,
+    channelDao: ChannelDao,
+    syncManager: SyncManager,
+    provider: com.streamvault.data.local.entity.ProviderEntity,
+    result: com.streamvault.domain.model.Result<Unit>,
+    currentTimeMillis: Long = System.currentTimeMillis()
+) {
+    when (result) {
+        is com.streamvault.domain.model.Result.Success -> {
+            val finalStatus = if (syncManager.currentSyncState(provider.id) is SyncState.Partial) {
+                ProviderStatus.PARTIAL
+            } else {
+                ProviderStatus.ACTIVE
+            }
+            if (!hasUsableLiveCatalogForActivation(provider.id, provider.type, channelDao)) {
+                providerDao.update(
+                    provider.copy(
+                        isActive = false,
+                        status = ProviderStatus.PARTIAL,
+                        lastSyncedAt = currentTimeMillis
+                    )
+                )
+                return
+            }
+            providerDao.update(
+                provider.copy(
+                    isActive = true,
+                    status = finalStatus,
+                    lastSyncedAt = currentTimeMillis
+                )
+            )
+        }
+        is com.streamvault.domain.model.Result.Error -> {
+            if (provider.status != ProviderStatus.PARTIAL) {
+                providerDao.update(provider.copy(isActive = false, status = ProviderStatus.ERROR))
+            }
+        }
+        is com.streamvault.domain.model.Result.Loading -> Unit
+    }
+}
+
+internal suspend fun shouldTrackInitialLiveOnboarding(
+    provider: com.streamvault.data.local.entity.ProviderEntity,
+    onboardingDao: XtreamLiveOnboardingDao
+): Boolean = provider.type == ProviderType.XTREAM_CODES &&
+    onboardingDao.getIncompleteByProvider(provider.id) != null
 
 class ProviderSyncWorker(
     appContext: Context,
@@ -35,9 +88,11 @@ class ProviderSyncWorker(
     @InstallIn(SingletonComponent::class)
     interface ProviderSyncWorkerEntryPoint {
         fun providerDao(): ProviderDao
+        fun channelDao(): ChannelDao
         fun syncManager(): SyncManager
         fun syncMetadataRepository(): SyncMetadataRepository
         fun xtreamIndexJobDao(): XtreamIndexJobDao
+        fun xtreamLiveOnboardingDao(): XtreamLiveOnboardingDao
     }
 
     override suspend fun doWork(): Result {
@@ -46,17 +101,35 @@ class ProviderSyncWorker(
                 applicationContext,
                 ProviderSyncWorkerEntryPoint::class.java
             )
-            val providers = entryPoint.providerDao().getAllSync()
+            val requestedProviderId = inputData.getLong(KEY_PROVIDER_ID, INVALID_PROVIDER_ID)
+            val providers = if (requestedProviderId != INVALID_PROVIDER_ID) {
+                entryPoint.providerDao().getById(requestedProviderId)?.let(::listOf).orEmpty()
+            } else {
+                entryPoint.providerDao().getAllSync()
+            }
             if (providers.isEmpty()) {
                 return Result.success()
             }
 
             var sawRetryableFailure = false
             providers.forEach { provider ->
-                val result = if (provider.type == ProviderType.XTREAM_CODES) {
+                val trackInitialLiveOnboarding = shouldTrackInitialLiveOnboarding(
+                    provider = provider,
+                    onboardingDao = entryPoint.xtreamLiveOnboardingDao()
+                )
+                val result = if (requestedProviderId == provider.id) {
+                    entryPoint.syncManager().sync(
+                        provider.id,
+                        force = false,
+                        trackInitialLiveOnboarding = trackInitialLiveOnboarding
+                    )
+                } else if (provider.type == ProviderType.XTREAM_CODES) {
                     syncXtreamProviderIfStale(entryPoint, provider)
                 } else {
                     entryPoint.syncManager().sync(provider.id, force = false)
+                }
+                if (requestedProviderId == provider.id) {
+                    reconcileTargetedProviderStatus(entryPoint, provider, result)
                 }
                 when (result) {
                     is com.streamvault.domain.model.Result.Error -> {
@@ -89,6 +162,9 @@ class ProviderSyncWorker(
         private const val TAG = "ProviderSyncWorker"
         private const val UNIQUE_WORK_NAME = "provider-sync-worker"
         private const val UNIQUE_LAUNCH_STALE_WORK_NAME = "provider-sync-launch-stale-check"
+        private const val UNIQUE_PROVIDER_WORK_PREFIX = "provider-sync-provider-"
+        private const val KEY_PROVIDER_ID = "provider_id"
+        private const val INVALID_PROVIDER_ID = -1L
 
         fun enqueuePeriodic(context: Context) {
             val request = PeriodicWorkRequestBuilder<ProviderSyncWorker>(6, TimeUnit.HOURS)
@@ -134,6 +210,29 @@ class ProviderSyncWorker(
                 request
             )
         }
+
+        fun enqueueProvider(context: Context, providerId: Long) {
+            val request = OneTimeWorkRequestBuilder<ProviderSyncWorker>()
+                .setInputData(workDataOf(KEY_PROVIDER_ID to providerId))
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .setRequiresBatteryNotLow(true)
+                        .build()
+                )
+                .setBackoffCriteria(
+                    BackoffPolicy.EXPONENTIAL,
+                    WorkRequest.MIN_BACKOFF_MILLIS,
+                    TimeUnit.MILLISECONDS
+                )
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                UNIQUE_PROVIDER_WORK_PREFIX + providerId,
+                ExistingWorkPolicy.REPLACE,
+                request
+            )
+        }
     }
 
     private suspend fun syncXtreamProviderIfStale(
@@ -141,6 +240,13 @@ class ProviderSyncWorker(
         provider: com.streamvault.data.local.entity.ProviderEntity
     ): com.streamvault.domain.model.Result<Unit> {
         val now = System.currentTimeMillis()
+        if (shouldTrackInitialLiveOnboarding(provider, entryPoint.xtreamLiveOnboardingDao())) {
+            return entryPoint.syncManager().sync(
+                provider.id,
+                force = false,
+                trackInitialLiveOnboarding = true
+            )
+        }
         val metadata = entryPoint.syncMetadataRepository().getMetadata(provider.id)
         val liveStale = ContentCachePolicy.shouldRefresh(
             metadata?.lastLiveSuccess ?: 0L,
@@ -161,7 +267,11 @@ class ProviderSyncWorker(
         }
 
         if (liveStale) {
-            when (val liveResult = entryPoint.syncManager().retrySection(provider.id, SyncRepairSection.LIVE)) {
+            when (val liveResult = entryPoint.syncManager().retrySection(
+                provider.id,
+                SyncRepairSection.LIVE,
+                syncReason = XtreamLiveSyncReason.BACKGROUND_STALE
+            )) {
                 is com.streamvault.domain.model.Result.Error -> return liveResult
                 else -> Unit
             }
@@ -190,5 +300,19 @@ class ProviderSyncWorker(
         val job = entryPoint.xtreamIndexJobDao().get(providerId, section.name) ?: return true
         if (job.state in setOf("QUEUED", "PARTIAL", "STALE", "FAILED_RETRYABLE")) return true
         return ContentCachePolicy.shouldRefresh(job.lastSuccessAt, ContentCachePolicy.CATALOG_TTL_MILLIS, now)
+    }
+
+    private suspend fun reconcileTargetedProviderStatus(
+        entryPoint: ProviderSyncWorkerEntryPoint,
+        provider: com.streamvault.data.local.entity.ProviderEntity,
+        result: com.streamvault.domain.model.Result<Unit>
+    ) {
+        reconcileTargetedProviderStatus(
+            providerDao = entryPoint.providerDao(),
+            channelDao = entryPoint.channelDao(),
+            syncManager = entryPoint.syncManager(),
+            provider = provider,
+            result = result
+        )
     }
 }

@@ -7,18 +7,33 @@ All notable product changes are recorded in this document.
 ### Added
 
 - Added Import Backup to startup provider setup, so new installs can restore saved providers from a backup instead of entering provider details manually.
+- Added Android TV-friendly backup sharing and open-with import fallback for devices with limited file picker support.
+- Added optional provider-level HTTP User-Agent and custom header overrides for Xtream and M3U providers.
+
+### Changed
+- Entire Xtream sync methodolgy was changed.
 
 ### Fixed
 
+- Fixed long category names in Live TV and VOD classic view so focused rows marquee to reveal the full label, with RTL-aware direction for pure RTL names.
+- Fixed movie and series fullscreen overlays taking too much screen space; VOD controls are now slimmer and quick actions stay on a single horizontal row instead of wrapping into a large second row.
+- Fixed Live TV preview surface mode now matching fullscreen playback.
+- Fixed fullscreen live playback now falling back from broken `TextureView` sessions to `SurfaceView`.
+- Fixed player A/V sync state wiring in the fullscreen player UI.
+- Fixed generic provider requests sometimes being sent without a User-Agent or consistent request identity. Xtream API, M3U playlist, and provider EPG requests now use a shared app-level User-Agent fallback with provider-scoped request profiles and sanitized request-header diagnostics; Stalker keeps its dedicated MAG-style identity path.
 - Fixed favorites, recent live, and continue-watching provider scoping in all-providers mode.
 - Fixed favorites persistence: partition-safe reorder, atomic move/merge, duplicate-safe global favorites, correct group counts.
 - Fixed favorites screen empty-state so recent activity still appears when no favorites are saved.
-- Fixed playback-history resume persistence keeping continue-watching and movie/episode progress current during active playback.
 - Fixed provider onboarding completing with a warning instead of failing when saved providers have a failed initial sync.
 - Fixed Xtream and M3U onboarding validation: rejects embedded credentials, safe playlist-to-Xtream conversion, shared password validation.
 - Fixed Xtream Live TV categories showing zero items when providers only send category membership in `category_ids`.
 - Hardened playback session lifecycle for main, preview, and multiview engines; fixed stream renewal/catch-up/rewind losing headers, stale quality selections, and needless full re-prepares on metadata-only route updates.
 - Fixed live playback decoder startup crashes and Auto-mode stutter by preferring hardware first with one software fallback.
+- Fixed Fire OS / Android 9 playback-start crashes caused by unsupported SQLite UPSERT syntax in playback compatibility history persistence.
+- Fixed default `AUTO` playback startup to use a safer stock Media3 path unless users explicitly enable AV sync or select a non-default decoder mode.
+- Fixed automatic playback recovery to stay bounded and progressive instead of looping through aggressive startup-time workarounds.
+- Fixed compatibility history so it is advisory only, non-fatal, and ignored during clean first startup.
+- Added release-safe crash reports for fatal playback failures so users can view, share, and delete the latest report from Settings.
 - Fixed several DVR lifecycle edge cases around recording promotion, foreground-service startup, handoff, and recovery.
 - Fixed recording schedule backup/restore for padding, recurring rules, and partial import failures.
 - Fixed reminder and recording scheduling: exact-alarm enforcement, stale suppression, alarm identity/cleanup, OS alarm cancel on provider delete.

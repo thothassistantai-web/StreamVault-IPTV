@@ -2,8 +2,12 @@ package com.streamvault.data.sync
 
 import com.google.common.truth.Truth.assertThat
 import android.content.Context
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.content.res.Resources
 import com.streamvault.data.local.DatabaseTransactionRunner
 import com.streamvault.data.local.dao.CatalogSyncDao
+import com.streamvault.data.local.dao.ChannelStageCategorySummary
 import com.streamvault.data.local.dao.CategoryDao
 import com.streamvault.data.local.dao.ChannelDao
 import com.streamvault.data.local.dao.MovieDao
@@ -13,16 +17,20 @@ import com.streamvault.data.local.dao.SeriesDao
 import com.streamvault.data.local.dao.TmdbIdentityDao
 import com.streamvault.data.local.dao.XtreamContentIndexDao
 import com.streamvault.data.local.dao.XtreamIndexJobDao
+import com.streamvault.data.local.dao.XtreamLiveOnboardingDao
 import com.streamvault.data.local.entity.CategoryEntity
 import com.streamvault.data.local.entity.ChannelEntity
 import com.streamvault.data.local.entity.ChannelGuideSyncEntity
+import com.streamvault.data.local.entity.MovieEntity
 import com.streamvault.data.local.entity.ProviderEntity
 import com.streamvault.data.local.entity.XtreamIndexJobEntity
+import com.streamvault.data.local.entity.XtreamLiveOnboardingStateEntity
 import com.streamvault.data.parser.M3uParser
 import com.streamvault.data.security.CredentialCrypto
 import com.streamvault.domain.model.SyncState
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.ProviderEpgSyncMode
+import com.streamvault.domain.model.ProviderXtreamLiveSyncMode
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.SyncMetadata
 import com.streamvault.domain.repository.EpgRepository
@@ -59,6 +67,7 @@ import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.check
 import org.mockito.kotlin.doSuspendableAnswer
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
@@ -144,11 +153,12 @@ class SyncManagerTest {
             val contentType: String = "application/json"
         )
 
-        private val stubs = mutableMapOf<String, StubbedResponse>()
+        private val stubs = mutableMapOf<String, MutableList<StubbedResponse>>()
         val requestedActions = mutableListOf<String>()
 
         fun respond(action: String, body: String, code: Int = 200) {
-            stubs[action] = StubbedResponse(code = code, body = body)
+            stubs.getOrPut(action) { mutableListOf() }
+                .add(StubbedResponse(code = code, body = body))
         }
 
         fun requestCount(): Int = requestedActions.size
@@ -164,10 +174,15 @@ class SyncManagerTest {
                     val request = chain.request()
                     val action = request.url.queryParameter("action").orEmpty()
                     requestedActions += action
-                    val stub = stubs[action] ?: StubbedResponse(
-                        code = 500,
-                        body = """{"error":"missing stub for $action"}"""
-                    )
+                    val queued = stubs[action]
+                    val stub = when {
+                        queued == null -> StubbedResponse(
+                            code = 500,
+                            body = """{"error":"missing stub for $action"}"""
+                        )
+                        queued.size > 1 -> queued.removeAt(0)
+                        else -> queued.first()
+                    }
                     Response.Builder()
                         .request(request)
                         .protocol(Protocol.HTTP_1_1)
@@ -191,6 +206,7 @@ class SyncManagerTest {
     private val tmdbIdentityDao: TmdbIdentityDao = mock()
     private val xtreamContentIndexDao: XtreamContentIndexDao = mock()
     private val xtreamIndexJobDao: XtreamIndexJobDao = mock()
+    private val xtreamLiveOnboardingDao: XtreamLiveOnboardingDao = mock()
     private val epgRepo: EpgRepository = mock()
     private val epgSourceRepo: EpgSourceRepository = mock()
     private val preferencesRepo: PreferencesRepository = mock()
@@ -200,6 +216,9 @@ class SyncManagerTest {
         ignoreUnknownKeys = true
         isLenient = true
     }
+    private val applicationContext: Context = mock()
+    private val packageManager: PackageManager = mock()
+    private val resources: Resources = mock()
     private val transactionRunner = object : DatabaseTransactionRunner {
         override suspend fun <T> inTransaction(block: suspend () -> T): T = block()
     }
@@ -223,10 +242,26 @@ class SyncManagerTest {
             tmdbIdentityDao,
             xtreamContentIndexDao,
             xtreamIndexJobDao,
+            xtreamLiveOnboardingDao,
             epgRepo,
             epgSourceRepo,
             preferencesRepo,
-            stalkerApiService
+            stalkerApiService,
+            applicationContext,
+            packageManager,
+            resources
+        )
+        org.mockito.kotlin.whenever(applicationContext.packageManager).thenReturn(packageManager)
+        org.mockito.kotlin.whenever(applicationContext.resources).thenReturn(resources)
+        org.mockito.kotlin.whenever(applicationContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(null)
+        org.mockito.kotlin.whenever(applicationContext.getSystemService(Context.UI_MODE_SERVICE)).thenReturn(null)
+        org.mockito.kotlin.whenever(packageManager.hasSystemFeature(any())).thenAnswer { invocation ->
+            invocation.getArgument<String>(0) == PackageManager.FEATURE_TOUCHSCREEN
+        }
+        org.mockito.kotlin.whenever(resources.configuration).thenReturn(
+            Configuration().apply {
+                screenWidthDp = 500
+            }
         )
         org.mockito.kotlin.whenever(preferencesRepo.useXtreamTextClassification).thenReturn(flowOf(false))
         org.mockito.kotlin.whenever(preferencesRepo.xtreamBase64TextCompatibility).thenReturn(flowOf(false))
@@ -242,6 +277,10 @@ class SyncManagerTest {
             org.mockito.kotlin.whenever(catalogSyncDao.getChannelStages(any(), any())).thenReturn(emptyList())
             org.mockito.kotlin.whenever(catalogSyncDao.getMovieStages(any(), any())).thenReturn(emptyList())
             org.mockito.kotlin.whenever(catalogSyncDao.getSeriesStages(any(), any())).thenReturn(emptyList())
+            org.mockito.kotlin.whenever(catalogSyncDao.countChannelStages(any(), any())).thenReturn(0)
+            org.mockito.kotlin.whenever(catalogSyncDao.countMovieStages(any(), any())).thenReturn(0)
+            org.mockito.kotlin.whenever(catalogSyncDao.countSeriesStages(any(), any())).thenReturn(0)
+            org.mockito.kotlin.whenever(catalogSyncDao.getChannelStageCategorySummaries(any(), any())).thenReturn(emptyList())
             // Default stubs for the streamed Stalker API methods. The tests in this file
             // generally don't stress live-stream streaming directly; without these defaults
             // the unstubbed mock returns null which crashes the `when (val streamResult)`
@@ -265,7 +304,7 @@ class SyncManagerTest {
         providerPresent: Boolean = true,
         providerEntity: ProviderEntity? = null
     ): SyncManager = SyncManager(
-        applicationContext = mock<Context>(),
+        applicationContext = applicationContext,
         providerDao = FakeProviderDao(
             if (providerPresent) {
                 providerEntity ?: sampleProvider(providerType)
@@ -282,6 +321,7 @@ class SyncManagerTest {
         tmdbIdentityDao = tmdbIdentityDao,
         xtreamContentIndexDao = xtreamContentIndexDao,
         xtreamIndexJobDao = xtreamIndexJobDao,
+        xtreamLiveOnboardingDao = xtreamLiveOnboardingDao,
         stalkerApiService = stalkerApiService,
         xtreamJson = xtreamJson,
         m3uParser = M3uParser(),
@@ -409,6 +449,90 @@ class SyncManagerTest {
     }
 
     @Test
+    fun `sync_xtream_tracked_initial_live_onboarding_marks_state_complete`() = runTest {
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
+        stubXtreamLiveCatalog()
+        stubXtreamEmptyVodAndSeriesCategories()
+
+        val result = mgr.sync(1L, force = false, trackInitialLiveOnboarding = true)
+        advanceUntilIdle()
+
+        val states = argumentCaptor<XtreamLiveOnboardingStateEntity>()
+        verify(xtreamLiveOnboardingDao, atLeastOnce()).upsert(states.capture())
+        val capturedStates = states.allValues
+        val completed = capturedStates.last { it.phase == "COMPLETED" }
+        assertThat(result.isSuccess).isTrue()
+        assertThat(capturedStates.map { it.phase }).containsAtLeast("STARTING", "FETCHING", "COMPLETED")
+        assertThat(completed.acceptedRowCount).isEqualTo(1)
+        assertThat(completed.completedAt).isGreaterThan(0L)
+    }
+
+    @Test
+    fun `sync_xtream_tracked_initial_live_onboarding_commits_recovered_staged_session`() = runTest {
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
+        stubXtreamEmptyVodAndSeriesCategories()
+        org.mockito.kotlin.whenever(xtreamLiveOnboardingDao.getIncompleteByProvider(1L)).thenReturn(
+            XtreamLiveOnboardingStateEntity(
+                providerId = 1L,
+                providerType = ProviderType.XTREAM_CODES.name,
+                contentType = ContentType.LIVE.name,
+                phase = "STAGED",
+                stagedSessionId = 123L,
+                importStrategy = "full",
+                acceptedRowCount = 1,
+                stagedFlushCount = 1
+            )
+        )
+        org.mockito.kotlin.whenever(catalogSyncDao.countChannelStages(1L, 123L)).thenReturn(1)
+        org.mockito.kotlin.whenever(catalogSyncDao.getChannelStageCategorySummaries(1L, 123L)).thenReturn(
+            listOf(ChannelStageCategorySummary(categoryId = 1L, name = "News", isAdult = false))
+        )
+
+        val result = mgr.sync(1L, force = false, trackInitialLiveOnboarding = true)
+        advanceUntilIdle()
+
+        val states = argumentCaptor<XtreamLiveOnboardingStateEntity>()
+        verify(xtreamLiveOnboardingDao, atLeastOnce()).upsert(states.capture())
+        assertThat(result.isSuccess).isTrue()
+        assertThat(xtreamBackend.requestedActions).doesNotContain("get_live_categories")
+        assertThat(xtreamBackend.requestedActions).doesNotContain("get_live_streams")
+        assertThat(states.allValues.map { it.phase }).containsAtLeast("RECOVERING", "COMMITTING", "COMPLETED")
+        assertThat(states.allValues.last { it.phase == "COMPLETED" }.stagedSessionId).isNull()
+        verify(catalogSyncDao).updateChangedChannelsFromStage(1L, 123L)
+        verify(catalogSyncDao).insertMissingChannelsFromStage(1L, 123L)
+        verify(catalogSyncDao).deleteStaleChannelsForStage(1L, 123L)
+        verify(catalogSyncDao).clearChannelStages(1L, 123L)
+    }
+
+    @Test
+    fun `sync_xtream_tracked_initial_live_onboarding_discards_missing_staged_session_and_refetches`() = runTest {
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
+        stubXtreamLiveCatalog()
+        stubXtreamEmptyVodAndSeriesCategories()
+        org.mockito.kotlin.whenever(xtreamLiveOnboardingDao.getIncompleteByProvider(1L)).thenReturn(
+            XtreamLiveOnboardingStateEntity(
+                providerId = 1L,
+                providerType = ProviderType.XTREAM_CODES.name,
+                contentType = ContentType.LIVE.name,
+                phase = "STAGED",
+                stagedSessionId = 456L,
+                importStrategy = "full",
+                acceptedRowCount = 1,
+                stagedFlushCount = 1
+            )
+        )
+        org.mockito.kotlin.whenever(catalogSyncDao.countChannelStages(1L, 456L)).thenReturn(0)
+
+        val result = mgr.sync(1L, force = false, trackInitialLiveOnboarding = true)
+        advanceUntilIdle()
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(xtreamBackend.requestedActions).contains("get_live_categories")
+        assertThat(xtreamBackend.requestedActions).contains("get_live_streams")
+        verify(catalogSyncDao).clearChannelStages(1L, 456L)
+    }
+
+    @Test
     fun `syncEpg_xtream_success_marks_epg_job_success`() = runTest {
         val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
         org.mockito.kotlin.whenever(epgRepo.refreshEpg(eq(1L), any())).thenReturn(Result.success(Unit))
@@ -494,6 +618,274 @@ class SyncManagerTest {
         assertThat(xtreamBackend.requestedActions).contains("get_live_categories")
         val updated = syncMetadataRepo.getMetadata(1L)
         assertThat(updated?.lastLiveSuccess ?: 0L).isGreaterThan(0L)
+    }
+
+    @Test
+    fun `retrySection_live_xtream_full_success_keeps_staged_live_count`() = runTest {
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
+        stubXtreamLiveCatalog()
+
+        val result = mgr.retrySection(providerId = 1L, section = SyncRepairSection.LIVE)
+        advanceUntilIdle()
+
+        assertThat(result.isSuccess).isTrue()
+        val updated = syncMetadataRepo.getMetadata(1L)
+        assertThat(updated?.liveCount).isEqualTo(1)
+        assertThat(mgr.currentSyncState(1L)).isInstanceOf(SyncState.Success::class.java)
+    }
+
+    @Test
+    fun `retrySection_live_xtream_auto_manual_sync_uses_category_mode_on_mid_profile`() = runTest {
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
+        xtreamBackend.respond(
+            action = "get_live_categories",
+            body = """
+                [
+                  {"category_id":"1","category_name":"News"},
+                  {"category_id":"2","category_name":"Sports"}
+                ]
+            """.trimIndent()
+        )
+        xtreamBackend.respond(
+            action = "get_live_streams",
+            body = """
+                [
+                  {
+                    "name": "Channel One",
+                    "stream_id": 1001,
+                    "category_id": "1",
+                    "stream_icon": "https://example.com/ch1.png",
+                    "tv_archive": 0,
+                    "num": 1
+                  }
+                ]
+            """.trimIndent()
+        )
+
+        val result = mgr.retrySection(providerId = 1L, section = SyncRepairSection.LIVE)
+        advanceUntilIdle()
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(xtreamBackend.requestedActions.count { it == "get_live_streams" }).isEqualTo(2)
+        assertThat(xtreamBackend.requestedActions.first()).isEqualTo("get_live_categories")
+    }
+
+    @Test
+    fun `sync_xtream_forced_category_mode_skips_full_live_catalog`() = runTest {
+        val provider = sampleProvider(ProviderType.XTREAM_CODES).copy(
+            xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.CATEGORY_BY_CATEGORY
+        )
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES, providerEntity = provider)
+        xtreamBackend.respond(
+            action = "get_live_categories",
+            body = """
+                [
+                  {"category_id":"1","category_name":"News"},
+                  {"category_id":"2","category_name":"Sports"}
+                ]
+            """.trimIndent()
+        )
+        xtreamBackend.respond(
+            action = "get_live_streams",
+            body = """
+                [
+                  {
+                    "name": "Channel One",
+                    "stream_id": 1001,
+                    "category_id": "1",
+                    "stream_icon": "https://example.com/ch1.png",
+                    "tv_archive": 0,
+                    "num": 1
+                  }
+                ]
+            """.trimIndent()
+        )
+        stubXtreamEmptyVodAndSeriesCategories()
+
+        val result = mgr.sync(1L, force = false)
+        advanceUntilIdle()
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(xtreamBackend.requestedActions.count { it == "get_live_streams" }).isEqualTo(2)
+        assertThat(xtreamBackend.requestedActions).contains("get_vod_categories")
+        assertThat(xtreamBackend.requestedActions).contains("get_series_categories")
+    }
+
+    @Test
+    fun `sync_xtream_forced_stream_all_uses_full_live_catalog_when_safe`() = runTest {
+        val provider = sampleProvider(ProviderType.XTREAM_CODES).copy(
+            xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.STREAM_ALL
+        )
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES, providerEntity = provider)
+        xtreamBackend.respond(
+            action = "get_live_categories",
+            body = """
+                [
+                  {"category_id":"1","category_name":"News"},
+                  {"category_id":"2","category_name":"Sports"}
+                ]
+            """.trimIndent()
+        )
+        xtreamBackend.respond(
+            action = "get_live_streams",
+            body = """
+                [
+                  {
+                    "name": "Channel One",
+                    "stream_id": 1001,
+                    "category_id": "1",
+                    "stream_icon": "https://example.com/ch1.png",
+                    "tv_archive": 0,
+                    "num": 1
+                  }
+                ]
+            """.trimIndent()
+        )
+        stubXtreamEmptyVodAndSeriesCategories()
+
+        val result = mgr.sync(1L, force = false)
+        advanceUntilIdle()
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(xtreamBackend.requestedActions.count { it == "get_live_streams" }).isEqualTo(1)
+        assertThat(xtreamBackend.requestedActions).contains("get_vod_categories")
+        assertThat(xtreamBackend.requestedActions).contains("get_series_categories")
+    }
+
+    @Test
+    fun `sync_xtream_forced_stream_all_falls_back_and_records_avoid_full_metadata`() = runTest {
+        val provider = sampleProvider(ProviderType.XTREAM_CODES).copy(
+            xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.STREAM_ALL
+        )
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES, providerEntity = provider)
+        xtreamBackend.respond(
+            action = "get_live_categories",
+            body = """
+                [
+                  {"category_id":"1","category_name":"News"},
+                  {"category_id":"2","category_name":"Sports"}
+                ]
+            """.trimIndent()
+        )
+        repeat(4) {
+            xtreamBackend.respond(action = "get_live_streams", body = """[{"stream_id":"""")
+        }
+        xtreamBackend.respond(
+            action = "get_live_streams",
+            body = """
+                [
+                  {
+                    "name": "Recovered Channel",
+                    "stream_id": 2001,
+                    "category_id": "1",
+                    "stream_icon": "https://example.com/ch1.png",
+                    "tv_archive": 0,
+                    "num": 1
+                  }
+                ]
+            """.trimIndent()
+        )
+        stubXtreamEmptyVodAndSeriesCategories()
+
+        val result = mgr.sync(1L, force = false)
+        advanceUntilIdle()
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(xtreamBackend.requestedActions.count { it == "get_live_streams" }).isEqualTo(6)
+        val metadata = syncMetadataRepo.getMetadata(1L)
+        assertThat(metadata?.liveAvoidFullUntil ?: 0L).isGreaterThan(0L)
+        assertThat(metadata?.liveCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `sync_xtream_staged_live_commit_preserves_hidden_categories_and_channels`() = runTest {
+        val provider = sampleProvider(ProviderType.XTREAM_CODES).copy(
+            xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.CATEGORY_BY_CATEGORY
+        )
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES, providerEntity = provider)
+        org.mockito.kotlin.whenever(preferencesRepo.getHiddenCategoryIds(eq(1L), eq(ContentType.LIVE))).thenReturn(flowOf(setOf(2L)))
+        runBlocking {
+            org.mockito.kotlin.whenever(categoryDao.getByProviderAndTypeSync(1L, ContentType.LIVE.name)).thenReturn(
+                listOf(
+                    CategoryEntity(
+                        categoryId = 2L,
+                        name = "Hidden Sports",
+                        type = ContentType.LIVE,
+                        providerId = 1L
+                    )
+                )
+            )
+            org.mockito.kotlin.whenever(channelDao.getByProviderSync(1L)).thenReturn(
+                listOf(
+                    ChannelEntity(
+                        streamId = 2002L,
+                        name = "Hidden Sports Channel",
+                        streamUrl = "xtream://1/live/2002?ext=ts",
+                        categoryId = 2L,
+                        categoryName = "Hidden Sports",
+                        providerId = 1L,
+                        number = 2
+                    )
+                )
+            )
+        }
+        xtreamBackend.respond(
+            action = "get_live_categories",
+            body = """
+                [
+                  {"category_id":"1","category_name":"News"},
+                  {"category_id":"2","category_name":"Hidden Sports"}
+                ]
+            """.trimIndent()
+        )
+        xtreamBackend.respond(
+            action = "get_live_streams",
+            body = """
+                [
+                  {
+                    "name": "Visible Channel",
+                    "stream_id": 1001,
+                    "category_id": "1",
+                    "stream_icon": "https://example.com/ch1.png",
+                    "tv_archive": 0,
+                    "num": 1
+                  }
+                ]
+            """.trimIndent()
+        )
+        stubXtreamEmptyVodAndSeriesCategories()
+
+        val result = mgr.sync(1L, force = false)
+        advanceUntilIdle()
+
+        assertThat(result.isSuccess).isTrue()
+        val insertedCategories = argumentCaptor<List<com.streamvault.data.local.entity.CategoryImportStageEntity>>()
+        val insertedChannels = argumentCaptor<List<com.streamvault.data.local.entity.ChannelImportStageEntity>>()
+        verify(catalogSyncDao, atLeastOnce()).insertCategoryStages(insertedCategories.capture())
+        verify(catalogSyncDao, atLeastOnce()).insertChannelStages(insertedChannels.capture())
+        val categoryIds = insertedCategories.allValues.flatten()
+            .filter { it.type == ContentType.LIVE }
+            .map { it.categoryId }
+        val streamIds = insertedChannels.allValues.flatten().map { it.streamId }
+        assertThat(categoryIds).containsAtLeast(1L, 2L)
+        assertThat(streamIds).containsAtLeast(1001L, 2002L)
+    }
+
+    @Test
+    fun `sync_xtream_empty_valid_live_without_existing_channels_transitions_to_error`() = runTest {
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
+        org.mockito.kotlin.whenever(channelDao.getCount(1L)).thenReturn(flowOf(0))
+        xtreamBackend.respond(action = "get_live_categories", body = """[{"category_id":"1","category_name":"News"}]""")
+        xtreamBackend.respond(action = "get_live_streams", body = "[]")
+        stubXtreamEmptyVodAndSeriesCategories()
+
+        val result = mgr.sync(1L, force = false)
+        advanceUntilIdle()
+
+        assertThat(result.isError).isTrue()
+        val error = result as Result.Error
+        assertThat(error.message).isEqualTo("Provider returned an empty catalog.")
+        assertThat(mgr.currentSyncState(1L)).isInstanceOf(SyncState.Error::class.java)
     }
 
     @Test
@@ -746,6 +1138,26 @@ class SyncManagerTest {
         assertThat(finalMovieJob.state).isEqualTo("SUCCESS")
         assertThat(finalMovieJob.indexedRows).isEqualTo(2)
         assertThat(finalMovieJob.nextCategoryIndex).isEqualTo(1)
+    }
+
+    @Test
+    fun `chunkedLookupById splits large id lists below sqlite variable limit`() = runTest {
+        val requestedChunks = mutableListOf<List<Long>>()
+
+        val result = chunkedLookupById(
+            ids = (1L..1_000L).toList(),
+            chunkSize = 900,
+            fetch = { chunk: List<Long> ->
+                requestedChunks += chunk
+                chunk.map { id -> MovieEntity(streamId = id, name = "Movie $id", providerId = 1L, streamUrl = "https://example.com/$id") }
+            },
+            keySelector = { entity: MovieEntity -> entity.streamId }
+        )
+
+        assertThat(result).hasSize(1_000)
+        assertThat(requestedChunks).hasSize(2)
+        assertThat(requestedChunks[0]).hasSize(900)
+        assertThat(requestedChunks[1]).hasSize(100)
     }
 
     @Test

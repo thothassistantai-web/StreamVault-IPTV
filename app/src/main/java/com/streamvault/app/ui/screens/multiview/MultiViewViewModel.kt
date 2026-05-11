@@ -686,7 +686,7 @@ class MultiViewViewModel @Inject constructor(
         val (maxSlots, startupDelayMs) = when (mode) {
             MultiViewPerformanceMode.AUTO -> when (tier) {
                 DevicePerformanceTier.LOW -> 2 to 550L
-                DevicePerformanceTier.MID -> 3 to 350L
+                DevicePerformanceTier.MID -> 4 to 350L
                 DevicePerformanceTier.HIGH -> 4 to 220L
             }
             MultiViewPerformanceMode.CONSERVATIVE -> when (tier) {

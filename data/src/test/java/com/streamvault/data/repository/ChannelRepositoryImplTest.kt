@@ -83,7 +83,7 @@ class ChannelRepositoryImplTest {
     }
 
     @Test
-    fun `getCategories keeps unlocked protected category visible at hidden level`() = runTest {
+    fun `getCategories keeps unlocked protected category visible at private level`() = runTest {
         whenever(categoryDao.getByProviderAndType(7L, ContentType.LIVE.name)).thenReturn(
             flowOf(
                 listOf(
@@ -113,6 +113,37 @@ class ChannelRepositoryImplTest {
             "Adults" to 5
         ).inOrder()
         assertThat(result.first { it.id == 20L }.isUserProtected).isFalse()
+    }
+
+    @Test
+    fun `getCategories hides unlocked protected category at hidden level`() = runTest {
+        whenever(categoryDao.getByProviderAndType(7L, ContentType.LIVE.name)).thenReturn(
+            flowOf(
+                listOf(
+                    categoryEntity(id = 10L, name = "Kids"),
+                    categoryEntity(id = 20L, name = "Adults", isUserProtected = true)
+                )
+            )
+        )
+        whenever(channelDao.getGroupedCategoryCounts(7L)).thenReturn(
+            flowOf(
+                listOf(
+                    CategoryCount(categoryId = 10L, item_count = 3),
+                    CategoryCount(categoryId = 20L, item_count = 5)
+                )
+            )
+        )
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(3))
+        whenever(parentalControlManager.unlockedCategoriesForProvider(eq(7L))).thenReturn(flowOf(setOf(20L)))
+
+        val repository = createRepository()
+
+        val result = repository.getCategories(7L).first()
+
+        assertThat(result.map { it.name to it.count }).containsExactly(
+            "All Channels" to 3,
+            "Kids" to 3
+        ).inOrder()
     }
 
     @Test

@@ -6,12 +6,16 @@ data class ValidatedXtreamProviderInput(
     val serverUrl: String,
     val username: String,
     val password: String,
-    val name: String
+    val name: String,
+    val httpUserAgent: String,
+    val httpHeaders: String
 )
 
 data class ValidatedM3uProviderInput(
     val url: String,
-    val name: String
+    val name: String,
+    val httpUserAgent: String,
+    val httpHeaders: String
 )
 
 data class ValidatedStalkerProviderInput(
@@ -29,12 +33,16 @@ interface ProviderSetupInputValidator {
         username: String,
         password: String,
         allowBlankPassword: Boolean = false,
-        name: String
+        name: String,
+        httpUserAgent: String = "",
+        httpHeaders: String = ""
     ): Result<ValidatedXtreamProviderInput>
 
     fun validateM3u(
         url: String,
-        name: String
+        name: String,
+        httpUserAgent: String = "",
+        httpHeaders: String = ""
     ): Result<ValidatedM3uProviderInput>
 
     fun validateStalker(

@@ -51,6 +51,14 @@ internal class SyncManagerXtreamSupport(
         while (nextIndex < categories.size && !stoppedEarly) {
             val windowConcurrency = if (forceSequential) 1 else initialConcurrency
             val window = categories.subList(nextIndex, minOf(nextIndex + windowConcurrency, categories.size))
+            val startingCategoryNumber = nextIndex + 1
+            val endingCategoryNumber = nextIndex + window.size
+            val windowLabel = if (startingCategoryNumber == endingCategoryNumber) {
+                startingCategoryNumber.toString()
+            } else {
+                "$startingCategoryNumber-$endingCategoryNumber"
+            }
+            progress(provider.id, onProgress, "Downloading $sectionLabel by category $windowLabel/${categories.size}...")
             val windowOutcomes = coroutineScope {
                 window.map { category ->
                     async { fetch(category) }

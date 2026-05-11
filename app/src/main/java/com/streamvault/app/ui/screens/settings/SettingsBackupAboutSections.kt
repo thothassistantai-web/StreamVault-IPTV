@@ -28,53 +28,74 @@ import com.streamvault.app.ui.theme.Secondary
 
 internal fun LazyListScope.settingsBackupSection(
     onCreateBackup: () -> Unit,
+    onShareBackup: () -> Unit,
     onRestoreBackup: () -> Unit
 ) {
     item {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            TvClickableSurface(
-                onClick = onCreateBackup,
-                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
-                colors = ClickableSurfaceDefaults.colors(
-                    containerColor = Primary.copy(alpha = 0.12f),
-                    focusedContainerColor = Primary.copy(alpha = 0.28f)
-                ),
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-                modifier = Modifier.weight(1f)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(text = "\u2191", style = MaterialTheme.typography.titleLarge, color = Primary, fontWeight = FontWeight.Bold)
-                    Text(text = stringResource(R.string.settings_backup_data), style = MaterialTheme.typography.titleSmall, color = Primary, textAlign = TextAlign.Center)
-                    Text(text = stringResource(R.string.settings_backup_subtitle), style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim, textAlign = TextAlign.Center)
-                }
+                BackupActionCard(
+                    icon = "\u2191",
+                    title = stringResource(R.string.settings_backup_data),
+                    subtitle = stringResource(R.string.settings_backup_subtitle),
+                    accent = Primary,
+                    onClick = onCreateBackup,
+                    modifier = Modifier.weight(1f)
+                )
+                BackupActionCard(
+                    icon = "\u21aa",
+                    title = stringResource(R.string.settings_backup_share_data),
+                    subtitle = stringResource(R.string.settings_backup_share_subtitle),
+                    accent = Primary,
+                    onClick = onShareBackup,
+                    modifier = Modifier.weight(1f)
+                )
             }
-            TvClickableSurface(
+            BackupActionCard(
+                icon = "\u2193",
+                title = stringResource(R.string.settings_restore_data),
+                subtitle = stringResource(R.string.settings_restore_subtitle),
+                accent = Secondary,
                 onClick = onRestoreBackup,
-                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
-                colors = ClickableSurfaceDefaults.colors(
-                    containerColor = Secondary.copy(alpha = 0.12f),
-                    focusedContainerColor = Secondary.copy(alpha = 0.28f)
-                ),
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-                modifier = Modifier.weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(text = "\u2193", style = MaterialTheme.typography.titleLarge, color = Secondary, fontWeight = FontWeight.Bold)
-                    Text(text = stringResource(R.string.settings_restore_data), style = MaterialTheme.typography.titleSmall, color = Secondary, textAlign = TextAlign.Center)
-                    Text(text = stringResource(R.string.settings_backup_subtitle), style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim, textAlign = TextAlign.Center)
-                }
-            }
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun BackupActionCard(
+    icon: String,
+    title: String,
+    subtitle: String,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TvClickableSurface(
+        onClick = onClick,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = accent.copy(alpha = 0.12f),
+            focusedContainerColor = accent.copy(alpha = 0.28f)
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(text = icon, style = MaterialTheme.typography.titleLarge, color = accent, fontWeight = FontWeight.Bold)
+            Text(text = title, style = MaterialTheme.typography.titleSmall, color = accent, textAlign = TextAlign.Center)
+            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim, textAlign = TextAlign.Center)
         }
     }
 }
@@ -89,7 +110,10 @@ internal fun LazyListScope.settingsAboutSection(
     onDownloadLatestUpdate: () -> Unit,
     onSetAutoCheckAppUpdates: (Boolean) -> Unit,
     onSetAutoDownloadAppUpdates: (Boolean) -> Unit,
-    onRefreshDownloadState: () -> Unit
+    onRefreshDownloadState: () -> Unit,
+    onViewCrashReport: () -> Unit,
+    onShareCrashReport: () -> Unit,
+    onDeleteCrashReport: () -> Unit
 ) {
     item {
         val downloadStatus = uiState.appUpdate.downloadStatus
@@ -171,6 +195,43 @@ internal fun LazyListScope.settingsAboutSection(
             SettingsRow(
                 label = stringResource(R.string.settings_update_error),
                 value = uiState.appUpdate.errorMessage.orEmpty()
+            )
+        }
+    }
+
+    item {
+        SettingsSectionHeader(
+            title = stringResource(R.string.settings_crash_reports_title),
+            subtitle = stringResource(R.string.settings_crash_reports_subtitle)
+        )
+        if (uiState.crashReport.hasReport) {
+            SettingsRow(
+                label = stringResource(R.string.settings_crash_report_latest),
+                value = uiState.crashReport.timestamp
+            )
+            SettingsRow(
+                label = stringResource(R.string.settings_crash_report_exception),
+                value = uiState.crashReport.exception.substringAfterLast('.')
+            )
+            ClickableSettingsRow(
+                label = stringResource(R.string.settings_crash_report_view),
+                value = stringResource(R.string.settings_crash_report_available),
+                onClick = onViewCrashReport
+            )
+            ClickableSettingsRow(
+                label = stringResource(R.string.settings_crash_report_share),
+                value = uiState.crashReport.fileName,
+                onClick = onShareCrashReport
+            )
+            ClickableSettingsRow(
+                label = stringResource(R.string.settings_crash_report_delete),
+                value = stringResource(R.string.settings_crash_report_delete_value),
+                onClick = onDeleteCrashReport
+            )
+        } else {
+            SettingsRow(
+                label = stringResource(R.string.settings_crash_report_latest),
+                value = stringResource(R.string.settings_crash_report_none)
             )
         }
     }

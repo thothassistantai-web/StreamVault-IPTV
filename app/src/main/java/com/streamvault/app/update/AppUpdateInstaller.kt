@@ -77,10 +77,12 @@ class AppUpdateInstaller @Inject constructor(
 
     suspend fun refreshState(): AppUpdateDownloadState = withContext(Dispatchers.IO) {
         val downloadId = preferencesRepository.appUpdateDownloadId.first()
+        val downloadingVersionName = preferencesRepository.appUpdateDownloadVersionName.first()
         val downloadedVersionName = preferencesRepository.downloadedAppUpdateVersionName.first()
         val apkFile = downloadedVersionName?.let(::apkFileForVersion)
 
         if (downloadId == null) {
+            preferencesRepository.setAppUpdateDownloadVersionName(null)
             val restoredState = if (downloadedVersionName != null && apkFile?.exists() == true) {
                 AppUpdateDownloadState(
                     status = AppUpdateDownloadStatus.Downloaded,
@@ -97,10 +99,12 @@ class AppUpdateInstaller @Inject constructor(
             return@withContext restoredState
         }
 
+        val trackedVersionName = downloadingVersionName ?: downloadedVersionName
         val query = DownloadManager.Query().setFilterById(downloadId)
         downloadManager.query(query).use { cursor ->
             if (!cursor.moveToFirst()) {
                 preferencesRepository.setAppUpdateDownloadId(null)
+                preferencesRepository.setAppUpdateDownloadVersionName(null)
                 val fallbackState = if (downloadedVersionName != null && apkFile?.exists() == true) {
                     AppUpdateDownloadState(
                         status = AppUpdateDownloadStatus.Downloaded,
@@ -121,24 +125,40 @@ class AppUpdateInstaller @Inject constructor(
                 DownloadManager.STATUS_PAUSED,
                 DownloadManager.STATUS_RUNNING -> AppUpdateDownloadState(
                     status = AppUpdateDownloadStatus.Downloading,
-                    versionName = downloadedVersionName,
+                    versionName = trackedVersionName,
                     downloadId = downloadId
                 )
 
                 DownloadManager.STATUS_SUCCESSFUL -> {
                     preferencesRepository.setAppUpdateDownloadId(null)
-                    AppUpdateDownloadState(
-                        status = AppUpdateDownloadStatus.Downloaded,
-                        versionName = downloadedVersionName,
-                        downloadId = null
-                    )
+                    preferencesRepository.setAppUpdateDownloadVersionName(null)
+                    val completedApkFile = trackedVersionName?.let(::apkFileForVersion)
+                    if (trackedVersionName != null && completedApkFile?.exists() == true) {
+                        preferencesRepository.setDownloadedAppUpdateVersionName(trackedVersionName)
+                        AppUpdateDownloadState(
+                            status = AppUpdateDownloadStatus.Downloaded,
+                            versionName = trackedVersionName,
+                            downloadId = null
+                        )
+                    } else {
+                        preferencesRepository.setDownloadedAppUpdateVersionName(null)
+                        AppUpdateDownloadState(
+                            status = AppUpdateDownloadStatus.Failed,
+                            versionName = trackedVersionName,
+                            downloadId = null
+                        )
+                    }
                 }
 
                 else -> {
                     preferencesRepository.setAppUpdateDownloadId(null)
+                    preferencesRepository.setAppUpdateDownloadVersionName(null)
+                    if (trackedVersionName == downloadedVersionName) {
+                        preferencesRepository.setDownloadedAppUpdateVersionName(null)
+                    }
                     AppUpdateDownloadState(
                         status = AppUpdateDownloadStatus.Failed,
-                        versionName = downloadedVersionName,
+                        versionName = trackedVersionName,
                         downloadId = null
                     )
                 }
@@ -167,6 +187,9 @@ class AppUpdateInstaller @Inject constructor(
             if (existingVersion != null && existingVersion != releaseInfo.versionName) {
                 apkFileForVersion(existingVersion).delete()
             }
+            preferencesRepository.appUpdateDownloadId.first()?.let { oldDownloadId ->
+                runCatching { downloadManager.remove(oldDownloadId) }
+            }
 
             val request = DownloadManager.Request(Uri.parse(downloadUrl))
                 .setTitle("StreamVault ${releaseInfo.versionName}")
@@ -182,8 +205,9 @@ class AppUpdateInstaller @Inject constructor(
                 )
 
             val downloadId = downloadManager.enqueue(request)
-            preferencesRepository.setDownloadedAppUpdateVersionName(releaseInfo.versionName)
             preferencesRepository.setAppUpdateDownloadId(downloadId)
+            preferencesRepository.setAppUpdateDownloadVersionName(releaseInfo.versionName)
+            preferencesRepository.setDownloadedAppUpdateVersionName(null)
             val state = AppUpdateDownloadState(
                 status = AppUpdateDownloadStatus.Downloading,
                 versionName = releaseInfo.versionName,
@@ -216,6 +240,8 @@ class AppUpdateInstaller @Inject constructor(
 
         val apkFile = apkFileForVersion(currentState.versionName)
         if (!apkFile.exists()) {
+            preferencesRepository.setAppUpdateDownloadId(null)
+            preferencesRepository.setAppUpdateDownloadVersionName(null)
             preferencesRepository.setDownloadedAppUpdateVersionName(null)
             return@withContext Result.error("Downloaded update file is missing")
         }
@@ -231,6 +257,8 @@ class AppUpdateInstaller @Inject constructor(
                     "APK SHA-256 mismatch for ${apkFile.name}: expected=${expectedSha256.trim()} actual=$actualHash"
                 )
                 apkFile.delete()
+                preferencesRepository.setAppUpdateDownloadId(null)
+                preferencesRepository.setAppUpdateDownloadVersionName(null)
                 preferencesRepository.setDownloadedAppUpdateVersionName(null)
                 return@withContext Result.error(
                     "Downloaded update failed integrity check. The file has been removed; please download again."

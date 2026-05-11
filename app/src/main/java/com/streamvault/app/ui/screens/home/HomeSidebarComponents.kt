@@ -51,6 +51,7 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.streamvault.app.R
 import com.streamvault.app.device.rememberIsTelevisionDevice
+import com.streamvault.app.ui.components.FocusedMarqueeText
 import com.streamvault.app.ui.components.PlayerRenderView
 import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.app.ui.interaction.TvClickableSurface
@@ -74,9 +75,11 @@ import java.util.Date
 @Composable
 internal fun CompactSplitLauncherButton(
     slotCount: Int,
+    slotLimit: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val displaySlotCount = slotCount.coerceAtMost(slotLimit)
     TvClickableSurface(
         onClick = onClick,
         modifier = modifier
@@ -107,7 +110,7 @@ internal fun CompactSplitLauncherButton(
                 maxLines = 1
             )
             Text(
-                text = stringResource(R.string.label_slots_count, slotCount),
+                text = stringResource(R.string.label_slots_count_dynamic, displaySlotCount, slotLimit),
                 style = MaterialTheme.typography.labelSmall,
                 color = PrimaryLight,
                 maxLines = 1
@@ -320,11 +323,11 @@ internal fun CategoryItem(
                     modifier = Modifier.padding(end = 8.dp)
                 )
             }
-            Text(
+            FocusedMarqueeText(
                 text = category.name,
+                isFocused = isFocused,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 color = if (isFocused) OnBackground else if (isSelected) Primary else OnSurface,
                 modifier = Modifier.weight(1f)
             )

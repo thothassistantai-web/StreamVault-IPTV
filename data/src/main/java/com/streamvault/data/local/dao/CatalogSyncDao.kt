@@ -9,6 +9,12 @@ import com.streamvault.data.local.entity.ChannelImportStageEntity
 import com.streamvault.data.local.entity.MovieImportStageEntity
 import com.streamvault.data.local.entity.SeriesImportStageEntity
 
+data class ChannelStageCategorySummary(
+  val categoryId: Long,
+  val name: String,
+  val isAdult: Boolean
+)
+
 @Dao
 interface CatalogSyncDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -58,6 +64,36 @@ interface CatalogSyncDao {
 
     @Query("SELECT * FROM series_import_stage WHERE provider_id = :providerId AND session_id = :sessionId")
     suspend fun getSeriesStages(providerId: Long, sessionId: Long): List<SeriesImportStageEntity>
+
+    @Query("SELECT COUNT(*) FROM channel_import_stage WHERE provider_id = :providerId AND session_id = :sessionId")
+    suspend fun countChannelStages(providerId: Long, sessionId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM movie_import_stage WHERE provider_id = :providerId AND session_id = :sessionId")
+    suspend fun countMovieStages(providerId: Long, sessionId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM series_import_stage WHERE provider_id = :providerId AND session_id = :sessionId")
+    suspend fun countSeriesStages(providerId: Long, sessionId: Long): Int
+
+    @Query(
+      """
+      SELECT
+        category_id AS categoryId,
+        COALESCE(
+          MIN(CASE WHEN category_name IS NOT NULL AND TRIM(category_name) != '' THEN category_name END),
+          'Category ' || category_id
+        ) AS name,
+        MAX(CASE WHEN is_adult THEN 1 ELSE 0 END) AS isAdult
+      FROM channel_import_stage
+      WHERE provider_id = :providerId
+        AND session_id = :sessionId
+        AND category_id IS NOT NULL
+      GROUP BY category_id
+      """
+    )
+    suspend fun getChannelStageCategorySummaries(
+      providerId: Long,
+      sessionId: Long
+    ): List<ChannelStageCategorySummary>
 
     @Query(
         """

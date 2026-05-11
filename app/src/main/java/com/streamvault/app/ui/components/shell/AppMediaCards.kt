@@ -476,7 +476,7 @@ private fun PosterCard(
             ) {
                 Text(
                     text = title.take(1).uppercase(),
-                    style = MaterialTheme.typography.displaySmall,
+                    style = MaterialTheme.typography.titleLarge,
                     color = AppColors.TextSecondary
                 )
             }
@@ -514,7 +514,7 @@ private fun PosterCard(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.labelSmall,
                 color = AppColors.TextPrimary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -522,7 +522,7 @@ private fun PosterCard(
             subtitle?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = AppColors.TextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

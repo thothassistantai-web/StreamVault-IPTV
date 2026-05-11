@@ -10,6 +10,7 @@ import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.ProviderEpgSyncMode
 import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.ProviderType
+import com.streamvault.domain.model.ProviderXtreamLiveSyncMode
 
 @Entity(
     tableName = "providers",
@@ -25,6 +26,8 @@ data class ProviderEntity(
     val password: String = "",
     @ColumnInfo(name = "m3u_url") val m3uUrl: String = "",
     @ColumnInfo(name = "epg_url") val epgUrl: String = "",
+    @ColumnInfo(name = "http_user_agent") val httpUserAgent: String = "",
+    @ColumnInfo(name = "http_headers") val httpHeaders: String = "",
     @ColumnInfo(name = "stalker_mac_address") val stalkerMacAddress: String = "",
     @ColumnInfo(name = "stalker_device_profile") val stalkerDeviceProfile: String = "",
     @ColumnInfo(name = "stalker_device_timezone") val stalkerDeviceTimezone: String = "",
@@ -36,6 +39,7 @@ data class ProviderEntity(
     @ColumnInfo(name = "allowed_output_formats_json") val allowedOutputFormatsJson: String = "[]",
     @ColumnInfo(name = "epg_sync_mode") val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.UPFRONT,
     @ColumnInfo(name = "xtream_fast_sync_enabled") val xtreamFastSyncEnabled: Boolean = false,
+    @ColumnInfo(name = "xtream_live_sync_mode") val xtreamLiveSyncMode: ProviderXtreamLiveSyncMode = ProviderXtreamLiveSyncMode.AUTO,
     @ColumnInfo(name = "m3u_vod_classification_enabled") val m3uVodClassificationEnabled: Boolean = false,
     val status: ProviderStatus = ProviderStatus.UNKNOWN,
     @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long = 0,

@@ -141,9 +141,24 @@ internal fun PlayerViewModel.observeLastVisitedCategory() {
         } ?: combine(
             channelRepository.getCategories(currentProviderId),
             getCustomCategories(currentProviderId, ContentType.LIVE),
-            preferencesRepository.getLastLiveCategoryId(currentProviderId)
-        ) { providerCategories, customCategories, lastVisitedCategoryId ->
-            val allCategories = customCategories + providerCategories
+            preferencesRepository.getLastLiveCategoryId(currentProviderId),
+            preferencesRepository.getHiddenCategoryIds(currentProviderId, ContentType.LIVE)
+        ) { providerCategories, customCategories, lastVisitedCategoryId, hiddenCategoryIds ->
+            val visibleProviderCategories = providerCategories.filter { category ->
+                category.id == ChannelRepository.ALL_CHANNELS_ID || category.id !in hiddenCategoryIds
+            }
+            val adjustedProviderCategories = visibleProviderCategories.map { category ->
+                if (category.id == ChannelRepository.ALL_CHANNELS_ID) {
+                    category.copy(
+                        count = providerCategories
+                            .filter { it.id != ChannelRepository.ALL_CHANNELS_ID && it.id !in hiddenCategoryIds }
+                            .sumOf(Category::count)
+                    )
+                } else {
+                    category
+                }
+            }
+            val allCategories = customCategories + adjustedProviderCategories
             val lastVisited = if (lastVisitedCategoryId == null || lastVisitedCategoryId == VirtualCategoryIds.RECENT) {
                 null
             } else {

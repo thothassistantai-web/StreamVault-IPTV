@@ -5,6 +5,8 @@ object ProviderInputSanitizer {
     const val MAX_URL_LENGTH = 2048
     const val MAX_USERNAME_LENGTH = 128
     const val MAX_PASSWORD_LENGTH = 256
+    const val MAX_HTTP_USER_AGENT_LENGTH = 256
+    const val MAX_HTTP_HEADERS_LENGTH = 1024
     const val MAX_MAC_ADDRESS_LENGTH = 17
     const val MAX_DEVICE_PROFILE_LENGTH = 32
     const val MAX_TIMEZONE_LENGTH = 64
@@ -17,6 +19,10 @@ object ProviderInputSanitizer {
     fun sanitizeUsernameForEditing(input: String): String = sanitizeSingleLine(input, MAX_USERNAME_LENGTH)
 
     fun sanitizePasswordForEditing(input: String): String = sanitizeRaw(input, MAX_PASSWORD_LENGTH)
+
+    fun sanitizeHttpUserAgentForEditing(input: String): String = sanitizeSingleLine(input, MAX_HTTP_USER_AGENT_LENGTH)
+
+    fun sanitizeHttpHeadersForEditing(input: String): String = sanitizeSingleLine(input, MAX_HTTP_HEADERS_LENGTH)
 
     fun sanitizeMacAddressForEditing(input: String): String = sanitizeSingleLine(input.uppercase(), MAX_MAC_ADDRESS_LENGTH)
 
@@ -36,6 +42,16 @@ object ProviderInputSanitizer {
     fun normalizeUsername(input: String): String = sanitizeSingleLine(input, MAX_USERNAME_LENGTH).trim()
 
     fun normalizePassword(input: String): String = sanitizeRaw(input, MAX_PASSWORD_LENGTH)
+
+    fun normalizeHttpUserAgent(input: String): String =
+        sanitizeSingleLine(input, MAX_HTTP_USER_AGENT_LENGTH).trim()
+
+    fun normalizeHttpHeaders(input: String): String =
+        sanitizeSingleLine(input, MAX_HTTP_HEADERS_LENGTH)
+            .split(HEADER_SEPARATOR_REGEX)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString(" | ")
 
     fun normalizeMacAddress(input: String): String {
         val raw = sanitizeSingleLine(input, MAX_MAC_ADDRESS_LENGTH + 5)
@@ -104,5 +120,6 @@ object ProviderInputSanitizer {
     }
 
     private val WHITESPACE_REGEX = Regex("\\s+")
+    private val HEADER_SEPARATOR_REGEX = Regex("\\s*\\|\\s*")
     private val MAC_ADDRESS_REGEX = Regex("^[0-9A-F]{2}(?::[0-9A-F]{2}){5}$")
 }

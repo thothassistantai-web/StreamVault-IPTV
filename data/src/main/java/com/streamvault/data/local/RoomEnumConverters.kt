@@ -5,6 +5,7 @@ import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.ProviderEpgSyncMode
 import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.ProviderType
+import com.streamvault.domain.model.ProviderXtreamLiveSyncMode
 import java.util.logging.Logger
 
 class RoomEnumConverters {
@@ -31,6 +32,13 @@ class RoomEnumConverters {
     @TypeConverter
     fun toProviderEpgSyncMode(value: String?): ProviderEpgSyncMode? =
         enumValueOrDefault(value, ProviderEpgSyncMode.SKIP, providerEpgSyncModeAliases())
+
+    @TypeConverter
+    fun fromProviderXtreamLiveSyncMode(value: ProviderXtreamLiveSyncMode?): String? = value?.name
+
+    @TypeConverter
+    fun toProviderXtreamLiveSyncMode(value: String?): ProviderXtreamLiveSyncMode? =
+        enumValueOrDefault(value, ProviderXtreamLiveSyncMode.AUTO, providerXtreamLiveSyncModeAliases())
 
     @TypeConverter
     fun fromContentType(value: ContentType?): String? = value?.name
@@ -68,6 +76,15 @@ class RoomEnumConverters {
         "DISABLED" to ProviderEpgSyncMode.SKIP,
         "OFF" to ProviderEpgSyncMode.SKIP,
         "FOREGROUND" to ProviderEpgSyncMode.UPFRONT
+    )
+
+    private fun providerXtreamLiveSyncModeAliases(): Map<String, ProviderXtreamLiveSyncMode> = mapOf(
+        "SEGMENTED" to ProviderXtreamLiveSyncMode.CATEGORY_BY_CATEGORY,
+        "CATEGORY" to ProviderXtreamLiveSyncMode.CATEGORY_BY_CATEGORY,
+        "CATEGORIES" to ProviderXtreamLiveSyncMode.CATEGORY_BY_CATEGORY,
+        "FULL" to ProviderXtreamLiveSyncMode.STREAM_ALL,
+        "FULL_CATALOG" to ProviderXtreamLiveSyncMode.STREAM_ALL,
+        "STREAM" to ProviderXtreamLiveSyncMode.STREAM_ALL
     )
 
     private fun contentTypeAliases(): Map<String, ContentType> = mapOf(

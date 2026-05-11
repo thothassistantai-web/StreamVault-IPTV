@@ -9,6 +9,8 @@ import com.streamvault.domain.repository.CategoryRepository
 import com.streamvault.domain.repository.ChannelRepository
 import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.EpgSourceRepository
+import com.streamvault.domain.repository.MovieRepository
+import com.streamvault.domain.repository.SeriesRepository
 import com.streamvault.domain.repository.SyncMetadataRepository
 import com.streamvault.domain.repository.ProviderRepository
 import com.streamvault.domain.usecase.GetCustomCategories
@@ -136,6 +138,8 @@ internal fun registerDerivedStateObservers(
     scope: CoroutineScope,
     providerRepository: ProviderRepository,
     syncMetadataRepository: SyncMetadataRepository,
+    movieRepository: MovieRepository,
+    seriesRepository: SeriesRepository,
     application: Application,
     preferencesRepository: PreferencesRepository,
     activeProviderIdFlow: Flow<Long?>,
@@ -149,6 +153,8 @@ internal fun registerDerivedStateObservers(
         observeProviderDiagnostics(
             providerRepository = providerRepository,
             syncMetadataRepository = syncMetadataRepository,
+            movieRepository = movieRepository,
+            seriesRepository = seriesRepository,
             application = application
         ).collect { diagnosticsByProvider ->
             uiState.update { it.copy(diagnosticsByProvider = diagnosticsByProvider) }

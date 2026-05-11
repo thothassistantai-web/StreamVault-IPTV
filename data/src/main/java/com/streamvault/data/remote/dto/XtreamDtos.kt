@@ -73,6 +73,22 @@ data class XtreamStream(
 )
 
 @Serializable
+data class XtreamLiveStreamRow(
+    @SerialName("num") @Serializable(with = LenientIntSerializer::class) val num: Int = 0,
+    @SerialName("name") @Serializable(with = LenientStringSerializer::class) val name: String = "",
+    @SerialName("stream_id") @Serializable(with = LenientLongSerializer::class) val streamId: Long = 0,
+    @SerialName("stream_icon") @Serializable(with = LenientNullableStringSerializer::class) val streamIcon: String? = null,
+    @SerialName("epg_channel_id") @Serializable(with = LenientNullableStringSerializer::class) val epgChannelId: String? = null,
+    @SerialName("category_id") @Serializable(with = LenientNullableStringSerializer::class) val categoryId: String? = null,
+    @SerialName("category_name") @Serializable(with = LenientNullableStringSerializer::class) val categoryName: String? = null,
+    @SerialName("category_ids") @Serializable(with = LenientNullableStringListSerializer::class) val categoryIds: List<String>? = null,
+    @SerialName("tv_archive") @Serializable(with = LenientIntSerializer::class) val tvArchive: Int = 0,
+    @SerialName("tv_archive_duration") @Serializable(with = LenientNullableIntSerializer::class) val tvArchiveDuration: Int? = null,
+    @SerialName("container_extension") @Serializable(with = LenientNullableStringSerializer::class) val containerExtension: String? = null,
+    @SerialName("is_adult") @Serializable(with = LenientNullableBooleanSerializer::class) val isAdult: Boolean? = null
+)
+
+@Serializable
 data class XtreamSeriesItem(
     @SerialName("series_id") @Serializable(with = LenientLongSerializer::class) val seriesId: Long = 0,
     @SerialName("name") @Serializable(with = LenientStringSerializer::class) val name: String = "",

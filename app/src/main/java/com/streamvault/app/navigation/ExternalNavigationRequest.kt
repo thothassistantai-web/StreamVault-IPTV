@@ -92,4 +92,5 @@ sealed interface ExternalNavigationRequest {
     data class Player(val request: PlayerNavigationRequest) : ExternalNavigationRequest
     data class Destination(val destination: ExternalDestination) : ExternalNavigationRequest
     data class ImportM3u(val uri: String) : ExternalNavigationRequest
+    data class ImportBackup(val uri: String) : ExternalNavigationRequest
 }

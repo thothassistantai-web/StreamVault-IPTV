@@ -88,6 +88,6 @@ class SettingsProviderActionsTest {
         verify(watchNextManager).refreshWatchNext()
         verify(launcherRecommendationsManager).refreshRecommendations(force = true)
         verify(tvInputChannelSyncManager).refreshTvInputCatalog()
-        assertThat(uiState.value.userMessage).isNull()
+        assertThat(uiState.value.userMessage).isEqualTo("Provider deleted")
     }
 }

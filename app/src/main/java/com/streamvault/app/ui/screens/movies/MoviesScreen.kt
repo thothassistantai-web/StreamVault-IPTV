@@ -1163,7 +1163,7 @@ private fun MoviesVodClassicContent(
             )
             LazyVerticalGrid(
                 state = classicGridState,
-                columns = GridCells.Adaptive(minSize = 68.dp),
+                columns = GridCells.Adaptive(minSize = 100.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)

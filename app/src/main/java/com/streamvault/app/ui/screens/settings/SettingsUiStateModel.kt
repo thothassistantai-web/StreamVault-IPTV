@@ -22,6 +22,16 @@ import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.RecordingItem
 import com.streamvault.domain.model.RecordingStorageState
 
+data class CrashReportUiModel(
+    val timestamp: String = "",
+    val exception: String = "",
+    val fileName: String = "",
+    val content: String = ""
+) {
+    val hasReport: Boolean
+        get() = content.isNotBlank()
+}
+
 data class SettingsUiState(
     val providers: List<Provider> = emptyList(),
     val combinedProfiles: List<CombinedM3uProfile> = emptyList(),
@@ -33,6 +43,9 @@ data class SettingsUiState(
     val syncingProviderName: String? = null,
     val userMessage: String? = null,
     val syncWarningsByProvider: Map<Long, List<String>> = emptyMap(),
+    val xtreamLiveOnboardingPhaseByProvider: Map<Long, String> = emptyMap(),
+    val xtreamLiveOnboardingByProvider: Map<Long, XtreamLiveOnboardingUiModel> = emptyMap(),
+    val xtreamIndexSectionStatusByProvider: Map<Long, Map<String, ProviderCatalogCountStatus>> = emptyMap(),
     val diagnosticsByProvider: Map<Long, ProviderDiagnosticsUiModel> = emptyMap(),
     val databaseMaintenance: DatabaseMaintenanceUiModel? = null,
     val parentalControlLevel: Int = 0,
@@ -86,7 +99,7 @@ data class SettingsUiState(
     val groupedChannelLabelMode: GroupedChannelLabelMode = GroupedChannelLabelMode.HYBRID,
     val liveVariantPreferenceMode: LiveVariantPreferenceMode = LiveVariantPreferenceMode.BALANCED,
     val vodViewMode: VodViewMode = VodViewMode.MODERN,
-    val vodInfiniteScroll: Boolean = false,
+    val vodInfiniteScroll: Boolean = true,
     val guideDefaultCategoryId: Long = com.streamvault.domain.model.VirtualCategoryIds.FAVORITES,
     val guideDefaultCategoryOptions: List<Category> = emptyList(),
     val preventStandbyDuringPlayback: Boolean = true,
@@ -102,5 +115,7 @@ data class SettingsUiState(
     val autoCheckAppUpdates: Boolean = true,
     val autoDownloadAppUpdates: Boolean = false,
     val isCheckingForUpdates: Boolean = false,
-    val appUpdate: AppUpdateUiModel = AppUpdateUiModel()
+    val appUpdate: AppUpdateUiModel = AppUpdateUiModel(),
+    val crashReport: CrashReportUiModel = CrashReportUiModel(),
+    val viewedCrashReport: CrashReportUiModel? = null
 )

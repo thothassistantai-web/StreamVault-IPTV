@@ -108,6 +108,8 @@ private class FakeSyncProviderRepository(
         username: String,
         password: String,
         name: String,
+        httpUserAgent: String,
+        httpHeaders: String,
         xtreamFastSyncEnabled: Boolean,
         epgSyncMode: ProviderEpgSyncMode,
         onProgress: ((String) -> Unit)?,
@@ -117,6 +119,8 @@ private class FakeSyncProviderRepository(
     override suspend fun validateM3u(
         url: String,
         name: String,
+        httpUserAgent: String,
+        httpHeaders: String,
         epgSyncMode: ProviderEpgSyncMode,
         m3uVodClassificationEnabled: Boolean,
         onProgress: ((String) -> Unit)?,

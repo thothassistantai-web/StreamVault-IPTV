@@ -17,6 +17,8 @@ import com.streamvault.data.local.entity.MovieImportStageEntity
 import com.streamvault.data.local.entity.SeriesEntity
 import com.streamvault.data.local.entity.SeriesImportStageEntity
 import com.streamvault.data.local.entity.TmdbIdentityEntity
+import com.streamvault.data.remote.xtream.XtreamStreamKind
+import com.streamvault.data.remote.xtream.XtreamUrlFactory
 import com.streamvault.domain.model.ContentType
 import java.net.URI
 import java.security.MessageDigest
@@ -37,6 +39,14 @@ internal class SyncCatalogStore(
         private const val TAG = "SyncCatalogStore"
         private const val STAGE_BATCH_SIZE = 500
     }
+
+    data class StagedLiveImportState(
+        val sessionId: Long,
+        val channelCount: Int,
+        val movieCount: Int,
+        val seriesCount: Int,
+        val categories: List<CategoryEntity>
+    )
 
     /**
      * Result returned from staged-import helpers that track both the accepted count and
@@ -377,6 +387,40 @@ internal class SyncCatalogStore(
 
     suspend fun discardStagedImport(providerId: Long, sessionId: Long) {
         clearSession(providerId, sessionId)
+    }
+
+    suspend fun stagedLiveImportState(providerId: Long, sessionId: Long): StagedLiveImportState {
+        val stagedCategories = catalogSyncDao.getCategoryStages(providerId, sessionId, "LIVE")
+        val categorySummaries = catalogSyncDao.getChannelStageCategorySummaries(providerId, sessionId)
+        return StagedLiveImportState(
+            sessionId = sessionId,
+            channelCount = catalogSyncDao.countChannelStages(providerId, sessionId),
+            movieCount = catalogSyncDao.countMovieStages(providerId, sessionId),
+            seriesCount = catalogSyncDao.countSeriesStages(providerId, sessionId),
+            categories = if (stagedCategories.isNotEmpty()) {
+                stagedCategories.map { stage ->
+                    CategoryEntity(
+                        categoryId = stage.categoryId,
+                        name = stage.name,
+                        parentId = stage.parentId,
+                        type = ContentType.LIVE,
+                        providerId = providerId,
+                        isAdult = stage.isAdult
+                    )
+                }
+            } else {
+                categorySummaries.map { summary ->
+                    CategoryEntity(
+                        categoryId = summary.categoryId,
+                        name = summary.name,
+                        parentId = 0,
+                        type = ContentType.LIVE,
+                        providerId = providerId,
+                        isAdult = summary.isAdult
+                    )
+                }
+            }
+        )
     }
 
     suspend fun clearProviderStaging(providerId: Long) {
@@ -785,6 +829,23 @@ internal class SyncCatalogStore(
     }
 
     private fun channelFingerprint(channel: ChannelEntity): String {
+        val xtreamLiveToken = XtreamUrlFactory.parseInternalStreamUrl(channel.streamUrl)
+            ?.takeIf { token -> token.kind == XtreamStreamKind.LIVE }
+        if (xtreamLiveToken != null) {
+            return fingerprint(
+                channel.streamId.toString(),
+                normalizeText(channel.name),
+                normalizeUrl(channel.logoUrl),
+                normalizeText(channel.groupTitle),
+                channel.categoryId?.toString().orEmpty(),
+                normalizeText(channel.epgChannelId),
+                channel.number.toString(),
+                channel.catchUpSupported.toString(),
+                channel.catchUpDays.toString(),
+                channel.isAdult.toString(),
+                normalizeText(xtreamLiveToken.containerExtension)
+            )
+        }
         return fingerprint(
             normalizeText(channel.name),
             normalizeUrl(channel.logoUrl),

@@ -33,7 +33,8 @@ class XtreamProvider(
     private val password: String,
     private val allowedOutputFormats: List<String> = emptyList(),
     private val useTextClassification: Boolean = true,
-    private val enableBase64TextCompatibility: Boolean = false
+    private val enableBase64TextCompatibility: Boolean = false,
+    private val requestProfile: HttpRequestProfile = HttpRequestProfile(ownerTag = "provider:$providerId/xtream")
 ) : IptvProvider {
     companion object {
         private const val TAG = "XtreamProvider"
@@ -86,8 +87,6 @@ class XtreamProvider(
     private var liveOutputFormats: List<String> = normalizeAllowedOutputFormats(allowedOutputFormats)
     private val adultCategoryCache = mutableMapOf<ContentType, Set<Long>>()
     private val adultCategoryCacheMutex = Mutex()
-    private val requestProfile = HttpRequestProfile(ownerTag = "provider:$providerId/xtream")
-
     override suspend fun authenticate(): Result<Provider> = try {
         val response = api.authenticate(
             XtreamUrlFactory.buildPlayerApiUrl(serverUrl, username, password),
@@ -160,7 +159,7 @@ class XtreamProvider(
         )
         Result.success(
             streams.mapNotNull { stream ->
-                runCatching { stream.toChannel(adultCategoryIds) }
+                runCatching { stream.toChannel(adultCategoryIds, includePlaybackVariants = true) }
                     .onFailure {
                         Log.w(
                             TAG,
@@ -592,7 +591,7 @@ class XtreamProvider(
     suspend fun mapLiveStreamsResponse(streams: List<XtreamStream>): List<Channel> {
         val adultCategoryIds = loadAdultCategoryIds(ContentType.LIVE)
         return streams.mapNotNull { stream ->
-            runCatching { stream.toChannel(adultCategoryIds) }
+            runCatching { stream.toChannel(adultCategoryIds, includePlaybackVariants = false) }
                 .onFailure {
                     Log.w(
                         TAG,
@@ -607,11 +606,26 @@ class XtreamProvider(
     suspend fun mapLiveStreamsSequence(streams: Sequence<XtreamStream>): Sequence<Channel> {
         val adultCategoryIds = loadAdultCategoryIds(ContentType.LIVE)
         return streams.mapNotNull { stream ->
-            runCatching { stream.toChannel(adultCategoryIds) }
+            runCatching { stream.toChannel(adultCategoryIds, includePlaybackVariants = false) }
                 .onFailure {
                     Log.w(
                         TAG,
                         "Skipping malformed live item ${stream.streamId}: " +
+                            XtreamUrlFactory.sanitizeLogMessage(it.message ?: "mapping failed")
+                    )
+                }
+                .getOrNull()
+        }
+    }
+
+    suspend fun mapLiveStreamRowsSequence(rows: Sequence<XtreamLiveStreamRow>): Sequence<Channel> {
+        val adultCategoryIds = loadAdultCategoryIds(ContentType.LIVE)
+        return rows.mapNotNull { row ->
+            runCatching { row.toChannel(adultCategoryIds) }
+                .onFailure {
+                    Log.w(
+                        TAG,
+                        "Skipping malformed live row ${row.streamId}: " +
                             XtreamUrlFactory.sanitizeLogMessage(it.message ?: "mapping failed")
                     )
                 }
@@ -783,24 +797,80 @@ class XtreamProvider(
         )
     }
 
-    private fun XtreamStream.toChannel(adultCategoryIds: Set<Long>): Channel? {
+    private fun XtreamStream.toChannel(
+        adultCategoryIds: Set<Long>,
+        includePlaybackVariants: Boolean
+    ): Channel? = buildLiveChannel(
+        streamId = streamId,
+        num = num,
+        name = name,
+        streamIcon = streamIcon,
+        epgChannelId = epgChannelId,
+        categoryId = primaryCategoryId(),
+        categoryName = categoryName,
+        tvArchive = tvArchive,
+        tvArchiveDuration = tvArchiveDuration,
+        containerExtension = containerExtension,
+        explicitAdult = isAdult,
+        directSource = directSource,
+        includePlaybackVariants = includePlaybackVariants,
+        adultCategoryIds = adultCategoryIds
+    )
+
+    private fun XtreamLiveStreamRow.toChannel(adultCategoryIds: Set<Long>): Channel? = buildLiveChannel(
+        streamId = streamId,
+        num = num,
+        name = name,
+        streamIcon = streamIcon,
+        epgChannelId = epgChannelId,
+        categoryId = primaryCategoryId(),
+        categoryName = categoryName,
+        tvArchive = tvArchive,
+        tvArchiveDuration = tvArchiveDuration,
+        containerExtension = containerExtension,
+        explicitAdult = isAdult,
+        directSource = null,
+        includePlaybackVariants = false,
+        adultCategoryIds = adultCategoryIds
+    )
+
+    private fun buildLiveChannel(
+        streamId: Long,
+        num: Int,
+        name: String?,
+        streamIcon: String?,
+        epgChannelId: String?,
+        categoryId: String?,
+        categoryName: String?,
+        tvArchive: Int,
+        tvArchiveDuration: Int?,
+        containerExtension: String?,
+        explicitAdult: Boolean?,
+        directSource: String?,
+        includePlaybackVariants: Boolean,
+        adultCategoryIds: Set<Long>
+    ): Channel? {
         if (streamId <= 0) return null
-        val category = resolveXtreamCategory(ContentType.LIVE, primaryCategoryId(), categoryName)
+        val category = resolveXtreamCategory(ContentType.LIVE, categoryId, categoryName)
         val primaryContainerExtension = preferredLiveContainerExtension(containerExtension)
         val resolvedName = decodeXtreamNullableText(name, XtreamTextDecodeMode.RAW)?.ifBlank { null } ?: "Channel $streamId"
         val sanitizedLogoUrl = sanitizeAssetValue(streamIcon)
         val sanitizedEpgChannelId = decodeXtreamNullableText(epgChannelId, XtreamTextDecodeMode.RAW)
-        val sanitizedDirectSource = sanitizeAssetValue(directSource)
+        val sanitizedDirectSource = if (includePlaybackVariants) sanitizeAssetValue(directSource) else null
         val streamUrl = buildInternalLiveStreamUrl(
             streamId = streamId,
             containerExtension = primaryContainerExtension,
             directSource = sanitizedDirectSource
         )
-        val qualityOptions = buildLiveQualityOptions(
-            streamId = streamId,
-            primaryContainerExtension = primaryContainerExtension,
-            directSource = sanitizedDirectSource
-        )
+        val qualityOptions = if (includePlaybackVariants) {
+            buildLiveQualityOptions(
+                streamId = streamId,
+                primaryContainerExtension = primaryContainerExtension,
+                directSource = sanitizedDirectSource
+            )
+        } else {
+            emptyList()
+        }
         return Channel(
             id = 0,
             name = resolvedName,
@@ -814,7 +884,7 @@ class XtreamProvider(
             providerId = providerId,
             streamUrl = streamUrl,
             isAdult = resolveAdultFlag(
-                explicitAdult = isAdult,
+                explicitAdult = explicitAdult,
                 categoryId = category.id,
                 categoryName = category.name,
                 adultCategoryIds = adultCategoryIds
@@ -822,7 +892,11 @@ class XtreamProvider(
             isUserProtected = false,
             logicalGroupId = ChannelNormalizer.getLogicalGroupId(resolvedName, providerId),
             qualityOptions = qualityOptions,
-            alternativeStreams = qualityOptions.mapNotNull { it.url }.filter { it != streamUrl },
+            alternativeStreams = if (includePlaybackVariants) {
+                qualityOptions.mapNotNull { it.url }.filter { it != streamUrl }
+            } else {
+                emptyList()
+            },
             streamId = streamId
         )
     }
@@ -1122,6 +1196,14 @@ class XtreamProvider(
     }
 
     private fun XtreamStream.primaryCategoryId(): String? {
+        return primaryCategoryId(categoryId, categoryIds)
+    }
+
+    private fun XtreamLiveStreamRow.primaryCategoryId(): String? {
+        return primaryCategoryId(categoryId, categoryIds)
+    }
+
+    private fun primaryCategoryId(categoryId: String?, categoryIds: List<String>?): String? {
         val normalizedCategoryId = categoryId.normalizedCategoryToken()
         val firstAlternateCategoryId = categoryIds.orEmpty()
             .mapNotNull { it.normalizedCategoryToken() }

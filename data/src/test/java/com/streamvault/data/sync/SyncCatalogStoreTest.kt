@@ -16,6 +16,7 @@ import com.streamvault.data.local.entity.MovieEntity
 import com.streamvault.data.local.entity.MovieImportStageEntity
 import com.streamvault.data.local.entity.SeriesEntity
 import com.streamvault.data.local.entity.SeriesImportStageEntity
+import com.streamvault.data.local.dao.ChannelStageCategorySummary
 import com.streamvault.domain.model.ContentType
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -151,6 +152,38 @@ class SyncCatalogStoreTest {
     }
 
     @Test
+    fun `stagedLiveImportState prefers staged category rows over channel-derived placeholders`() = runTest {
+        val providerId = 7L
+        val sessionId = 55L
+        whenever(catalogSyncDao.getCategoryStages(providerId, sessionId, ContentType.LIVE.name)).thenReturn(
+            listOf(
+                CategoryImportStageEntity(
+                    sessionId = sessionId,
+                    providerId = providerId,
+                    categoryId = 1382L,
+                    name = "VIP | GOLDEN EVENTS",
+                    parentId = 0,
+                    type = ContentType.LIVE,
+                    isAdult = false,
+                    syncFingerprint = "cat-1382"
+                )
+            )
+        )
+        whenever(catalogSyncDao.getChannelStageCategorySummaries(providerId, sessionId)).thenReturn(
+            listOf(ChannelStageCategorySummary(categoryId = 1382L, name = "Category 1382", isAdult = false))
+        )
+        whenever(catalogSyncDao.countChannelStages(providerId, sessionId)).thenReturn(1)
+        whenever(catalogSyncDao.countMovieStages(providerId, sessionId)).thenReturn(0)
+        whenever(catalogSyncDao.countSeriesStages(providerId, sessionId)).thenReturn(0)
+
+        val staged = store().stagedLiveImportState(providerId, sessionId)
+
+        assertThat(staged.categories).hasSize(1)
+        assertThat(staged.categories.single().categoryId).isEqualTo(1382L)
+        assertThat(staged.categories.single().name).isEqualTo("VIP | GOLDEN EVENTS")
+    }
+
+    @Test
     fun `replaceSeriesCatalog stages provider-native series ids`() = runTest {
         val providerId = 7L
         whenever(seriesDao.getByProviderSync(providerId)).thenReturn(emptyList())
@@ -240,6 +273,48 @@ class SyncCatalogStoreTest {
             )
         )
         assertThat(stagedMovie.syncFingerprint).isNotEmpty()
+    }
+
+    @Test
+    fun `stageChannelBatch fingerprints xtream live rows without derived volatile fields`() = runTest {
+        val providerId = 7L
+        val sessionId = 90L
+        val baseChannel = ChannelEntity(
+            streamId = 777L,
+            name = "World News",
+            logoUrl = "https://img.example.test/logo.png",
+            groupTitle = "News",
+            categoryId = 12L,
+            categoryName = "News",
+            streamUrl = "xtream://7/live/777?ext=m3u8&src=https%3A%2F%2Fcdn.example.test%2Fa.m3u8%3Ftoken%3Done",
+            epgChannelId = "world-news",
+            number = 4,
+            catchUpSupported = true,
+            catchUpDays = 3,
+            catchUpSource = "source-a",
+            providerId = providerId,
+            isAdult = false
+        )
+
+        val store = store()
+        store.stageChannelBatch(providerId, sessionId, listOf(baseChannel))
+        store.stageChannelBatch(
+            providerId,
+            sessionId + 1,
+            listOf(
+                baseChannel.copy(
+                    categoryName = "Renamed News",
+                    streamUrl = "xtream://7/live/777?ext=m3u8&src=https%3A%2F%2Fcdn.example.test%2Fb.m3u8%3Ftoken%3Dtwo",
+                    catchUpSource = "source-b"
+                )
+            )
+        )
+
+        val insertedStages = argumentCaptor<List<ChannelImportStageEntity>>()
+        verify(catalogSyncDao, org.mockito.kotlin.times(2)).insertChannelStages(insertedStages.capture())
+        val fingerprints = insertedStages.allValues.map { it.single().syncFingerprint }
+        assertThat(fingerprints).hasSize(2)
+        assertThat(fingerprints.first()).isEqualTo(fingerprints.last())
     }
 
     @Test

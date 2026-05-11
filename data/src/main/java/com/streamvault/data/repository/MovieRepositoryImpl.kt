@@ -17,6 +17,7 @@ import com.streamvault.data.local.entity.MovieCategoryHydrationEntity
 import com.streamvault.data.mapper.toEntity
 import com.streamvault.data.mapper.toDomain
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.data.remote.http.toGenericRequestProfile
 import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.stalker.StalkerProvider
 import com.streamvault.data.remote.xtream.XtreamApiService
@@ -1418,7 +1419,8 @@ class MovieRepositoryImpl @Inject constructor(
                             username = provider.username,
                             password = decryptedPassword,
                             allowedOutputFormats = provider.toDomain().allowedOutputFormats,
-                            enableBase64TextCompatibility = enableBase64TextCompatibility
+                            enableBase64TextCompatibility = enableBase64TextCompatibility,
+                            requestProfile = provider.toGenericRequestProfile(ownerTag = "provider:$providerId/xtream")
                         )
                     )
                 }

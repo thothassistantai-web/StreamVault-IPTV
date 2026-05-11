@@ -2,6 +2,7 @@ package com.streamvault.data.remote.xtream
 
 import com.google.common.truth.Truth.assertThat
 import com.streamvault.data.remote.dto.XtreamCategory
+import com.streamvault.data.remote.dto.XtreamLiveStreamRow
 import com.streamvault.data.remote.dto.XtreamSeriesItem
 import com.streamvault.data.remote.dto.XtreamStream
 import com.streamvault.data.remote.dto.XtreamVodMovieData
@@ -55,6 +56,46 @@ class XtreamDtoParsingTest {
         assertThat(stream.isAdult).isTrue()
         assertThat(vod.isAdult).isTrue()
     }
+
+      @Test
+      fun `xtream thin live row ignores rich provider fields while decoding sync fields`() {
+        val row = json.decodeFromString<XtreamLiveStreamRow>(
+          """
+          {
+            "num": "12",
+            "name": "Live Channel",
+            "stream_id": "777",
+            "stream_icon": "https://img.example.test/live.png",
+            "epg_channel_id": "live.us",
+            "category_id": "0",
+            "category_name": "News",
+            "category_ids": ["123", "456"],
+            "tv_archive": "1",
+            "tv_archive_duration": "3",
+            "container_extension": ".m3u8",
+            "is_adult": "0",
+            "direct_source": "https://cdn.example.test/live/777/master.m3u8?token=abc",
+            "cover_big": "https://img.example.test/cover.jpg",
+            "rating": "9.1",
+            "tmdb": "999",
+            "youtube_trailer": "abc"
+          }
+          """.trimIndent()
+        )
+
+        assertThat(row.num).isEqualTo(12)
+        assertThat(row.name).isEqualTo("Live Channel")
+        assertThat(row.streamId).isEqualTo(777L)
+        assertThat(row.streamIcon).isEqualTo("https://img.example.test/live.png")
+        assertThat(row.epgChannelId).isEqualTo("live.us")
+        assertThat(row.categoryId).isEqualTo("0")
+        assertThat(row.categoryName).isEqualTo("News")
+        assertThat(row.categoryIds).containsExactly("123", "456").inOrder()
+        assertThat(row.tvArchive).isEqualTo(1)
+        assertThat(row.tvArchiveDuration).isEqualTo(3)
+        assertThat(row.containerExtension).isEqualTo(".m3u8")
+        assertThat(row.isAdult).isFalse()
+      }
 
     @Test
     fun `xtream series payload decodes false and missing is_adult safely`() {

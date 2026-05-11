@@ -76,7 +76,7 @@ internal fun observeSettingsPreferenceSnapshot(
             groupedChannelLabelMode = GroupedChannelLabelMode.HYBRID,
             liveVariantPreferenceMode = LiveVariantPreferenceMode.BALANCED,
             vodViewMode = VodViewMode.MODERN,
-            vodInfiniteScroll = false,
+            vodInfiniteScroll = true,
             guideDefaultCategoryId = VirtualCategoryIds.FAVORITES,
             guideDefaultCategoryOptions = emptyList(),
             preventStandbyDuringPlayback = true,

@@ -1,6 +1,5 @@
 package com.streamvault.data.sync
 
-import android.app.ActivityManager
 import android.content.Context
 import android.database.sqlite.SQLiteException
 import android.util.Log
@@ -39,7 +38,7 @@ class XtreamIndexWorker(
     }
 
     override suspend fun doWork(): Result {
-        if (isDeviceLowOnMemory()) {
+        if (applicationContext.isCurrentlyLowOnMemoryForSync()) {
             Log.w(TAG, "Deferring Xtream index work: device low on memory")
             return Result.retry()
         }
@@ -85,16 +84,6 @@ class XtreamIndexWorker(
             Log.e(TAG, "Xtream index worker failed", error)
             if (shouldRetry(error)) Result.retry() else Result.failure()
         }
-    }
-
-    private fun isDeviceLowOnMemory(): Boolean {
-        val activityManager = applicationContext.getSystemService(Context.ACTIVITY_SERVICE)
-            as? ActivityManager ?: return false
-        val info = ActivityManager.MemoryInfo()
-        return runCatching {
-            activityManager.getMemoryInfo(info)
-            info.lowMemory
-        }.getOrDefault(false)
     }
 
     private fun shouldRetry(error: Throwable?): Boolean {

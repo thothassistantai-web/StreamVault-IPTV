@@ -1,5 +1,7 @@
 package com.streamvault.data.remote.http
 
+import com.streamvault.data.local.entity.ProviderEntity
+import com.streamvault.domain.model.Provider
 import okhttp3.Interceptor
 import okhttp3.Request
 
@@ -85,3 +87,43 @@ fun buildAppRequestProfile(
     userAgent = buildAppUserAgent(versionName),
     ownerTag = ownerTag
 )
+
+fun Provider.toGenericRequestProfile(ownerTag: String): HttpRequestProfile =
+    buildGenericProviderRequestProfile(ownerTag, httpUserAgent, httpHeaders)
+
+fun ProviderEntity.toGenericRequestProfile(ownerTag: String): HttpRequestProfile =
+    buildGenericProviderRequestProfile(ownerTag, httpUserAgent, httpHeaders)
+
+fun buildGenericProviderRequestProfile(
+    ownerTag: String,
+    httpUserAgent: String,
+    httpHeaders: String
+): HttpRequestProfile = HttpRequestProfile(
+    userAgent = httpUserAgent.takeIf { it.isNotBlank() },
+    headers = parseProviderHttpHeaders(httpHeaders),
+    ownerTag = ownerTag
+)
+
+private fun parseProviderHttpHeaders(httpHeaders: String): Map<String, String> {
+    if (httpHeaders.isBlank()) {
+        return emptyMap()
+    }
+    return buildMap {
+        httpHeaders
+            .split(Regex("\\s*\\|\\s*|[\\r\\n]+"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .forEach { entry ->
+                val separatorIndex = entry.indexOf(':')
+                if (separatorIndex <= 0 || separatorIndex == entry.lastIndex) {
+                    return@forEach
+                }
+                val name = entry.substring(0, separatorIndex).trim()
+                val value = entry.substring(separatorIndex + 1).trim()
+                if (name.isBlank() || value.isBlank()) {
+                    return@forEach
+                }
+                put(name, value)
+            }
+    }
+}
