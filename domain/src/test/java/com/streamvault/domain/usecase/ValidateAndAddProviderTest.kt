@@ -11,6 +11,7 @@ import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderSavedWithSyncErrorException
 import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.ProviderType
+import com.streamvault.domain.model.ProviderXtreamLiveSyncMode
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.repository.ProviderRepository
 import kotlinx.coroutines.flow.Flow
@@ -195,6 +196,7 @@ class ValidateAndAddProviderTest {
                 httpHeaders = "Referer: https://example.com",
                 xtreamFastSyncEnabled = true,
                 epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+                xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.AUTO,
                 id = 7L
             )
         )
@@ -345,6 +347,7 @@ class ValidateAndAddProviderTest {
                 httpHeaders = "Referer: https://example.com",
                 xtreamFastSyncEnabled = false,
                 epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+                xtreamLiveSyncMode = ProviderXtreamLiveSyncMode.AUTO,
                 id = 19L
             )
         )
@@ -527,6 +530,7 @@ private data class XtreamCall(
     val httpHeaders: String,
     val xtreamFastSyncEnabled: Boolean,
     val epgSyncMode: ProviderEpgSyncMode,
+    val xtreamLiveSyncMode: ProviderXtreamLiveSyncMode,
     val id: Long?
 )
 
@@ -582,10 +586,11 @@ private class FakeProviderRepository : ProviderRepository {
         httpHeaders: String,
         xtreamFastSyncEnabled: Boolean,
         epgSyncMode: ProviderEpgSyncMode,
+        xtreamLiveSyncMode: ProviderXtreamLiveSyncMode,
         onProgress: ((String) -> Unit)?,
         id: Long?
     ): Result<Provider> {
-        lastXtreamCall = XtreamCall(serverUrl, username, password, name, httpUserAgent, httpHeaders, xtreamFastSyncEnabled, epgSyncMode, id)
+        lastXtreamCall = XtreamCall(serverUrl, username, password, name, httpUserAgent, httpHeaders, xtreamFastSyncEnabled, epgSyncMode, xtreamLiveSyncMode, id)
         return xtreamResult ?: Result.success(provider(id = id ?: 1L, name = name, type = ProviderType.XTREAM_CODES))
     }
 
