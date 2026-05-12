@@ -65,6 +65,9 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.kotlinx.serialization.json)
 
+    // Google Sign-In (Drive sync)
+    implementation(libs.play.services.auth)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
