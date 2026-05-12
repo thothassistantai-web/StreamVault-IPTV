@@ -12,6 +12,8 @@ import com.streamvault.data.util.AdultContentClassifier
 import com.streamvault.data.util.UrlSecurityPolicy
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.Provider
+import com.streamvault.domain.sync.Section
+import com.streamvault.domain.sync.SyncProgress
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -29,7 +31,8 @@ internal class SyncManagerM3uImporter(
     private val okHttpClient: OkHttpClient,
     private val syncCatalogStore: SyncCatalogStore,
     private val retryTransient: suspend (suspend () -> Unit) -> Unit,
-    private val progress: (Long, ((String) -> Unit)?, String) -> Unit
+    private val progress: (Long, ((String) -> Unit)?, String) -> Unit,
+    private val syncProgressBus: SyncProgressBus
 ) {
     suspend fun importPlaylist(
         provider: Provider,
@@ -42,6 +45,18 @@ internal class SyncManagerM3uImporter(
             throw IllegalStateException(message)
         }
         progress(provider.id, onProgress, "Downloading Playlist...")
+        // D14 — emission M3U etape Downloading : Section.LIVE par convention (le M3U
+        // peut contenir un melange Live/VOD, mais l'UI ne distingue pas). Mode
+        // indetermine (total = 0) puisqu'on ne connait pas encore la taille du flux.
+        syncProgressBus.emit(
+            SyncProgress(
+                section = Section.LIVE,
+                current = 0,
+                total = 0,
+                currentLabel = "",
+                itemsIndexed = 0
+            )
+        )
         syncCatalogStore.clearProviderStaging(provider.id)
         val sessionId = syncCatalogStore.newSessionId()
         val stableLongHasher = StableLongHasher()
@@ -62,6 +77,16 @@ internal class SyncManagerM3uImporter(
         try {
             openPlaylistStream(provider) { streamed ->
                 progress(provider.id, onProgress, "Parsing Playlist...")
+                // D14 — emission M3U etape Parsing : meme section / mode indetermine.
+                syncProgressBus.emit(
+                    SyncProgress(
+                        section = Section.LIVE,
+                        current = 0,
+                        total = 0,
+                        currentLabel = "",
+                        itemsIndexed = 0
+                    )
+                )
                 maybeDecompressPlaylist(streamed).use { input ->
                     m3uParser.parseStreaming(
                         inputStream = input,
@@ -76,6 +101,18 @@ internal class SyncManagerM3uImporter(
                         parsedCount++
                         if (parsedCount >= nextMilestone) {
                             progress(provider.id, onProgress, "Imported $parsedCount playlist entries...")
+                            // D14 — emission M3U etape Imported : current = nombre d'entrees
+                            // parsees jusqu'ici (palier de M3U_PROGRESS_INTERVAL), `itemsIndexed`
+                            // refletera la meme valeur (compteur cumulatif local).
+                            syncProgressBus.emit(
+                                SyncProgress(
+                                    section = Section.LIVE,
+                                    current = parsedCount,
+                                    total = 0,
+                                    currentLabel = "",
+                                    itemsIndexed = parsedCount
+                                )
+                            )
                             nextMilestone += M3U_PROGRESS_INTERVAL
                         }
                         if (!UrlSecurityPolicy.isAllowedStreamEntryUrl(entry.url)) {

@@ -186,7 +186,8 @@ class SyncManager @Inject constructor(
         okHttpClient = okHttpClient,
         syncCatalogStore = syncCatalogStore,
         retryTransient = { block -> retryTransient(block = block) },
-        progress = ::progress
+        progress = ::progress,
+        syncProgressBus = syncProgressBus
     )
     private val xtreamSupport = SyncManagerXtreamSupport(
         adaptiveSyncPolicy = xtreamAdaptiveSyncPolicy,
