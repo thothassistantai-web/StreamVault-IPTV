@@ -19,6 +19,14 @@ if (keystorePropertiesFile.exists()) {
     FileInputStream(keystorePropertiesFile).use(keystoreProperties::load)
 }
 
+val localPropertiesFile = rootProject.file("local.properties")
+val localProperties = Properties()
+if (localPropertiesFile.exists()) {
+    FileInputStream(localPropertiesFile).use(localProperties::load)
+}
+
+fun localProp(key: String): String = localProperties.getProperty(key, "")
+
 fun computeOfficialSigningCertSha256(): String {
     if (!keystorePropertiesFile.exists()) return ""
 
@@ -57,6 +65,16 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
+        // Dev seeding hooks — populated from rootProject/local.properties in the
+        // `debug` build type only. Release builds inherit these empty defaults so
+        // a release APK can never ship a contributor's credentials. See
+        // local.properties.example and docs/DEV_SEEDING.md.
+        buildConfigField("String", "XTREAM_DEV_SERVER", "\"\"")
+        buildConfigField("String", "XTREAM_DEV_USERNAME", "\"\"")
+        buildConfigField("String", "XTREAM_DEV_PASSWORD", "\"\"")
+        buildConfigField("String", "XTREAM_DEV_NAME", "\"\"")
+        buildConfigField("String", "M3U_DEV_URL", "\"\"")
+        buildConfigField("String", "M3U_DEV_NAME", "\"\"")
     }
 
     signingConfigs {
@@ -71,6 +89,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "XTREAM_DEV_SERVER", "\"${localProp("xtream.dev.server")}\"")
+            buildConfigField("String", "XTREAM_DEV_USERNAME", "\"${localProp("xtream.dev.username")}\"")
+            buildConfigField("String", "XTREAM_DEV_PASSWORD", "\"${localProp("xtream.dev.password")}\"")
+            buildConfigField("String", "XTREAM_DEV_NAME", "\"${localProp("xtream.dev.name")}\"")
+            buildConfigField("String", "M3U_DEV_URL", "\"${localProp("m3u.dev.url")}\"")
+            buildConfigField("String", "M3U_DEV_NAME", "\"${localProp("m3u.dev.name")}\"")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

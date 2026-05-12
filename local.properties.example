@@ -1,0 +1,43 @@
+# =============================================================================
+# local.properties — template (versioned)
+# =============================================================================
+#
+# Copy this file to `local.properties` (already gitignored by Android Studio)
+# and uncomment/edit the lines you need:
+#
+#   $ cp local.properties.example local.properties
+#
+# Values declared here are read at build time by `app/build.gradle.kts` and
+# injected into `BuildConfig.*` fields, but ONLY for the `debug` build type.
+# Release builds inherit empty defaults from `defaultConfig`, so a release
+# APK can never ship a contributor's credentials regardless of what your
+# `local.properties` contains.
+#
+# See `docs/DEV_SEEDING.md` for the full opt-in onboarding flow.
+# -----------------------------------------------------------------------------
+
+
+# === Dev onboarding seeding (optional) ========================================
+#
+# When any of the sections below is populated, WelcomeViewModel will skip the
+# manual onboarding form on first boot (or after `pm clear`) and auto-create
+# a provider through the regular validation pipeline.
+#
+# Priority: Xtream first, then M3U, otherwise normal onboarding.
+
+# --- Option A: Xtream account ------------------------------------------------
+# Use your own credentials. Never commit your real values back — this file
+# (without `.example`) is in .gitignore.
+#
+# xtream.dev.server=http://your-xtream-server.example.org:80
+# xtream.dev.username=your-username
+# xtream.dev.password=your-password
+# xtream.dev.name=My Xtream Dev Server
+
+# --- Option B: Free public M3U playlist --------------------------------------
+# iptv-org maintains a curated, legal aggregation of public IPTV channels
+# at https://iptv-org.github.io/ — pick a country playlist and uncomment.
+# No authentication required, no private data exposed.
+#
+# m3u.dev.url=https://iptv-org.github.io/iptv/countries/fr.m3u
+# m3u.dev.name=iptv-org France

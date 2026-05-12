@@ -32,22 +32,28 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
+import com.streamvault.app.BuildConfig
 import com.streamvault.app.R
 import com.streamvault.app.ui.components.shell.StatusPill
 import com.streamvault.app.ui.design.AppColors
 import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.domain.repository.ProviderRepository
+import com.streamvault.domain.usecase.M3uProviderSetupCommand
+import com.streamvault.domain.usecase.ValidateAndAddProvider
+import com.streamvault.domain.usecase.XtreamProviderSetupCommand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 class WelcomeViewModel @Inject constructor(
-    private val providerRepository: ProviderRepository
+    private val providerRepository: ProviderRepository,
+    private val validateAndAddProvider: ValidateAndAddProvider
 ) : ViewModel() {
 
     private val _hasProviders = MutableStateFlow<Boolean?>(null)
@@ -55,9 +61,54 @@ class WelcomeViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            maybeSeedDevProvider()
             providerRepository.getProviders()
                 .map { it.isNotEmpty() }
                 .collect { _hasProviders.value = it }
+        }
+    }
+
+    // Optional dev-seed flow driven by `rootProject/local.properties`
+    // (gitignored). When populated, the first-boot onboarding is skipped
+    // and a provider is auto-created using the same code path as the
+    // manual setup form.
+    //
+    // Priority:
+    //   1. Xtream — if all of `xtream.dev.server` / `xtream.dev.username`
+    //      / `xtream.dev.password` are non-blank.
+    //   2. M3U — if `m3u.dev.url` is non-blank.
+    //   3. Otherwise no-op (manual onboarding runs normally).
+    //
+    // Release builds always see empty strings (defaultConfig in
+    // `app/build.gradle.kts`), so this is a permanent no-op there.
+    // See `local.properties.example` and `docs/DEV_SEEDING.md`.
+    private suspend fun maybeSeedDevProvider() {
+        if (providerRepository.getProviders().first().isNotEmpty()) return
+
+        val xtreamServer = BuildConfig.XTREAM_DEV_SERVER
+        val xtreamUser = BuildConfig.XTREAM_DEV_USERNAME
+        val xtreamPass = BuildConfig.XTREAM_DEV_PASSWORD
+        if (xtreamServer.isNotBlank() && xtreamUser.isNotBlank() && xtreamPass.isNotBlank()) {
+            validateAndAddProvider.loginXtream(
+                XtreamProviderSetupCommand(
+                    serverUrl = xtreamServer,
+                    username = xtreamUser,
+                    password = xtreamPass,
+                    name = BuildConfig.XTREAM_DEV_NAME.ifBlank { "Dev (seeded)" },
+                    xtreamFastSyncEnabled = true
+                )
+            )
+            return
+        }
+
+        val m3uUrl = BuildConfig.M3U_DEV_URL
+        if (m3uUrl.isNotBlank()) {
+            validateAndAddProvider.addM3u(
+                M3uProviderSetupCommand(
+                    url = m3uUrl,
+                    name = BuildConfig.M3U_DEV_NAME.ifBlank { "Dev M3U (seeded)" }
+                )
+            )
         }
     }
 }
