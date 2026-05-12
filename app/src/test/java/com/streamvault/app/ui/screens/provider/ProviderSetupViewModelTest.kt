@@ -10,6 +10,7 @@ import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.ProviderRepository
 import com.streamvault.domain.manager.BackupImportPlan
 import com.streamvault.domain.manager.BackupImportResult
+import com.streamvault.data.security.CredentialCrypto
 import com.streamvault.domain.manager.DriveAuthState
 import com.streamvault.domain.manager.DriveBackupSyncManager
 import com.streamvault.domain.usecase.ImportBackup
@@ -28,6 +29,7 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
@@ -41,6 +43,10 @@ class ProviderSetupViewModelTest {
     private val validateAndAddProvider: ValidateAndAddProvider = mock()
     private val importBackup: ImportBackup = mock()
     private val driveBackupSyncManager: DriveBackupSyncManager = mock()
+    private val credentialCrypto: CredentialCrypto = mock {
+        on { encryptIfNeeded(any()) } doAnswer { it.getArgument(0) }
+        on { decryptIfNeeded(any()) } doAnswer { it.getArgument(0) }
+    }
     private val testDispatcher = StandardTestDispatcher()
 
     @Before
@@ -81,7 +87,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         viewModel.addM3u("https://example.com/list.m3u", "Playlist 7", "", "")
@@ -115,7 +122,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         viewModel.loginXtream("https://example.com", "alice", "secret", "Premium", "", "")
@@ -147,7 +155,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
         val field = ProviderSetupViewModel::class.java.getDeclaredField("_uiState").apply { isAccessible = true }
         @Suppress("UNCHECKED_CAST")
@@ -173,7 +182,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         val seededState = viewModel.uiState.value.copy(
@@ -224,7 +234,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         viewModel.addM3u("https://example.com/list.m3u", "Playlist 7", "", "")
@@ -245,7 +256,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.STALKER)
@@ -262,7 +274,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.XTREAM)
@@ -279,7 +292,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         viewModel.applySourceDefaults(ProviderSetupViewModel.SetupSourceType.M3U)
@@ -296,7 +310,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         viewModel.updateEpgSyncMode(ProviderEpgSyncMode.SKIP)
@@ -328,7 +343,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         // Simulate being in edit mode for provider 7.
@@ -360,7 +376,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         viewModel.addM3u("https://example.com/list.m3u", "Playlist", "", "")
@@ -384,7 +401,8 @@ class ProviderSetupViewModelTest {
             combinedM3uRepository = combinedM3uRepository,
             validateAndAddProvider = validateAndAddProvider,
             importBackup = importBackup,
-            driveBackupSyncManager = driveBackupSyncManager
+            driveBackupSyncManager = driveBackupSyncManager,
+            credentialCrypto = credentialCrypto,
         )
 
         viewModel.loginStalker(
