@@ -7,10 +7,12 @@ import com.streamvault.data.remote.xtream.XtreamNetworkException
 import com.streamvault.data.remote.xtream.XtreamParsingException
 import com.streamvault.data.remote.xtream.XtreamRequestException
 import com.streamvault.data.remote.xtream.XtreamResponseTooLargeException
+import com.streamvault.data.security.CredentialCrypto
 import com.streamvault.data.security.CredentialDecryptionException
 import com.streamvault.domain.manager.BackupConflictStrategy
 import com.streamvault.domain.manager.DriveAuthState
 import com.streamvault.domain.manager.DriveBackupSyncManager
+import com.streamvault.domain.manager.ProviderCredentials
 import com.streamvault.domain.model.Result as DomainResult
 import com.streamvault.domain.manager.BackupImportPlan
 import com.streamvault.domain.manager.BackupPreview
@@ -53,7 +55,8 @@ class ProviderSetupViewModel @Inject constructor(
     private val combinedM3uRepository: CombinedM3uRepository,
     private val validateAndAddProvider: ValidateAndAddProvider,
     private val importBackup: ImportBackup,
-    private val driveBackupSyncManager: DriveBackupSyncManager
+    private val driveBackupSyncManager: DriveBackupSyncManager,
+    private val credentialCrypto: CredentialCrypto,
 ) : ViewModel() {
 
     enum class OnboardingCompletion {
@@ -142,7 +145,14 @@ class ProviderSetupViewModel @Inject constructor(
             }
             when (val pullResult = driveBackupSyncManager.pullBackup()) {
                 is DomainResult.Success -> {
-                    _uiState.update { it.copy(isImportingBackup = false) }
+                    // Best-effort companion fetch (M3). Failures are non-fatal.
+                    val credentials = (driveBackupSyncManager.pullCredentials() as? DomainResult.Success)?.data
+                    _uiState.update {
+                        it.copy(
+                            isImportingBackup = false,
+                            pendingDriveCredentials = credentials,
+                        )
+                    }
                     inspectBackup(pullResult.data.localUriString)
                 }
                 is DomainResult.Error -> {
@@ -157,6 +167,24 @@ class ProviderSetupViewModel @Inject constructor(
                 is DomainResult.Loading -> Unit
             }
         }
+    }
+
+    private suspend fun applyPendingDriveCredentials() {
+        val pending = _uiState.value.pendingDriveCredentials.orEmpty()
+        if (pending.isEmpty()) return
+        val providers = providerRepository.getProviders().first()
+        pending.forEach { cred ->
+            val match = providers.firstOrNull { provider ->
+                provider.serverUrl == cred.serverUrl &&
+                    credentialCrypto.decryptIfNeeded(provider.username) == cred.username
+            } ?: return@forEach
+            val updated = match.copy(
+                username = credentialCrypto.encryptIfNeeded(cred.username),
+                password = credentialCrypto.encryptIfNeeded(cred.password),
+            )
+            providerRepository.updateProvider(updated)
+        }
+        _uiState.update { it.copy(pendingDriveCredentials = null) }
     }
 
     fun loadProvider(id: Long) {
@@ -584,6 +612,9 @@ class ProviderSetupViewModel @Inject constructor(
         val plan = capturedPlan ?: return
         viewModelScope.launch {
             val result = importBackup.confirm(ImportBackupCommand(uriString, plan))
+            if (result is ImportBackupResult.Success) {
+                applyPendingDriveCredentials()
+            }
             val hasProviders = if (result is ImportBackupResult.Success) {
                 providerRepository.getProviders().first().isNotEmpty()
             } else {
@@ -781,6 +812,7 @@ data class ProviderSetupState(
     val backupPreview: BackupPreview? = null,
     val pendingBackupUri: String? = null,
     val backupImportPlan: BackupImportPlan = BackupImportPlan(),
+    val pendingDriveCredentials: List<ProviderCredentials>? = null,
     val driveSignedIn: Boolean = false,
     val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
     val xtreamLiveSyncMode: ProviderXtreamLiveSyncMode = ProviderXtreamLiveSyncMode.AUTO,
