@@ -96,6 +96,12 @@ fun SettingsScreen(
             .onFailure { viewModel.showUserMessage(context.getString(R.string.settings_crash_report_share_failed)) }
     }
 
+    val driveSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        viewModel.completeDriveSignIn(result.data)
+    }
+
     val recordingFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -189,6 +195,10 @@ fun SettingsScreen(
                             arrayOf("application/json", "text/json", "application/x-json", "application/octet-stream", "*/*")
                         )
                     },
+                    onDriveSignIn = { viewModel.beginDriveSignIn(driveSignInLauncher) },
+                    onDriveSignOut = viewModel::signOutDrive,
+                    onDrivePush = viewModel::pushToDrive,
+                    onDrivePull = viewModel::pullFromDrive,
                     onOpenUri = uriHandler::openUri,
                     modifier = Modifier.weight(1f)
                 )

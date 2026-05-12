@@ -17,6 +17,7 @@ All notable product changes are recorded in this document.
 - Added a host-rendered plugin configuration schema so plugins can expose StreamVault-native settings screens, persisted values, validation, and plugin actions over IPC.
 - Added native Activity plugin configuration mode so rich plugin UIs can open from StreamVault with their own visual and interaction model.
 - Added a welcome-screen "Set up later" option so first-time users can enter the app and reach Settings before adding a provider.
+- Added Google Drive backup sync support with sign-in/out, push/pull actions, last-sync status in Settings, and onboarding import-from-Drive progress flow.
 
 ### Changed
 

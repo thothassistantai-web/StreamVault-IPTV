@@ -1453,4 +1453,19 @@
     <string name="setup_xtream_live_sync_mode_category_description">Toujours récupérer la TV en direct une catégorie à la fois. Plus sûr pour les fournisseurs volumineux et les appareils Android TV peu puissants.</string>
     <string name="setup_xtream_live_sync_mode_stream_all_title">Mode global</string>
     <string name="setup_xtream_live_sync_mode_stream_all_description">Essaie le point de terminaison Live global du fournisseur via l’analyseur en flux continu. Retourne à la synchronisation par catégorie si non sûr ou en cas d’échec.</string>
+
+    <!-- M2 : sauvegarde Google Drive -->
+    <string name="settings_drive_section_title">Sauvegarde Google Drive</string>
+    <string name="settings_drive_section_subtitle">Envoyez et récupérez la configuration StreamVault dans un dossier Drive privé.</string>
+    <string name="settings_drive_signin">Se connecter à Google Drive</string>
+    <string name="settings_drive_signin_description">Connectez un compte Google pour activer la sauvegarde dans le cloud.</string>
+    <string name="settings_drive_signout">Se déconnecter</string>
+    <string name="settings_drive_push">Envoyer vers Drive</string>
+    <string name="settings_drive_push_subtitle">Téléverse la configuration actuelle dans votre sauvegarde Drive.</string>
+    <string name="settings_drive_pull">Récupérer depuis Drive</string>
+    <string name="settings_drive_pull_subtitle">Télécharge la dernière sauvegarde Drive et prévisualise l’import.</string>
+    <string name="settings_drive_last_push">Envoyé : %1$s</string>
+    <string name="settings_drive_last_pull">Récupéré : %1$s</string>
+    <string name="settings_drive_never_synced">Jamais synchronisé</string>
+    <string name="setup_import_from_drive">Importer depuis Drive</string>
 </resources>

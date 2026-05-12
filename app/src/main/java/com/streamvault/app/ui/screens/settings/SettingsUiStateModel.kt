@@ -5,6 +5,9 @@ import com.streamvault.app.ui.model.LiveTvQuickFilterVisibilityMode
 import com.streamvault.app.ui.model.VodViewMode
 import com.streamvault.domain.manager.BackupImportPlan
 import com.streamvault.domain.manager.BackupPreview
+import com.streamvault.domain.manager.DriveAuthState
+import com.streamvault.domain.manager.DriveSignInRequest
+import com.streamvault.domain.manager.DriveSyncStatus
 import com.streamvault.domain.model.ActiveLiveSource
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.AudioOutputPreference
@@ -83,6 +86,13 @@ data class SettingsUiState(
     val backupPreview: BackupPreview? = null,
     val pendingBackupUri: String? = null,
     val backupImportPlan: BackupImportPlan = BackupImportPlan(),
+    // --- Drive sync (M2) ---
+    val driveAuthState: DriveAuthState = DriveAuthState.SignedOut,
+    val driveSyncStatus: DriveSyncStatus = DriveSyncStatus(),
+    val driveLastPushAt: Long? = null,
+    val driveLastPullAt: Long? = null,
+    val drivePendingSignIn: DriveSignInRequest? = null,
+    val driveIsBusy: Boolean = false,
     val recordingItems: List<RecordingItem> = emptyList(),
     val recordingStorageState: RecordingStorageState = RecordingStorageState(),
     val wifiOnlyRecording: Boolean = false,

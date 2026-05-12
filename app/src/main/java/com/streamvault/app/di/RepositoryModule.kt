@@ -76,6 +76,9 @@ abstract class RepositoryModule {
     abstract fun bindBackupManager(impl: com.streamvault.data.manager.BackupManagerImpl): com.streamvault.domain.manager.BackupManager
 
     @Binds @Singleton
+    abstract fun bindDriveBackupSyncManager(impl: com.streamvault.data.manager.GoogleDriveBackupSyncManager): com.streamvault.domain.manager.DriveBackupSyncManager
+
+    @Binds @Singleton
     abstract fun bindRecordingManager(impl: com.streamvault.data.manager.RecordingManagerImpl): com.streamvault.domain.manager.RecordingManager
 
     @Binds @Singleton

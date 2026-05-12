@@ -22,9 +22,11 @@ import androidx.tv.material3.Text
 import com.streamvault.app.BuildConfig
 import com.streamvault.app.R
 import com.streamvault.app.ui.interaction.TvClickableSurface
+import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.OnSurfaceDim
 import com.streamvault.app.ui.theme.Primary
 import com.streamvault.app.ui.theme.Secondary
+import com.streamvault.domain.manager.DriveAuthState
 
 internal fun LazyListScope.settingsBackupSection(
     onCreateBackup: () -> Unit,
@@ -67,6 +69,129 @@ internal fun LazyListScope.settingsBackupSection(
             )
         }
     }
+}
+
+internal fun LazyListScope.settingsDriveBackupSection(
+    uiState: SettingsUiState,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    onPush: () -> Unit,
+    onPull: () -> Unit
+) {
+    item(key = "settings_drive_section") {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SettingsSectionHeader(
+                title = stringResource(R.string.settings_drive_section_title),
+                subtitle = stringResource(R.string.settings_drive_section_subtitle)
+            )
+            when (val auth = uiState.driveAuthState) {
+                is DriveAuthState.SignedOut, is DriveAuthState.Pending -> {
+                    BackupActionCard(
+                        icon = "☁",
+                        title = stringResource(R.string.settings_drive_signin),
+                        subtitle = stringResource(R.string.settings_drive_signin_description),
+                        accent = Primary,
+                        onClick = onSignIn,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                is DriveAuthState.SignedIn -> {
+                    val accountLabel = auth.account.email
+                        ?: auth.account.displayName
+                        ?: stringResource(R.string.settings_drive_signin)
+                    DriveAccountRow(
+                        accountLabel = accountLabel,
+                        lastPushAtMs = uiState.driveSyncStatus.lastPushAtMs,
+                        lastPullAtMs = uiState.driveSyncStatus.lastPullAtMs,
+                        onSignOut = onSignOut
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        BackupActionCard(
+                            icon = "↑",
+                            title = stringResource(R.string.settings_drive_push),
+                            subtitle = stringResource(R.string.settings_drive_push_subtitle),
+                            accent = Primary,
+                            onClick = onPush,
+                            modifier = Modifier.weight(1f)
+                        )
+                        BackupActionCard(
+                            icon = "↓",
+                            title = stringResource(R.string.settings_drive_pull),
+                            subtitle = stringResource(R.string.settings_drive_pull_subtitle),
+                            accent = Secondary,
+                            onClick = onPull,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun DriveAccountRow(
+    accountLabel: String,
+    lastPushAtMs: Long?,
+    lastPullAtMs: Long?,
+    onSignOut: () -> Unit
+) {
+    val syncSummary = formatLastSync(lastPushAtMs, lastPullAtMs)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = accountLabel,
+                style = MaterialTheme.typography.bodyLarge,
+                color = OnSurface,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = syncSummary,
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceDim
+            )
+        }
+        TvClickableSurface(
+            onClick = onSignOut,
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.White.copy(alpha = 0.06f),
+                focusedContainerColor = Color.White.copy(alpha = 0.18f)
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
+        ) {
+            Text(
+                text = stringResource(R.string.settings_drive_signout),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = OnSurface
+            )
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun formatLastSync(pushMs: Long?, pullMs: Long?): String {
+    if (pushMs == null && pullMs == null) {
+        return stringResource(R.string.settings_drive_never_synced)
+    }
+    val df = java.text.DateFormat.getDateTimeInstance(
+        java.text.DateFormat.SHORT,
+        java.text.DateFormat.SHORT
+    )
+    val parts = mutableListOf<String>()
+    pushMs?.let { parts += stringResource(R.string.settings_drive_last_push, df.format(java.util.Date(it))) }
+    pullMs?.let { parts += stringResource(R.string.settings_drive_last_pull, df.format(java.util.Date(it))) }
+    return parts.joinToString("  ·  ")
 }
 
 @androidx.compose.runtime.Composable

@@ -9,6 +9,9 @@ import com.streamvault.data.remote.xtream.XtreamRequestException
 import com.streamvault.data.remote.xtream.XtreamResponseTooLargeException
 import com.streamvault.data.security.CredentialDecryptionException
 import com.streamvault.domain.manager.BackupConflictStrategy
+import com.streamvault.domain.manager.DriveAuthState
+import com.streamvault.domain.manager.DriveBackupSyncManager
+import com.streamvault.domain.model.Result as DomainResult
 import com.streamvault.domain.manager.BackupImportPlan
 import com.streamvault.domain.manager.BackupPreview
 import com.streamvault.domain.model.ActiveLiveSource
@@ -49,7 +52,8 @@ class ProviderSetupViewModel @Inject constructor(
     private val providerRepository: ProviderRepository,
     private val combinedM3uRepository: CombinedM3uRepository,
     private val validateAndAddProvider: ValidateAndAddProvider,
-    private val importBackup: ImportBackup
+    private val importBackup: ImportBackup,
+    private val driveBackupSyncManager: DriveBackupSyncManager
 ) : ViewModel() {
 
     enum class OnboardingCompletion {
@@ -84,6 +88,73 @@ class ProviderSetupViewModel @Inject constructor(
                         provider.m3uUrl.takeIf { it.startsWith("file://") }
                     }
                     .toSet()
+            }
+        }
+        viewModelScope.launch {
+            driveBackupSyncManager.authState.collect { state ->
+                _uiState.update {
+                    it.copy(driveSignedIn = state is DriveAuthState.SignedIn)
+                }
+            }
+        }
+    }
+
+    fun beginDriveSignIn(launcher: androidx.activity.result.ActivityResultLauncher<android.content.Intent>) {
+        viewModelScope.launch {
+            when (val request = driveBackupSyncManager.beginSignIn()) {
+                is DomainResult.Success -> {
+                    val intent = request.data.intent as? android.content.Intent ?: return@launch
+                    runCatching { launcher.launch(intent) }
+                }
+                is DomainResult.Error -> {
+                    _uiState.update {
+                        it.copy(error = "Drive sign-in unavailable: ${request.message}")
+                    }
+                }
+                is DomainResult.Loading -> Unit
+            }
+        }
+    }
+
+    fun completeDriveSignIn(intentData: android.content.Intent?) {
+        viewModelScope.launch {
+            when (val signIn = driveBackupSyncManager.completeSignIn(intentData)) {
+                is DomainResult.Success -> Unit
+                is DomainResult.Error -> {
+                    _uiState.update {
+                        it.copy(error = "Drive sign-in failed: ${signIn.message}")
+                    }
+                }
+                is DomainResult.Loading -> Unit
+            }
+        }
+    }
+
+    fun importBackupFromDrive() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isImportingBackup = true,
+                    syncProgress = "Downloading from Drive...",
+                    validationError = null,
+                    error = null
+                )
+            }
+            when (val pullResult = driveBackupSyncManager.pullBackup()) {
+                is DomainResult.Success -> {
+                    _uiState.update { it.copy(isImportingBackup = false) }
+                    inspectBackup(pullResult.data.localUriString)
+                }
+                is DomainResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isImportingBackup = false,
+                            syncProgress = null,
+                            error = "Drive pull failed: ${pullResult.message}"
+                        )
+                    }
+                }
+                is DomainResult.Loading -> Unit
             }
         }
     }
@@ -710,6 +781,7 @@ data class ProviderSetupState(
     val backupPreview: BackupPreview? = null,
     val pendingBackupUri: String? = null,
     val backupImportPlan: BackupImportPlan = BackupImportPlan(),
+    val driveSignedIn: Boolean = false,
     val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
     val xtreamLiveSyncMode: ProviderXtreamLiveSyncMode = ProviderXtreamLiveSyncMode.AUTO,
     val hasCustomizedEpgSyncMode: Boolean = false,
