@@ -1437,4 +1437,5 @@
     <string name="settings_drive_last_push">Envoyé : %1$s</string>
     <string name="settings_drive_last_pull">Récupéré : %1$s</string>
     <string name="settings_drive_never_synced">Jamais synchronisé</string>
+    <string name="setup_import_from_drive">Importer depuis Drive</string>
 </resources>

@@ -1510,5 +1510,6 @@
     <string name="settings_drive_last_push">Pushed: %1$s</string>
     <string name="settings_drive_last_pull">Pulled: %1$s</string>
     <string name="settings_drive_never_synced">Never synced yet</string>
+    <string name="setup_import_from_drive">Import from Drive</string>
 </resources>
 

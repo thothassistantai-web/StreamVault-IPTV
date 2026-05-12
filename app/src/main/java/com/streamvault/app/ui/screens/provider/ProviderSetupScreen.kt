@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
@@ -64,6 +65,7 @@ import com.streamvault.app.R
 import com.streamvault.app.device.rememberIsTelevisionDevice
 import com.streamvault.app.ui.components.dialogs.PremiumDialog
 import com.streamvault.app.ui.components.dialogs.PremiumDialogFooterButton
+import com.streamvault.app.ui.components.extractProgressFraction
 import com.streamvault.app.ui.components.shell.StatusPill
 import com.streamvault.app.ui.screens.settings.BackupImportPreviewDialog
 import com.streamvault.app.ui.theme.*
@@ -164,6 +166,10 @@ fun ProviderSetupScreen(
     val backupImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: android.net.Uri? -> uri?.let { viewModel.inspectBackup(it.toString()) } }
+
+    val driveSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result -> viewModel.completeDriveSignIn(result.data) }
 
     // ?? Effects ???????????????????????????????????????????????????????????????
     LaunchedEffect(knownLocalM3uUrls) {
@@ -321,6 +327,9 @@ fun ProviderSetupScreen(
                         showImportBackupButton = !uiState.isEditing,
                         isImportingBackup = uiState.isImportingBackup || uiState.syncProgress != null,
                         onImportBackup = { backupImportLauncher.launch(arrayOf("application/json")) },
+                        driveSignedIn = uiState.driveSignedIn,
+                        onImportFromDrive = { viewModel.importBackupFromDrive() },
+                        onDriveSignIn = { viewModel.beginDriveSignIn(driveSignInLauncher) },
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                 }
@@ -360,6 +369,9 @@ fun ProviderSetupScreen(
                         showImportBackupButton = !uiState.isEditing,
                         isImportingBackup = uiState.isImportingBackup || uiState.syncProgress != null,
                         onImportBackup = { backupImportLauncher.launch(arrayOf("application/json")) },
+                        driveSignedIn = uiState.driveSignedIn,
+                        onImportFromDrive = { viewModel.importBackupFromDrive() },
+                        onDriveSignIn = { viewModel.beginDriveSignIn(driveSignInLauncher) },
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
                 }
@@ -510,6 +522,9 @@ private fun ProviderFormContent(
     showImportBackupButton: Boolean,
     isImportingBackup: Boolean,
     onImportBackup: () -> Unit,
+    driveSignedIn: Boolean,
+    onImportFromDrive: () -> Unit,
+    onDriveSignIn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -731,6 +746,19 @@ private fun ProviderFormContent(
                     isLoading = isImportingBackup,
                     onClick = onImportBackup
                 )
+                if (driveSignedIn) {
+                    SmallActionButton(
+                        text = androidx.compose.ui.res.stringResource(R.string.setup_import_from_drive),
+                        isLoading = isImportingBackup,
+                        onClick = onImportFromDrive
+                    )
+                } else {
+                    SmallActionButton(
+                        text = androidx.compose.ui.res.stringResource(R.string.settings_drive_signin),
+                        isLoading = false,
+                        onClick = onDriveSignIn
+                    )
+                }
             }
         }
     }
@@ -1629,6 +1657,12 @@ private fun PasswordVisibilityGlyph(
 
 @Composable
 fun SyncProgressDialog(message: String) {
+    val fraction = extractProgressFraction(message)
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction ?: 0f,
+        animationSpec = tween(durationMillis = 400),
+        label = "syncFraction"
+    )
     PremiumDialog(
         title = androidx.compose.ui.res.stringResource(R.string.settings_syncing_title),
         subtitle = androidx.compose.ui.res.stringResource(R.string.settings_syncing_subtitle),
@@ -1646,6 +1680,18 @@ fun SyncProgressDialog(message: String) {
                     label = androidx.compose.ui.res.stringResource(R.string.settings_syncing_btn),
                     containerColor = PrimaryGlow
                 )
+                if (fraction != null) {
+                    LinearProgressIndicator(
+                        progress = { animatedFraction },
+                        color = Primary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        color = Primary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodyMedium,
