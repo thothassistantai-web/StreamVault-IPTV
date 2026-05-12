@@ -243,7 +243,8 @@ class SyncManager @Inject constructor(
             categoryFailureWarning = ::categoryFailureWarning,
             liveCategorySequentialModeWarning = LIVE_CATEGORY_SEQUENTIAL_MODE_WARNING,
             isCurrentlyLowOnMemory = applicationContext::isCurrentlyLowOnMemoryForSync,
-            stageChannelItems = catalogStager::stageChannelItems
+            stageChannelItems = catalogStager::stageChannelItems,
+            syncProgressBus = syncProgressBus
         )
     }
 

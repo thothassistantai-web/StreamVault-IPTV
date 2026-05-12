@@ -13,6 +13,8 @@ import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.SyncMetadata
+import com.streamvault.domain.sync.Section
+import com.streamvault.domain.sync.SyncProgress
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.system.measureTimeMillis
@@ -40,7 +42,8 @@ internal class SyncManagerXtreamLiveStrategy(
     private val categoryFailureWarning: (String, String, Throwable) -> String,
     private val liveCategorySequentialModeWarning: String,
     private val isCurrentlyLowOnMemory: () -> Boolean = { false },
-    private val stageChannelItems: suspend (Long, List<Channel>, MutableSet<Long>, FallbackCategoryCollector, Long?) -> StagedCatalogSnapshot
+    private val stageChannelItems: suspend (Long, List<Channel>, MutableSet<Long>, FallbackCategoryCollector, Long?) -> StagedCatalogSnapshot,
+    private val syncProgressBus: SyncProgressBus
 ) {
     suspend fun syncXtreamLiveCatalog(
         provider: Provider,
@@ -409,6 +412,9 @@ internal class SyncManagerXtreamLiveStrategy(
         val concurrency = adaptiveConcurrency.coerceAtMost(runtimeProfile.maxCategoryConcurrency)
         progress(provider.id, onProgress, "Downloading Live TV by category 0/${categories.size}...")
 
+        // D11 — le total de catégories LIVE est fige une seule fois ici : la liste
+        // `categories` ne mute plus pendant la recuperation, donc la lambda
+        // `onCategoryCompleted` recoit le meme denominateur a chaque fenetre.
         val executionPlan = xtreamSupport.executeCategoryRecoveryPlan(
             provider = provider,
             categories = categories,
@@ -423,6 +429,22 @@ internal class SyncManagerXtreamLiveStrategy(
                     category = category,
                     stageBatchSize = runtimeProfile.stageBatchSize,
                     onMappedBatch = ::stageMappedBatch
+                )
+            },
+            onCategoryCompleted = { completed, total, currentLabel ->
+                // D6 — emission structuree en parallele du callback string deja emis par
+                // `executeCategoryRecoveryPlan` via `progress(...)`. Le compteur cumulatif
+                // `stagedAcceptedCount` est mis a jour de maniere thread-safe sous le
+                // `stageMutex` (cf `stageMappedBatch`), la lecture ici est best-effort
+                // (snapshot UX, pas une metrique business).
+                syncProgressBus.emit(
+                    SyncProgress(
+                        section = Section.LIVE,
+                        current = completed,
+                        total = total,
+                        currentLabel = currentLabel,
+                        itemsIndexed = stagedAcceptedCount
+                    )
                 )
             }
         )
