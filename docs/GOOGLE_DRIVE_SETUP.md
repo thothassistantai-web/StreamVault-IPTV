@@ -97,6 +97,43 @@ screen's *Test users* list.
 
 - The backup payload reuses the existing `BackupManager` JSON v5 export. Provider
   passwords are already stripped (`BackupManagerImpl.exportConfig`, see the
-  `password = ""` line) — they are never uploaded to Drive.
+  `password = ""` line).
 - Auth tokens fetched via `GoogleAuthUtil.getToken` are never logged.
 - The scope `drive.appdata` cannot read files outside the app's private folder.
+
+## Credentials storage (fork extension, M3)
+
+`drive-backup.json` carries the configuration *minus* passwords. The fork
+ships a **second sibling file** in the same `appDataFolder`:
+
+- **`streamvault_credentials.json`** — `[{serverUrl, username, password}]`,
+  cleartext.
+
+Why cleartext on Drive:
+
+- The file is invisible to the OS and to the standard Drive UI (the
+  `drive.appdata` scope is the only path that can read it).
+- Access is gated by the user's Google account + OAuth consent.
+- It is purged automatically when the app is uninstalled.
+- Cross-device-by-design — a per-device Keystore key would defeat the
+  purpose (the file would be unreadable on a fresh install, which is
+  precisely the use case it solves).
+- A passphrase-protected variant was considered and rejected: it adds
+  significant UX friction (user must remember a passphrase across
+  devices) for a small additional security margin given the threat
+  model above.
+
+The local DB still stores credentials encrypted via
+`AndroidKeystoreCredentialCrypto`. Cleartext only exists inside the
+Drive `appDataFolder` and inside the in-memory pull result up to the
+moment of import confirm.
+
+Matching at pull time is by `(serverUrl, username)` so the provider
+ids reshuffled by the SAF import do not break the restore. Providers
+present locally but absent from the credentials file are left
+untouched.
+
+Pre-M3 backups (no `streamvault_credentials.json` in `appDataFolder`)
+are handled gracefully: `pullCredentials` returns an empty list and
+the import path falls back to the master behavior (providers
+restored without passwords, user must re-enter them manually).
