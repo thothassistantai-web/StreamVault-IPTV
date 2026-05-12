@@ -58,7 +58,38 @@ interface DriveBackupSyncManager {
      * nothing has been pushed yet.
      */
     suspend fun pullBackup(): Result<DriveBackupArtifact>
+
+    /**
+     * Uploads the provider credentials list to a private sibling file
+     * (`streamvault_credentials.json`) in the same Drive `appDataFolder`.
+     * Companion to [pushBackup] — credentials are stripped from the main
+     * backup JSON by design, so this restores the round-trip.
+     *
+     * Pure overwrite (last-write-wins). Matching at pull time uses
+     * `(serverUrl, username)` so provider id reshuffling on import does
+     * not invalidate the restore.
+     */
+    suspend fun pushCredentials(credentials: List<ProviderCredentials>): Result<Unit>
+
+    /**
+     * Downloads `streamvault_credentials.json` from Drive `appDataFolder`.
+     * Returns an empty list if the file is absent (graceful backwards
+     * compatibility with backups produced before M3).
+     */
+    suspend fun pullCredentials(): Result<List<ProviderCredentials>>
 }
+
+/**
+ * Cleartext credentials for a single provider, transported alongside the main
+ * backup JSON. Storage relies on the `drive.appdata` scope + Google account
+ * ACL for confidentiality — the file is invisible to the OS and purged on
+ * uninstall. Matching on pull uses `(serverUrl, username)`.
+ */
+data class ProviderCredentials(
+    val serverUrl: String,
+    val username: String,
+    val password: String,
+)
 
 /** Public Sign-In state for the UI. */
 sealed class DriveAuthState {
