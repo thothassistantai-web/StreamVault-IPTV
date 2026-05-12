@@ -19,6 +19,10 @@
     <string name="welcome_version">v1.0.3</string>
     <string name="welcome_loading_title">Preparing your library</string>
     <string name="welcome_loading_subtitle">Opening the right screen for this device.</string>
+    <string name="sync_section_live">Live</string>
+    <string name="sync_section_vod">VOD</string>
+    <string name="sync_section_series">Series</string>
+    <string name="sync_items_indexed_format">%1$d items indexed</string>
     <string name="welcome_tagline">Premium IPTV for the living room</string>
     <string name="welcome_subtitle">Lean back into live channels, catch-up viewing, movies, and series with a first-party Android TV experience.</string>
     <string name="welcome_feature_live">Fast live browsing with remote-first focus</string>
