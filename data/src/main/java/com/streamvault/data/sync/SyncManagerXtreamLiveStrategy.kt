@@ -242,6 +242,20 @@ internal class SyncManagerXtreamLiveStrategy(
 
         fun abortIfLowMemory() {
             if (isCurrentlyLowOnMemory()) {
+                // D12 — emission finale avant l'avortement low-memory : reflete l'etat
+                // au moment de l'echec (section LIVE, mode indetermine, nombre d'items
+                // deja acceptes). Le `reset()` du finally cote SyncManager (T3) viendra
+                // ensuite ramener le flow a null — c'est volontaire (D7) pour eviter que
+                // l'ecran suivant n'herite d'un etat partiel.
+                syncProgressBus.emit(
+                    SyncProgress(
+                        section = Section.LIVE,
+                        current = 0,
+                        total = 0,
+                        currentLabel = "",
+                        itemsIndexed = acceptedCount
+                    )
+                )
                 throw LowMemoryCatalogAbortException(
                     "Device entered low-memory state while streaming Live catalog; falling back to category sync."
                 )
