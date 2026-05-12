@@ -7,7 +7,9 @@ through Android `Messenger` IPC.
 
 This keeps the plugin boundary installable, removable, and compatible with
 Android package isolation while still allowing plugins to add provider, playback,
-Cast, and host-rendered configuration capabilities.
+Cast, and configuration capabilities. Configuration can be rendered by
+StreamVault from a declarative schema, or opened as a native plugin Activity when
+the plugin needs a richer UI.
 
 ## Package Discovery
 
@@ -43,6 +45,8 @@ StreamVault first asks the plugin service for its manifest. As a fallback, it
 reads `com.streamvault.plugin.MANIFEST_JSON` service metadata, then individual
 metadata fields if the JSON is missing or invalid.
 
+Example manifest for host-rendered configuration:
+
 ```json
 {
   "schemaVersion": 1,
@@ -53,12 +57,31 @@ metadata fields if the JSON is missing or invalid.
   "description": "Adds external capabilities to StreamVault.",
   "providerName": "Example Provider",
   "configurationMode": "host.schema",
-  "configurationActivityAction": "com.example.plugin.CONFIGURE",
+  "configurationActivityAction": "",
   "capabilities": [
     "provider.m3u",
     "playback.prepare",
     "cast.rewriteUrl",
-    "configuration.schema",
+    "configuration.schema"
+  ]
+}
+```
+
+Example manifest for native Activity configuration:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "com.example.richplugin",
+  "name": "Example Rich Plugin",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "description": "Adds a rich native configuration surface.",
+  "providerName": "Example Provider",
+  "configurationMode": "activity",
+  "configurationActivityAction": "com.example.richplugin.CONFIGURE",
+  "capabilities": [
+    "provider.m3u",
     "configuration.activity"
   ]
 }
@@ -74,9 +97,12 @@ Recommended fallback metadata:
 <meta-data android:name="com.streamvault.plugin.DESCRIPTION" android:value="Adds external capabilities to StreamVault." />
 <meta-data android:name="com.streamvault.plugin.PROVIDER_NAME" android:value="Example Provider" />
 <meta-data android:name="com.streamvault.plugin.CONFIGURATION_MODE" android:value="host.schema" />
-<meta-data android:name="com.streamvault.plugin.CONFIGURATION_ACTIVITY_ACTION" android:value="com.example.plugin.CONFIGURE" />
-<meta-data android:name="com.streamvault.plugin.CAPABILITIES" android:value="provider.m3u,playback.prepare,cast.rewriteUrl,configuration.schema,configuration.activity" />
+<meta-data android:name="com.streamvault.plugin.CONFIGURATION_ACTIVITY_ACTION" android:value="" />
+<meta-data android:name="com.streamvault.plugin.CAPABILITIES" android:value="provider.m3u,playback.prepare,cast.rewriteUrl,configuration.schema" />
 ```
+
+For Activity configuration, set `CONFIGURATION_MODE` to `activity`, set
+`CONFIGURATION_ACTIVITY_ACTION`, and advertise `configuration.activity`.
 
 Capability names:
 
@@ -87,8 +113,8 @@ Capability names:
   loads it.
 - `configuration.schema`: the plugin exposes a declarative configuration schema
   that StreamVault renders with its own UI.
-- `configuration.activity`: fallback capability for plugins that need a custom
-  Android activity for exceptional flows.
+- `configuration.activity`: the plugin exposes a native Android Activity that
+  StreamVault opens for configuration.
 
 ## IPC Messages
 
@@ -119,15 +145,42 @@ Messages:
 | 9 | `MSG_SET_CONFIGURATION_VALUES` | Persist `configuration_values_json`. |
 | 10 | `MSG_RUN_CONFIGURATION_ACTION` | Run `configuration_action_id`. |
 
-For `playback.prepare` and `cast.rewriteUrl`, plugins should set `handled=false`
-when the URL is not theirs. StreamVault then continues with other enabled
-plugins or the original URL.
+For `playback.prepare` and `cast.rewriteUrl`, plugins should set
+`handled=false` when the URL is not theirs. StreamVault then continues with other
+enabled plugins or the original URL.
+
+## Choosing a Configuration Mode
+
+Plugins should choose one primary configuration mode.
+
+Use `host.schema` when the configuration is mostly fields, switches, selects, and
+simple actions. StreamVault owns the visual shell, validation placement, focus
+behavior, typography, controls, and feedback.
+
+Use `activity` when the plugin needs a custom or highly interactive
+configuration surface, for example:
+
+- Runtime dashboards with live state.
+- Source managers with add/edit/delete flows.
+- Channel testing workflows.
+- Embedded logs.
+- Native pairing, sign-in, or device setup.
+- Custom layouts that must look the same when opened directly and from
+  StreamVault.
+
+Do not advertise `configuration.schema` for a partial or stale schema. If
+`configurationMode` is `activity`, StreamVault treats the Activity as the active
+configuration path and opens `configurationActivityAction` instead of loading a
+host-rendered schema.
+
+For backward compatibility, a plugin that omits `configurationMode` but
+advertises `configuration.schema` is treated as host-rendered. New plugins should
+set `configurationMode` explicitly.
 
 ## Host-Rendered Configuration
 
-Host-rendered configuration is the standard configuration mode. The plugin
-describes fields and actions, but StreamVault owns the visual shell, focus
-behavior, typography, controls, validation placement, and feedback.
+Host-rendered configuration lets a plugin describe fields and actions while
+StreamVault owns the visual implementation.
 
 A plugin opts in with:
 
@@ -228,10 +281,75 @@ For `MSG_RUN_CONFIGURATION_ACTION`, StreamVault sends `configuration_action_id`.
 Plugins should execute the action, return a user-facing `message`, and refresh
 their values when `refreshAfterRun` is true.
 
-## Configuration Activity Fallback
+## Configuration Activity Mode
 
-If a plugin cannot express a flow declaratively, it can still expose
-`configuration.activity`. StreamVault starts `configurationActivityAction` with
-the plugin package set explicitly. The plugin activity should be exported and
-include the `DEFAULT` category. Use this only for flows that need custom UI, such
-as OAuth, device pairing, or an embedded web surface.
+Activity configuration lets the plugin own the complete configuration UI.
+StreamVault starts `configurationActivityAction` with the plugin package set
+explicitly, so the action does not resolve to another app.
+
+A plugin opts in with:
+
+- Manifest field `configurationMode: "activity"`.
+- Capability `configuration.activity`.
+- Manifest field `configurationActivityAction`.
+- An exported Activity with an intent filter for that action and the `DEFAULT`
+  category.
+
+Example:
+
+```xml
+<activity
+    android:name=".MyConfigActivity"
+    android:exported="true"
+    android:label="@string/app_name">
+    <intent-filter>
+        <action android:name="com.example.richplugin.CONFIGURE" />
+        <category android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+</activity>
+```
+
+Use Activity mode for flows that cannot be represented faithfully as fields and
+actions. The HaP plugin is the reference example: it uses Activity mode for
+runtime state, source management, custom AceStream channels, channel tests,
+connected clients, and logs.
+
+## Native Activity Visual Guidance
+
+Native plugin Activities should feel at home when launched from StreamVault and
+remain usable when opened directly from Android or Android TV.
+
+Recommended visual and interaction rules:
+
+- Design TV-first: every important control must be D-pad focusable and readable
+  from couch distance.
+- Keep the style restrained and close to StreamVault: dark background, compact
+  panels, clear focus states, and meaningful status colors for running, stopped,
+  warning, and error states.
+- Collapse heavy or secondary sections by default, especially logs, source
+  editors, and long channel-status lists.
+- Keep layout dimensions stable. Avoid buttons, rows, or status chips changing
+  size when text or loading state changes.
+- Truncate or wrap long URLs, channel names, and error messages so text never
+  overlaps adjacent controls.
+- Use Android resources and the system locale for all user-facing text.
+- Show direct feedback for loading, validation, success, and failure states.
+- Test both entry points: launched directly from the plugin APK and launched from
+  StreamVault's Plugins screen.
+- Test on the same device classes StreamVault supports, including TV devices such
+  as Chromecast and phone-sized devices such as Nexus 5X.
+
+## Integration Checklist
+
+Before publishing a plugin:
+
+- Expose exactly one `com.streamvault.plugin.API` service.
+- Return a complete manifest from `MSG_GET_MANIFEST`.
+- Keep service metadata in sync with the runtime manifest as fallback.
+- Choose `host.schema` or `activity` as the primary configuration mode.
+- Advertise only capabilities that are fully implemented.
+- Validate user-provided URLs and secrets inside the plugin before persisting
+  them.
+- Return user-facing error messages from IPC failures.
+- Verify install, enable, disable, configure, provider URL, playback prepare, and
+  Cast URL rewrite on real devices.

@@ -144,7 +144,7 @@ class PluginsViewModel @Inject constructor(
     }
 
     fun openPluginConfiguration(plugin: InstalledStreamVaultPlugin) {
-        if (!plugin.manifest.supportsHostRenderedConfiguration) {
+        if (plugin.manifest.usesActivityConfiguration || !plugin.manifest.supportsHostRenderedConfiguration) {
             val result = pluginManager.openPluginConfiguration(plugin)
             _uiState.update { it.copy(userMessage = result.message) }
             return

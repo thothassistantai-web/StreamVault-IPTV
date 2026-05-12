@@ -53,7 +53,6 @@ import com.streamvault.app.plugins.InstalledStreamVaultPlugin
 import com.streamvault.app.plugins.PluginConfigurationAction
 import com.streamvault.app.plugins.PluginConfigurationField
 import com.streamvault.app.plugins.PluginConfigurationSection
-import com.streamvault.app.plugins.StreamVaultPluginContract
 import com.streamvault.app.ui.components.shell.AppNavigationChrome
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
 import com.streamvault.app.ui.components.shell.StatusPill
@@ -343,10 +342,7 @@ private fun PluginCard(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 PluginButton(
-                    enabled = !busy && (
-                        plugin.manifest.supportsHostRenderedConfiguration ||
-                            plugin.manifest.hasCapability(StreamVaultPluginContract.CAPABILITY_CONFIGURATION_ACTIVITY)
-                        ),
+                    enabled = !busy && plugin.manifest.canConfigure,
                     onClick = onOpenConfiguration
                 ) {
                     Text("Configure")

@@ -20,9 +20,20 @@ data class StreamVaultPluginManifest(
 ) {
     fun hasCapability(capability: String): Boolean = capability in capabilities
 
+    val supportsConfigurationActivity: Boolean
+        get() = hasCapability(StreamVaultPluginContract.CAPABILITY_CONFIGURATION_ACTIVITY) &&
+            !configurationActivityAction.isNullOrBlank()
+
+    val usesActivityConfiguration: Boolean
+        get() = configurationMode == StreamVaultPluginContract.CONFIGURATION_MODE_ACTIVITY
+
     val supportsHostRenderedConfiguration: Boolean
-        get() = hasCapability(StreamVaultPluginContract.CAPABILITY_CONFIGURATION_SCHEMA) ||
-            configurationMode == StreamVaultPluginContract.CONFIGURATION_MODE_HOST_SCHEMA
+        get() = configurationMode == StreamVaultPluginContract.CONFIGURATION_MODE_HOST_SCHEMA ||
+            (configurationMode != StreamVaultPluginContract.CONFIGURATION_MODE_ACTIVITY &&
+                hasCapability(StreamVaultPluginContract.CAPABILITY_CONFIGURATION_SCHEMA))
+
+    val canConfigure: Boolean
+        get() = supportsHostRenderedConfiguration || supportsConfigurationActivity
 }
 
 data class InstalledStreamVaultPlugin(

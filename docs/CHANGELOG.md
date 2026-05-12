@@ -9,12 +9,13 @@ All notable product changes are recorded in this document.
 - Added APK companion plugin support with discovery, activation, capability sync, and plugin provider integration.
 - Added plugin installation from APK URL and local file picker, plus automatic detection of compatible plugins installed manually by the user.
 - Added a host-rendered plugin configuration schema so plugins can expose StreamVault-native settings screens, persisted values, validation, and plugin actions over IPC.
+- Added native Activity plugin configuration mode so rich plugin UIs can open from StreamVault with their own visual and interaction model.
 - Added a welcome-screen "Set up later" option so first-time users can enter the app and reach Settings before adding a provider.
 
 ### Changed
 
 - Updated the Plugins screen with compact StreamVault-styled controls and a dedicated blocks icon distinct from Settings.
-- Documented the plugin API, manifest metadata, installation model, IPC contract, and host-rendered configuration schema.
+- Documented the plugin API, manifest metadata, installation model, IPC contract, host-rendered configuration schema, native Activity configuration mode, and visual integration guidance.
 
 ### Fixed
 
