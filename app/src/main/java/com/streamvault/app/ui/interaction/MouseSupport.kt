@@ -33,12 +33,13 @@ fun Modifier.mouseClickable(
 ): Modifier = composed {
     val context = LocalContext.current
     val isTv = remember(context) { context.isTelevisionDevice() }
-    var pressedFromMouse by remember { mutableStateOf(false) }
+    var pressedFromPointer by remember { mutableStateOf(false) }
 
     if (!isTv) {
-        // Phone / tablet path: intercept touch so the first tap fires the action without
-        // needing the TV Surface's "focus first, then click on second tap" behaviour.
-        if (enabled) {
+        if (!enabled) {
+            this
+        } else if (onLongClick != null) {
+            // Phone / tablet path with long-press support.
             this.pointerInput(onClick, onLongClick) {
                 detectTapGestures(
                     onTap = { _ -> onClick() },
@@ -46,7 +47,30 @@ fun Modifier.mouseClickable(
                 )
             }
         } else {
-            this
+            // Phone / tablet path for simple clicks. Interop receives the raw
+            // down/up pair before TV Material's focus-first touch handling.
+            this.pointerInteropFilter { event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN,
+                    MotionEvent.ACTION_BUTTON_PRESS -> {
+                        pressedFromPointer = true
+                        focusRequester?.requestFocus()
+                        true
+                    }
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_BUTTON_RELEASE -> {
+                        val shouldClick = pressedFromPointer
+                        pressedFromPointer = false
+                        if (shouldClick) onClick()
+                        shouldClick
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        pressedFromPointer = false
+                        false
+                    }
+                    else -> false
+                }
+            }
         }
     } else {
         // TV path: existing mouse / pointer-device interop filter.
@@ -55,19 +79,19 @@ fun Modifier.mouseClickable(
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN,
                 MotionEvent.ACTION_BUTTON_PRESS -> {
-                    pressedFromMouse = true
+                    pressedFromPointer = true
                     focusRequester?.requestFocus()
                     true
                 }
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_BUTTON_RELEASE -> {
-                    val shouldClick = pressedFromMouse
-                    pressedFromMouse = false
+                    val shouldClick = pressedFromPointer
+                    pressedFromPointer = false
                     if (shouldClick) onClick()
                     shouldClick
                 }
                 MotionEvent.ACTION_CANCEL -> {
-                    pressedFromMouse = false
+                    pressedFromPointer = false
                     false
                 }
                 else -> false

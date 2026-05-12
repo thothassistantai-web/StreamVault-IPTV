@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -142,6 +143,117 @@ class StreamVaultPluginManager @Inject constructor(
         }.getOrElse { error ->
             PluginActionResult(false, error.message ?: "Could not open plugin settings")
         }
+    }
+
+    suspend fun loadPluginConfiguration(plugin: InstalledStreamVaultPlugin): Result<PluginConfigurationSnapshot> =
+        withContext(Dispatchers.IO) {
+            if (!plugin.manifest.supportsHostRenderedConfiguration) {
+                return@withContext Result.error("This plugin does not expose a StreamVault configuration schema")
+            }
+
+            val schemaResponse = runCatching {
+                messengerClient.send(
+                    packageName = plugin.packageName,
+                    serviceClassName = plugin.serviceClassName,
+                    what = StreamVaultPluginContract.MSG_GET_CONFIGURATION_SCHEMA,
+                    timeoutMillis = 10_000L
+                )
+            }.getOrElse { error ->
+                return@withContext Result.error(error.message ?: "Plugin configuration schema is unavailable")
+            }
+            if (!schemaResponse.getBoolean(StreamVaultPluginContract.KEY_SUCCESS, false)) {
+                return@withContext Result.error(
+                    schemaResponse.getString(StreamVaultPluginContract.KEY_MESSAGE).orEmpty()
+                        .ifBlank { "Plugin configuration schema is unavailable" }
+                )
+            }
+
+            val schemaJson = schemaResponse
+                .getString(StreamVaultPluginContract.KEY_CONFIGURATION_SCHEMA_JSON)
+                .orEmpty()
+            val schema = runCatching { json.decodeFromString<PluginConfigurationSchema>(schemaJson) }
+                .getOrElse { error ->
+                    return@withContext Result.error(error.message ?: "Plugin configuration schema is invalid")
+                }
+            if (schema.sections.isEmpty() && schema.actions.isEmpty()) {
+                return@withContext Result.error("Plugin configuration schema is empty")
+            }
+
+            val values = loadPluginConfigurationValues(plugin).getOrNull() ?: JsonObject(emptyMap())
+            Result.success(PluginConfigurationSnapshot(plugin, schema, values))
+        }
+
+    suspend fun loadPluginConfigurationValues(plugin: InstalledStreamVaultPlugin): Result<JsonObject> =
+        withContext(Dispatchers.IO) {
+            val valuesResponse = runCatching {
+                messengerClient.send(
+                    packageName = plugin.packageName,
+                    serviceClassName = plugin.serviceClassName,
+                    what = StreamVaultPluginContract.MSG_GET_CONFIGURATION_VALUES,
+                    timeoutMillis = 10_000L
+                )
+            }.getOrElse { error ->
+                return@withContext Result.error(error.message ?: "Plugin configuration values are unavailable")
+            }
+            if (!valuesResponse.getBoolean(StreamVaultPluginContract.KEY_SUCCESS, false)) {
+                return@withContext Result.error(
+                    valuesResponse.getString(StreamVaultPluginContract.KEY_MESSAGE).orEmpty()
+                        .ifBlank { "Plugin configuration values are unavailable" }
+                )
+            }
+
+            val valuesJson = valuesResponse
+                .getString(StreamVaultPluginContract.KEY_CONFIGURATION_VALUES_JSON)
+                .orEmpty()
+            val values = if (valuesJson.isBlank()) {
+                JsonObject(emptyMap())
+            } else {
+                runCatching { json.decodeFromString<JsonObject>(valuesJson) }
+                    .getOrElse { error ->
+                        return@withContext Result.error(error.message ?: "Plugin configuration values are invalid")
+                    }
+            }
+            Result.success(values)
+        }
+
+    suspend fun savePluginConfiguration(
+        plugin: InstalledStreamVaultPlugin,
+        valuesJson: String
+    ): PluginActionResult = withContext(Dispatchers.IO) {
+        val response = runCatching {
+            messengerClient.send(
+                packageName = plugin.packageName,
+                serviceClassName = plugin.serviceClassName,
+                what = StreamVaultPluginContract.MSG_SET_CONFIGURATION_VALUES,
+                data = Bundle().apply {
+                    putString(StreamVaultPluginContract.KEY_CONFIGURATION_VALUES_JSON, valuesJson)
+                },
+                timeoutMillis = 60_000L
+            )
+        }.getOrElse { error ->
+            return@withContext PluginActionResult(false, error.message ?: "Plugin settings could not be saved")
+        }
+        response.toPluginActionResult("Plugin settings saved")
+    }
+
+    suspend fun runPluginConfigurationAction(
+        plugin: InstalledStreamVaultPlugin,
+        actionId: String
+    ): PluginActionResult = withContext(Dispatchers.IO) {
+        val response = runCatching {
+            messengerClient.send(
+                packageName = plugin.packageName,
+                serviceClassName = plugin.serviceClassName,
+                what = StreamVaultPluginContract.MSG_RUN_CONFIGURATION_ACTION,
+                data = Bundle().apply {
+                    putString(StreamVaultPluginContract.KEY_CONFIGURATION_ACTION_ID, actionId)
+                },
+                timeoutMillis = 120_000L
+            )
+        }.getOrElse { error ->
+            return@withContext PluginActionResult(false, error.message ?: "Plugin action failed")
+        }
+        response.toPluginActionResult("Plugin action completed")
     }
 
     suspend fun preparePlaybackUrl(url: String): Result<Unit> = withContext(Dispatchers.IO) {
@@ -383,6 +495,8 @@ class StreamVaultPluginManager @Inject constructor(
             versionCode = metaData.metaLong(StreamVaultPluginContract.META_VERSION_CODE),
             description = metaData.metaString(StreamVaultPluginContract.META_DESCRIPTION),
             capabilities = metaData.metaCsv(StreamVaultPluginContract.META_CAPABILITIES),
+            configurationMode = metaData.metaString(StreamVaultPluginContract.META_CONFIGURATION_MODE)
+                .takeIf { it.isNotBlank() },
             configurationActivityAction = metaData
                 .metaString(StreamVaultPluginContract.META_CONFIGURATION_ACTIVITY_ACTION)
                 .takeIf { it.isNotBlank() },
@@ -481,3 +595,12 @@ private fun Bundle.metaCsv(key: String): List<String> =
         .split(',')
         .map { it.trim() }
         .filter { it.isNotBlank() }
+
+private fun Bundle.toPluginActionResult(successMessage: String): PluginActionResult {
+    val success = getBoolean(StreamVaultPluginContract.KEY_SUCCESS, false)
+    return PluginActionResult(
+        success = success,
+        message = getString(StreamVaultPluginContract.KEY_MESSAGE).orEmpty()
+            .ifBlank { if (success) successMessage else "Plugin operation failed" }
+    )
+}

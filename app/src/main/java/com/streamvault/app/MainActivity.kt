@@ -40,6 +40,8 @@ import android.content.res.Configuration
 import android.text.TextUtils
 import android.view.View
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import java.util.Locale
 import android.content.Context
 import android.content.ContextWrapper
@@ -107,6 +109,7 @@ class MainActivity : ComponentActivity() {
         // This fixes keyboard-covers-input-field on API 30+ where adjustResize is
         // ignored when the theme sets windowFullscreen=true.
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        applyImmersiveSystemUi()
         _pictureInPictureModeFlow.value = isInPictureInPictureMode
         handleExternalIntent(intent)
         if (isTelevisionDevice()) {
@@ -167,6 +170,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        applyImmersiveSystemUi()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            applyImmersiveSystemUi()
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -218,6 +233,24 @@ class MainActivity : ComponentActivity() {
 
     fun enterPlayerPictureInPictureModeFromPlayer(): Boolean {
         return enterPlayerPictureInPictureModeIfEligible(requirePlaying = false)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applyImmersiveSystemUi() {
+        val decorView = window.decorView
+        decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+            )
+        WindowCompat.getInsetsController(window, decorView).apply {
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     fun openCastRouteChooser() {

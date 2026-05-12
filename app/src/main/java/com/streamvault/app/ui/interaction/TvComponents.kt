@@ -1,11 +1,13 @@
 package com.streamvault.app.ui.interaction
 
+import android.view.KeyEvent
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonBorder
@@ -46,7 +48,9 @@ fun TvClickableSurface(
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.mouseClickable(onClick = onClick, enabled = enabled, onLongClick = onLongClick),
+        modifier = modifier
+            .activateOnRemoteKey(enabled = enabled, onClick = onClick)
+            .mouseClickable(onClick = onClick, enabled = enabled, onLongClick = onLongClick),
         enabled = enabled,
         shape = shape,
         colors = colors,
@@ -78,7 +82,9 @@ fun TvButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.mouseClickable(onClick = onClick, enabled = enabled),
+        modifier = modifier
+            .activateOnRemoteKey(enabled = enabled, onClick = onClick)
+            .mouseClickable(onClick = onClick, enabled = enabled),
         enabled = enabled,
         scale = scale,
         glow = glow,
@@ -112,7 +118,9 @@ fun TvIconButton(
     IconButton(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.mouseClickable(onClick = onClick, enabled = enabled),
+        modifier = modifier
+            .activateOnRemoteKey(enabled = enabled, onClick = onClick)
+            .mouseClickable(onClick = onClick, enabled = enabled),
         enabled = enabled,
         scale = scale,
         glow = glow,
@@ -122,4 +130,25 @@ fun TvIconButton(
         border = border,
         content = content,
     )
+}
+
+private fun Modifier.activateOnRemoteKey(
+    enabled: Boolean,
+    onClick: () -> Unit
+): Modifier = onPreviewKeyEvent { event ->
+    if (!enabled) return@onPreviewKeyEvent false
+    val nativeEvent = event.nativeKeyEvent
+    val isActivationKey = when (nativeEvent.keyCode) {
+        KeyEvent.KEYCODE_DPAD_CENTER,
+        KeyEvent.KEYCODE_ENTER,
+        KeyEvent.KEYCODE_NUMPAD_ENTER,
+        KeyEvent.KEYCODE_SPACE,
+        KeyEvent.KEYCODE_BUTTON_A -> true
+        else -> false
+    }
+    if (!isActivationKey) return@onPreviewKeyEvent false
+    if (nativeEvent.action == KeyEvent.ACTION_UP) {
+        onClick()
+    }
+    nativeEvent.action == KeyEvent.ACTION_DOWN || nativeEvent.action == KeyEvent.ACTION_UP
 }
