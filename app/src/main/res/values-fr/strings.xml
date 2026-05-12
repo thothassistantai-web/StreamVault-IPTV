@@ -38,6 +38,11 @@
     <string name="home_quick_filters_active">Filtre appliqué : %1$s</string>
     <string name="home_quick_filters_manual_search">Recherche manuelle : %1$s</string>
     <string name="home_quick_filters_empty">Aucun filtre rapide enregistré pour le moment. Ajoutez-en un pour garder les recherches de catégories à portée de main.</string>
+    <string name="live_quick_filter_hidden_categories">Catégories masquées (%1$d)</string>
+    <string name="hidden_categories_dialog_title">Catégories masquées</string>
+    <string name="hidden_categories_dialog_subtitle">Choisissez celles à démasquer.</string>
+    <string name="hidden_categories_dialog_unhide_all">Tout démasquer</string>
+    <string name="hidden_categories_dialog_close">Fermer</string>
     <string name="home_all_channels">Toutes les chaînes</string>
     <string name="home_recent_channels">Récent</string>
     <string name="home_last_channel">Dernière chaîne</string>
