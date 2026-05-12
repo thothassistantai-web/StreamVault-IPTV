@@ -51,9 +51,8 @@ your choice (e.g. `streamvault-dev-<your-handle>`). Select it.
 - **Test users** → add the Google account(s) you'll sign in with on the device
 
 While the project stays in *Testing* state, only the listed test users can
-sign in — that's fine for development. For a Play Store release you'd later
-move the project to *Production* (and likely go through Google's verification
-since `drive.appdata` is considered a sensitive scope).
+sign in (hard cap: 100 accounts). That's fine for development. To open the
+flow to all users, see the publishing section below.
 
 ### 4. Create the OAuth Android client(s)
 
@@ -75,6 +74,41 @@ the runtime resolves it transparently.
 The device or emulator that runs the build must have a Google account added
 in **Settings → Accounts**, and that account must be in the OAuth consent
 screen's *Test users* list.
+
+### 6. Publish the app (open the flow to all users)
+
+This step is **optional** if you only need maintainer access. It is **required**
+to let arbitrary end users sign in (Play Store distribution, public release APK,
+etc.).
+
+The good news: `drive.appdata` belongs to Google's **non-sensitive scope**
+category — [official list](https://developers.google.com/identity/protocols/oauth2/scopes#drive)
+shows it without the *(Sensitive)* or *(Restricted)* tag. Concrete consequence:
+**no verification process, no security assessment, no waiting period**. You can
+flip the project from *Testing* to *In production* immediately and unknown users
+will be able to sign in right after.
+
+Walkthrough (matches what I went through yesterday on the real project):
+
+1. Open the OAuth consent screen page
+   (<https://console.cloud.google.com/apis/credentials/consent>).
+2. Under the project status pill (currently *Testing*), click **Publish app**.
+3. A confirmation dialog appears titled *Push to production?* — confirm.
+4. The pill flips to *In production*. The page now states
+   *"This OAuth client is now ready to be used by any user with a Google
+   account. Verification is not required for this app."*
+5. Done. New users (outside the *Test users* list) can sign in immediately.
+
+Notes:
+
+- The *Test users* list becomes irrelevant in production — sign-ins are no
+  longer gated by it.
+- Refresh tokens issued by *Testing* projects expire after 7 days; in
+  production they don't (matches our `GoogleAuthUtil.getToken` per-call
+  strategy, where this is mostly invisible to the user).
+- If you ever add a *sensitive* or *restricted* scope later (e.g. full
+  `drive`), then verification kicks in — but as long as the only scope is
+  `drive.appdata`, you stay on the fast path.
 
 ## Verifying the setup
 
