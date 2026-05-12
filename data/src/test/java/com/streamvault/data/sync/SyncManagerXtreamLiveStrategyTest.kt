@@ -1024,7 +1024,8 @@ class SyncManagerXtreamLiveStrategyTest {
             categoryFailureWarning = { section, category, error -> "$section category $category failed: ${sanitize(error)}" },
             liveCategorySequentialModeWarning = "Live category sync used sequential mode.",
             isCurrentlyLowOnMemory = isCurrentlyLowOnMemory,
-            stageChannelItems = stageChannelItems
+            stageChannelItems = stageChannelItems,
+            syncProgressBus = SyncProgressBus()
         )
     }
 
