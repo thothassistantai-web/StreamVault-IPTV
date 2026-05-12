@@ -433,4 +433,80 @@ class HomeViewModelTest {
 
         assertThat(viewModel.uiState.value.filteredChannels.map(Channel::number)).containsExactly(0)
     }
+
+    @Test
+    fun `unhideCategory delegates to repository with hidden=false`() = runTest {
+        val provider = Provider(id = 9L, name = "Acme", type = ProviderType.XTREAM_CODES, serverUrl = "url")
+        whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
+        whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(emptyList()))
+        whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val category = Category(id = 42L, name = "DELAY", type = ContentType.LIVE)
+        viewModel.unhideCategory(category)
+        advanceUntilIdle()
+
+        verify(preferencesRepository).setCategoryHidden(
+            providerId = provider.id,
+            type = ContentType.LIVE,
+            categoryId = 42L,
+            hidden = false
+        )
+    }
+
+    @Test
+    fun `unhideAllLiveCategories clears the hidden set for live`() = runTest {
+        val provider = Provider(id = 9L, name = "Acme", type = ProviderType.XTREAM_CODES, serverUrl = "url")
+        whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
+        whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(emptyList()))
+        whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.unhideAllLiveCategories()
+        advanceUntilIdle()
+
+        verify(preferencesRepository).setHiddenCategoryIds(
+            providerId = provider.id,
+            type = ContentType.LIVE,
+            categoryIds = emptySet()
+        )
+    }
+
+    @Test
+    fun `unhideCategory is a no-op when no provider is active`() = runTest {
+        val category = Category(id = 42L, name = "DELAY", type = ContentType.LIVE)
+        viewModel.unhideCategory(category)
+        advanceUntilIdle()
+        verify(preferencesRepository, never()).setCategoryHidden(any(), any(), any(), any())
+    }
+
+    @Test
+    fun `hiddenLiveCategories surfaces categories whose id is in the hidden set`() = runTest {
+        val provider = Provider(id = 11L, name = "Acme", type = ProviderType.XTREAM_CODES, serverUrl = "url")
+        val visible = Category(id = 1L, name = "News", type = ContentType.LIVE)
+        val hidden = Category(id = 2L, name = "DELAY", type = ContentType.LIVE)
+        val alsoHidden = Category(id = 3L, name = "TNT HD", type = ContentType.LIVE)
+
+        whenever(providerRepository.getActiveProvider()).thenReturn(flowOf(provider))
+        whenever(channelRepository.getCategories(provider.id)).thenReturn(flowOf(listOf(visible, hidden, alsoHidden)))
+        whenever(getCustomCategories.invoke(eq(provider.id), eq(ContentType.LIVE))).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryRepository.getRecentlyWatchedByProvider(eq(provider.id), any())).thenReturn(flowOf(emptyList()))
+        whenever(favoriteRepository.getFavorites(provider.id, ContentType.LIVE)).thenReturn(flowOf(emptyList()))
+        whenever(preferencesRepository.getHiddenCategoryIds(provider.id, ContentType.LIVE))
+            .thenReturn(flowOf(setOf(2L, 3L)))
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertThat(state.hiddenLiveCategories.map(Category::id)).containsExactly(2L, 3L)
+    }
 }
