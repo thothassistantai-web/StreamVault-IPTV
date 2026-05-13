@@ -154,6 +154,15 @@
     <string name="add_group_remove_btn">Supprimer</string>
     <string name="add_group_add_btn">Ajouter</string>
     <string name="add_group_create_new_btn">Créer un nouveau groupe</string>
+
+    <!-- M4 masquage individuel de chaînes -->
+    <string name="channel_action_hide">Masquer cette chaîne</string>
+    <string name="live_quick_filter_hidden_channels">Chaînes masquées (%1$d)</string>
+    <string name="hidden_channels_dialog_title">Chaînes masquées</string>
+    <string name="hidden_channels_dialog_subtitle">Choisissez celles à démasquer.</string>
+    <string name="hidden_channels_dialog_unhide_all">Tout démasquer</string>
+    <string name="hidden_channels_dialog_close">Fermer</string>
+
     <string name="card_locked_channel">Chaîne verrouillée</string>
     <string name="card_live_badge">EN DIRECT</string>
     <string name="card_locked">Verrouillé</string>

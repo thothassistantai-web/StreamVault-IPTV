@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +48,8 @@ fun AddToGroupDialog(
     onCreateGroup: ((String) -> Unit)? = null,
     isQueuedForSplitScreen: Boolean = false,
     onOpenSplitScreenPlanner: (() -> Unit)? = null,
-    onRemoveFromRecent: (() -> Unit)? = null
+    onRemoveFromRecent: (() -> Unit)? = null,
+    onHideChannel: (() -> Unit)? = null
 ) {
     var showCreateGroup by remember { mutableStateOf(false) }
     val isTelevisionDevice = rememberIsTelevisionDevice()
@@ -77,6 +79,7 @@ fun AddToGroupDialog(
     val safeToggleFavorite = { if (canInteract) onToggleFavorite() }
     val safeOpenSplitScreenPlanner = { if (canInteract) onOpenSplitScreenPlanner?.invoke() }
     val safeRemoveFromRecent = { if (canInteract) onRemoveFromRecent?.invoke() }
+    val safeHideChannel = { if (canInteract) onHideChannel?.invoke() }
     val safeCreateGroup = { if (canInteract && onCreateGroup != null) showCreateGroup = true }
     val safeAddToGroup: (Category) -> Unit = { group -> if (canInteract) onAddToGroup(group) }
     val safeRemoveFromGroup: (Category) -> Unit = { group -> if (canInteract) onRemoveFromGroup(group) }
@@ -215,6 +218,44 @@ fun AddToGroupDialog(
                                         text = if (isQueuedForSplitScreen) stringResource(R.string.multiview_queued)
                                         else stringResource(R.string.multiview_add_to_split),
                                         color = if (isFocused) Color.Black else Color.White
+                                    )
+                                }
+                            }
+                        }
+
+                        // ── Hide channel ─────────────────────────────
+                        if (channel != null && onHideChannel != null) {
+                            item {
+                                var isFocused by remember { mutableStateOf(false) }
+                                Button(
+                                    onClick = safeHideChannel,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onFocusChanged { isFocused = it.isFocused }
+                                        .background(
+                                            color = if (isFocused) AppColors.Focus else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .border(
+                                            if (isFocused) 3.dp else 0.dp,
+                                            if (isFocused) AppColors.Focus else Color.Transparent,
+                                            CircleShape
+                                        )
+                                        .mouseClickable(onClick = safeHideChannel),
+                                    colors = ButtonDefaults.colors(
+                                        containerColor = if (isFocused) AppColors.Focus else AppColors.SurfaceAccent,
+                                        contentColor = if (isFocused) Color.Black else AppColors.TextPrimary
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = stringResource(R.string.channel_action_hide),
+                                        tint = if (isFocused) Color.Black else AppColors.TextPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.channel_action_hide),
+                                        color = if (isFocused) Color.Black else AppColors.TextPrimary
                                     )
                                 }
                             }

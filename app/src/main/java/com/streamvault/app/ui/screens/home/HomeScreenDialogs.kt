@@ -255,7 +255,8 @@ internal fun HomeDialogsHost(
                     viewModel.removeChannelFromRecent(channel)
                     viewModel.onDismissDialog()
                 }
-            } else null
+            } else null,
+            onHideChannel = { viewModel.hideChannel(channel) }
         )
     }
 

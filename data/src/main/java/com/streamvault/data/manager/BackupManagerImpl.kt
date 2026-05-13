@@ -32,6 +32,7 @@ import com.streamvault.domain.manager.RecordingScheduleImportSummary
 import com.streamvault.domain.manager.ProtectedCategoryBackup
 import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.manager.ScheduledRecordingBackup
+import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.RecordingRecurrence
 import com.streamvault.domain.model.RecordingRequest
 import com.streamvault.domain.model.RecordingStatus
@@ -76,35 +77,48 @@ class BackupManagerImpl @Inject constructor(
             val providerEntities = providerDao.getAll().first()
             
             // 1. Gather Data
-            val prefs = mapOf(
-                "parentalControlLevel" to preferencesRepository.parentalControlLevel.first().toString(),
-                "parentalPinHash" to (parentalPinBackup?.hash ?: ""),
-                "parentalPinSalt" to (parentalPinBackup?.saltBase64 ?: ""),
-                "appLanguage" to preferencesRepository.appLanguage.first(),
-                "liveTvCategoryFilters" to preferencesRepository.liveTvCategoryFilters.first().joinToString("\n"),
-                "liveTvQuickFilterVisibility" to (preferencesRepository.liveTvQuickFilterVisibility.first() ?: "always"),
-                "playerMediaSessionEnabled" to preferencesRepository.playerMediaSessionEnabled.first().toString(),
-                "playerDecoderMode" to preferencesRepository.playerDecoderMode.first().name,
-                "playerAudioOutputPreference" to preferencesRepository.playerAudioOutputPreference.first().name,
-                "playerCompatibilityMemoryEnabled" to preferencesRepository.playerCompatibilityMemoryEnabled.first().toString(),
-                "playerSurfaceMode" to preferencesRepository.playerSurfaceMode.first().name,
-                "playerPlaybackSpeed" to preferencesRepository.playerPlaybackSpeed.first().toString(),
-                "playerAudioVideoSyncEnabled" to preferencesRepository.playerAudioVideoSyncEnabled.first().toString(),
-                "playerAudioVideoOffsetMs" to preferencesRepository.playerAudioVideoOffsetMs.first().toString(),
-                "preferredAudioLanguage" to (preferencesRepository.preferredAudioLanguage.first() ?: "auto"),
-                "playerSubtitleTextScale" to preferencesRepository.playerSubtitleTextScale.first().toString(),
-                "playerSubtitleTextColor" to preferencesRepository.playerSubtitleTextColor.first().toString(),
-                "playerSubtitleBackgroundColor" to preferencesRepository.playerSubtitleBackgroundColor.first().toString(),
-                "playerWifiMaxVideoHeight" to (preferencesRepository.playerWifiMaxVideoHeight.first() ?: 0).toString(),
-                "playerEthernetMaxVideoHeight" to (preferencesRepository.playerEthernetMaxVideoHeight.first() ?: 0).toString(),
-                "guideDensity" to (preferencesRepository.guideDensity.first() ?: ""),
-                "guideChannelMode" to (preferencesRepository.guideChannelMode.first() ?: ""),
-                "guideDefaultCategoryId" to (preferencesRepository.guideDefaultCategoryId.first() ?: 0L).toString(),
-                "guideFavoritesOnly" to preferencesRepository.guideFavoritesOnly.first().toString(),
-                "guideAnchorTime" to (preferencesRepository.guideAnchorTime.first() ?: 0L).toString(),
-                "lastActiveProviderId" to (preferencesRepository.lastActiveProviderId.first() ?: -1L).toString(),
-                "promotedLiveGroupIds" to preferencesRepository.promotedLiveGroupIds.first().sorted().joinToString(",")
-            )
+            val prefs = buildMap<String, String> {
+                put("parentalControlLevel", preferencesRepository.parentalControlLevel.first().toString())
+                put("parentalPinHash", parentalPinBackup?.hash ?: "")
+                put("parentalPinSalt", parentalPinBackup?.saltBase64 ?: "")
+                put("appLanguage", preferencesRepository.appLanguage.first())
+                put("liveTvCategoryFilters", preferencesRepository.liveTvCategoryFilters.first().joinToString("\n"))
+                put("liveTvQuickFilterVisibility", preferencesRepository.liveTvQuickFilterVisibility.first() ?: "always")
+                put("playerMediaSessionEnabled", preferencesRepository.playerMediaSessionEnabled.first().toString())
+                put("playerDecoderMode", preferencesRepository.playerDecoderMode.first().name)
+                put("playerAudioOutputPreference", preferencesRepository.playerAudioOutputPreference.first().name)
+                put("playerCompatibilityMemoryEnabled", preferencesRepository.playerCompatibilityMemoryEnabled.first().toString())
+                put("playerSurfaceMode", preferencesRepository.playerSurfaceMode.first().name)
+                put("playerPlaybackSpeed", preferencesRepository.playerPlaybackSpeed.first().toString())
+                put("playerAudioVideoSyncEnabled", preferencesRepository.playerAudioVideoSyncEnabled.first().toString())
+                put("playerAudioVideoOffsetMs", preferencesRepository.playerAudioVideoOffsetMs.first().toString())
+                put("preferredAudioLanguage", preferencesRepository.preferredAudioLanguage.first() ?: "auto")
+                put("playerSubtitleTextScale", preferencesRepository.playerSubtitleTextScale.first().toString())
+                put("playerSubtitleTextColor", preferencesRepository.playerSubtitleTextColor.first().toString())
+                put("playerSubtitleBackgroundColor", preferencesRepository.playerSubtitleBackgroundColor.first().toString())
+                put("playerWifiMaxVideoHeight", (preferencesRepository.playerWifiMaxVideoHeight.first() ?: 0).toString())
+                put("playerEthernetMaxVideoHeight", (preferencesRepository.playerEthernetMaxVideoHeight.first() ?: 0).toString())
+                put("guideDensity", preferencesRepository.guideDensity.first() ?: "")
+                put("guideChannelMode", preferencesRepository.guideChannelMode.first() ?: "")
+                put("guideDefaultCategoryId", (preferencesRepository.guideDefaultCategoryId.first() ?: 0L).toString())
+                put("guideFavoritesOnly", preferencesRepository.guideFavoritesOnly.first().toString())
+                put("guideAnchorTime", (preferencesRepository.guideAnchorTime.first() ?: 0L).toString())
+                put("lastActiveProviderId", (preferencesRepository.lastActiveProviderId.first() ?: -1L).toString())
+                put("promotedLiveGroupIds", preferencesRepository.promotedLiveGroupIds.first().sorted().joinToString(","))
+                // D13 — hidden channels + hidden categories per provider (per ContentType for cats)
+                providerEntities.forEach { provider ->
+                    val hiddenChan = preferencesRepository.getHiddenChannelIds(provider.id).first()
+                    if (hiddenChan.isNotEmpty()) {
+                        put("hiddenChannels_${provider.id}", hiddenChan.sorted().joinToString(","))
+                    }
+                    ContentType.entries.forEach { type ->
+                        val hiddenCat = preferencesRepository.getHiddenCategoryIds(provider.id, type).first()
+                        if (hiddenCat.isNotEmpty()) {
+                            put("hiddenCategories_${provider.id}_${type.name}", hiddenCat.sorted().joinToString(","))
+                        }
+                    }
+                }
+            }
 
             val providers = providerEntities.map { entity ->
                 entity.toDomain().copy(
@@ -545,6 +559,25 @@ class BackupManagerImpl @Inject constructor(
                 token.split(",").mapNotNull { it.toLongOrNull() }.toSet()
             )
         }
+        // D13 — restore hidden channels per provider
+        prefs.entries
+            .filter { it.key.startsWith("hiddenChannels_") }
+            .forEach { (key, value) ->
+                val providerId = key.removePrefix("hiddenChannels_").toLongOrNull() ?: return@forEach
+                val ids = value.split(",").mapNotNull { it.toLongOrNull() }.toSet()
+                preferencesRepository.setHiddenChannelIds(providerId, ids)
+            }
+        // D13 — restore hidden categories per provider per content type
+        prefs.entries
+            .filter { it.key.startsWith("hiddenCategories_") }
+            .forEach { (key, value) ->
+                val rest = key.removePrefix("hiddenCategories_").split("_")
+                if (rest.size < 2) return@forEach
+                val providerId = rest[0].toLongOrNull() ?: return@forEach
+                val type = ContentType.entries.firstOrNull { it.name == rest[1] } ?: return@forEach
+                val ids = value.split(",").mapNotNull { it.toLongOrNull() }.toSet()
+                preferencesRepository.setHiddenCategoryIds(providerId, type, ids)
+            }
     }
 
     private suspend fun restoreRoomBackedSections(
