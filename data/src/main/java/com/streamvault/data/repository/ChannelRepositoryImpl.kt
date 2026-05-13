@@ -139,6 +139,7 @@ class ChannelRepositoryImpl @Inject constructor(
         val settings = currentPresentationSettings()
         val level = preferencesRepository.parentalControlLevel.first()
         val unlockedCats = parentalControlManager.unlockedCategoriesForProvider(providerId).first()
+        val hiddenIds = preferencesRepository.getHiddenChannelIds(providerId).first()
         val entities = if (categoryId == ChannelRepository.ALL_CHANNELS_ID) {
             if (withoutErrors) channelDao.getByProviderWithoutErrorsBrowsePageOffset(providerId, limit, offset)
             else channelDao.getByProviderBrowsePageOffset(providerId, limit, offset)
@@ -147,6 +148,7 @@ class ChannelRepositoryImpl @Inject constructor(
             else channelDao.getByCategoryBrowsePageOffset(providerId, categoryId, limit, offset)
         }
         val filtered = applyVisibilityFilter(entities, level, unlockedCats)
+            .filterNot { it.id in hiddenIds }
         val presented = buildPresentedChannels(filtered, settings, unlockedCats)
         applyNumbering(presented, settings.numberingMode, offset)
     }
@@ -226,6 +228,9 @@ class ChannelRepositoryImpl @Inject constructor(
             .flowOn(Dispatchers.Default)
     }
 
+    // Note: getChannel(channelId) returns the channel even when hidden — callers
+    // look up a specific channel by id (e.g. HiddenChannelsDialog resolves the
+    // hidden set back to Channel objects), they must not be gated by visibility.
     override suspend fun getChannel(channelId: Long): Channel? {
         val entity = channelDao.getById(channelId) ?: return null
         val settings = currentPresentationSettings()
@@ -320,9 +325,11 @@ class ChannelRepositoryImpl @Inject constructor(
         source,
         preferencesRepository.parentalControlLevel,
         parentalControlManager.unlockedCategoriesForProvider(providerId),
-        currentPresentationSettingsFlow()
-    ) { entities, level, unlockedCats, settings ->
+        currentPresentationSettingsFlow(),
+        preferencesRepository.getHiddenChannelIds(providerId)
+    ) { entities, level, unlockedCats, settings, hiddenIds ->
         val filtered = applyVisibilityFilter(entities, level, unlockedCats)
+            .filterNot { it.id in hiddenIds }
         applyNumbering(buildPresentedChannels(filtered, settings, unlockedCats), settings.numberingMode)
     }.flowOn(Dispatchers.Default)
 

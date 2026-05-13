@@ -175,6 +175,14 @@
     <string name="add_group_add_btn">Add</string>
     <string name="add_group_create_new_btn">Create New Group</string>
 
+    <!-- M4 hide individual channels -->
+    <string name="channel_action_hide">Hide this channel</string>
+    <string name="live_quick_filter_hidden_channels">Hidden channels (%1$d)</string>
+    <string name="hidden_channels_dialog_title">Hidden channels</string>
+    <string name="hidden_channels_dialog_subtitle">Pick the ones to restore.</string>
+    <string name="hidden_channels_dialog_unhide_all">Unhide all</string>
+    <string name="hidden_channels_dialog_close">Close</string>
+
     <string name="card_locked_channel">Locked Channel</string>
     <string name="card_live_badge">LIVE</string>
     <string name="card_locked">Locked</string>

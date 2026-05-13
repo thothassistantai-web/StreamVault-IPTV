@@ -1479,6 +1479,14 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(showDialog = false, selectedChannelForDialog = null) }
     }
 
+    fun onShowHiddenChannelsDialog() {
+        _uiState.update { it.copy(showHiddenChannelsDialog = true) }
+    }
+
+    fun onDismissHiddenChannelsDialog() {
+        _uiState.update { it.copy(showHiddenChannelsDialog = false) }
+    }
+
     suspend fun verifyPin(pin: String): Boolean {
         return preferencesRepository.verifyParentalPin(pin)
     }
@@ -1579,6 +1587,50 @@ class HomeViewModel @Inject constructor(
                 type = ContentType.LIVE,
                 categoryIds = emptySet()
             )
+        }
+    }
+
+    /**
+     * Surfaces the list of currently-hidden Live channels for the active provider,
+     * sorted by name. Mirrors the M5 `hiddenLiveCategories` pattern but uses
+     * `getChannelsByIds` to resolve channel metadata (name) from the hidden id
+     * set, since HomeViewModel does not retain an "all channels" snapshot in
+     * memory.
+     */
+    val hiddenChannelsLiveTv: StateFlow<List<Channel>> =
+        _uiState
+            .map { it.provider?.id }
+            .distinctUntilChanged()
+            .flatMapLatest { providerId ->
+                if (providerId == null) flowOf(emptyList())
+                else preferencesRepository.getHiddenChannelIds(providerId)
+                    .flatMapLatest { hiddenIds ->
+                        if (hiddenIds.isEmpty()) flowOf(emptyList())
+                        else channelRepository.getChannelsByIds(hiddenIds.toList())
+                    }
+                    .map { channels -> channels.sortedBy { it.name } }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+
+    fun hideChannel(channel: Channel) {
+        val providerId = _uiState.value.provider?.id ?: return
+        viewModelScope.launch {
+            preferencesRepository.setChannelHidden(providerId, channel.id, true)
+            onDismissDialog()
+        }
+    }
+
+    fun unhideChannel(channel: Channel) {
+        val providerId = _uiState.value.provider?.id ?: return
+        viewModelScope.launch {
+            preferencesRepository.setChannelHidden(providerId, channel.id, false)
+        }
+    }
+
+    fun unhideAllChannels() {
+        val providerId = _uiState.value.provider?.id ?: return
+        viewModelScope.launch {
+            preferencesRepository.setHiddenChannelIds(providerId, emptySet())
         }
     }
 
@@ -1835,6 +1887,7 @@ data class HomeUiState(
     val showDialog: Boolean = false,
     val selectedChannelForDialog: Channel? = null,
     val dialogGroupMemberships: List<Long> = emptyList(),
+    val showHiddenChannelsDialog: Boolean = false,
     val userMessage: String? = null,
     val showRenameGroupDialog: Boolean = false,
     val groupToRename: Category? = null,

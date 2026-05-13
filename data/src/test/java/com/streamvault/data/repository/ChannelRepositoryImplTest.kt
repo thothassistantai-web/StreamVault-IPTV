@@ -47,6 +47,7 @@ class ChannelRepositoryImplTest {
         whenever(preferencesRepository.liveVariantPreferenceMode).thenReturn(flowOf(LiveVariantPreferenceMode.BALANCED))
         whenever(preferencesRepository.liveVariantSelections).thenReturn(flowOf(emptyMap()))
         whenever(preferencesRepository.liveVariantObservations).thenReturn(flowOf(emptyMap()))
+        whenever(preferencesRepository.getHiddenChannelIds(any())).thenReturn(flowOf(emptySet()))
     }
 
     @Test

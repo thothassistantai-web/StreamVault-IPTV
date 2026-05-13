@@ -56,6 +56,7 @@ import com.streamvault.app.ui.components.shell.StatusPill
 import com.streamvault.app.ui.components.TvEmptyState
 import com.streamvault.app.ui.components.dialogs.CategoryOptionsDialog
 import com.streamvault.app.ui.components.dialogs.HiddenCategoriesDialog
+import com.streamvault.app.ui.components.dialogs.HiddenChannelsDialog
 import com.streamvault.app.ui.components.dialogs.PinDialog
 import com.streamvault.app.ui.components.dialogs.PremiumDialog
 import com.streamvault.app.ui.components.dialogs.PremiumDialogActionButton
@@ -191,6 +192,7 @@ fun HomeScreen(
     var pendingSplitPlannerChannel by remember { mutableStateOf<Channel?>(null) }
     var showAddQuickFilterDialog by rememberSaveable { mutableStateOf(false) }
     var showHiddenCategoriesDialog by rememberSaveable { mutableStateOf(false) }
+    var showHiddenChannelsDialog by rememberSaveable { mutableStateOf(false) }
 
     // Parental Control State
     var showPinDialog by rememberSaveable { mutableStateOf(false) }
@@ -222,8 +224,8 @@ fun HomeScreen(
         }
     }
 
-    val hasOverlay = showPinDialog || showSplitManagerDialog || pendingSplitPlannerChannel != null ||
-        showAddQuickFilterDialog || showHiddenCategoriesDialog ||
+        val hasOverlay = showPinDialog || showSplitManagerDialog || pendingSplitPlannerChannel != null ||
+        showAddQuickFilterDialog || showHiddenCategoriesDialog || showHiddenChannelsDialog ||
         uiState.showDialog || uiState.showDeleteGroupDialog ||
         uiState.showRenameGroupDialog || uiState.selectedCategoryForOptions != null ||
         isReorderMode
@@ -232,6 +234,7 @@ fun HomeScreen(
         when {
             showAddQuickFilterDialog -> showAddQuickFilterDialog = false
             showHiddenCategoriesDialog -> showHiddenCategoriesDialog = false
+            showHiddenChannelsDialog -> showHiddenChannelsDialog = false
             showPinDialog -> {
                 showPinDialog = false
                 pinError = null
@@ -289,6 +292,26 @@ fun HomeScreen(
                 showHiddenCategoriesDialog = false
             },
             onDismiss = { showHiddenCategoriesDialog = false }
+        )
+    }
+
+    val hiddenChannelsLiveTv by viewModel.hiddenChannelsLiveTv.collectAsStateWithLifecycle()
+
+    LaunchedEffect(hiddenChannelsLiveTv.isEmpty()) {
+        if (showHiddenChannelsDialog && hiddenChannelsLiveTv.isEmpty()) {
+            showHiddenChannelsDialog = false
+        }
+    }
+
+    if (showHiddenChannelsDialog) {
+        HiddenChannelsDialog(
+            hiddenChannels = hiddenChannelsLiveTv,
+            onUnhide = { viewModel.unhideChannel(it) },
+            onUnhideAll = {
+                viewModel.unhideAllChannels()
+                showHiddenChannelsDialog = false
+            },
+            onDismiss = { showHiddenChannelsDialog = false }
         )
     }
 
@@ -737,6 +760,20 @@ fun HomeScreen(
                                                     text = stringResource(
                                                         R.string.live_quick_filter_hidden_categories,
                                                         uiState.hiddenLiveCategories.size
+                                                    )
+                                                )
+                                            }
+                                        }
+                                        if (hiddenChannelsLiveTv.isNotEmpty()) {
+                                            TvButton(
+                                                onClick = { showHiddenChannelsDialog = true },
+                                                enabled = !isReorderMode,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text = stringResource(
+                                                        R.string.live_quick_filter_hidden_channels,
+                                                        hiddenChannelsLiveTv.size
                                                     )
                                                 )
                                             }
