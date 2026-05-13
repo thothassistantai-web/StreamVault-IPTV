@@ -320,9 +320,11 @@ class ChannelRepositoryImpl @Inject constructor(
         source,
         preferencesRepository.parentalControlLevel,
         parentalControlManager.unlockedCategoriesForProvider(providerId),
-        currentPresentationSettingsFlow()
-    ) { entities, level, unlockedCats, settings ->
+        currentPresentationSettingsFlow(),
+        preferencesRepository.getHiddenChannelIds(providerId)
+    ) { entities, level, unlockedCats, settings, hiddenIds ->
         val filtered = applyVisibilityFilter(entities, level, unlockedCats)
+            .filterNot { it.id in hiddenIds }
         applyNumbering(buildPresentedChannels(filtered, settings, unlockedCats), settings.numberingMode)
     }.flowOn(Dispatchers.Default)
 
