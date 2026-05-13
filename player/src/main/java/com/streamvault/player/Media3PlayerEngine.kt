@@ -169,6 +169,7 @@ class Media3PlayerEngine @Inject constructor(
     private var currentRetryPolicy: PlayerRetryPolicy? = null
     private var currentRetryContext: PlaybackRetryContext? = null
     private var playbackStarted = false
+    private var hasRenderedFirstVideoFrame = false
     private var prepareStartMs = 0L
     private var retryAttempt = 0
     private var retryJob: Job? = null
@@ -722,6 +723,7 @@ class Media3PlayerEngine @Inject constructor(
         currentRetryPolicy = null
         currentRetryContext = null
         playbackStarted = false
+        hasRenderedFirstVideoFrame = false
         retryAttempt = 0
         _retryStatus.value = null
         _playbackState.value = PlaybackState.IDLE
@@ -783,6 +785,7 @@ class Media3PlayerEngine @Inject constructor(
         }
         lastMediaId = mediaId
         playbackStarted = false
+        hasRenderedFirstVideoFrame = false
         prepareStartMs = System.currentTimeMillis()
         audioCodecUnsupportedReported = false
         pendingLearnedAudioFallback = null
@@ -1170,6 +1173,7 @@ class Media3PlayerEngine @Inject constructor(
                 output: Any,
                 renderTimeMs: Long
             ) {
+                hasRenderedFirstVideoFrame = true
                 if (prepareStartMs > 0L) {
                     val ttff = System.currentTimeMillis() - prepareStartMs
                     _playerStats.value = _playerStats.value.copy(ttffMs = ttff)
@@ -1576,20 +1580,20 @@ class Media3PlayerEngine @Inject constructor(
     }
 
     private fun shouldFallbackTextureViewBeforeFirstFrame(stats: PlayerStats): Boolean {
-        if (_renderSurfaceType.value != PlayerRenderSurfaceType.TEXTURE_VIEW) return false
-        if (sessionSurfaceModeOverride == PlayerSurfaceMode.SURFACE_VIEW) return false
-        if (textureViewSessionFallbackAttempted) return false
-        if (lastStreamInfo == null) return false
-        if (playbackStarted) return false
-        if (!isCurrentStreamLive()) return false
-        val state = _playbackState.value
-        if (state != PlaybackState.READY && state != PlaybackState.BUFFERING) return false
-        if (System.currentTimeMillis() - prepareStartMs < TEXTURE_VIEW_STARTUP_TIMEOUT_MS) return false
-        if (state == PlaybackState.BUFFERING && stats.bufferedDurationMs < TEXTURE_VIEW_BUFFERED_STARTUP_THRESHOLD_MS) {
-            return false
-        }
-        if (selectedVideoDecoderName == "Unknown" && state != PlaybackState.READY) return false
-        return true
+        return shouldFallbackTextureViewWithoutFirstFrame(
+            renderSurfaceType = _renderSurfaceType.value,
+            sessionSurfaceModeOverride = sessionSurfaceModeOverride,
+            fallbackAttempted = textureViewSessionFallbackAttempted,
+            hasStreamInfo = lastStreamInfo != null,
+            hasRenderedFirstVideoFrame = hasRenderedFirstVideoFrame,
+            isCurrentStreamLive = isCurrentStreamLive(),
+            playbackState = _playbackState.value,
+            elapsedSincePrepareMs = System.currentTimeMillis() - prepareStartMs,
+            startupTimeoutMs = TEXTURE_VIEW_STARTUP_TIMEOUT_MS,
+            bufferedDurationMs = stats.bufferedDurationMs,
+            bufferedStartupThresholdMs = TEXTURE_VIEW_BUFFERED_STARTUP_THRESHOLD_MS,
+            selectedVideoDecoderName = selectedVideoDecoderName
+        )
     }
 
     private fun fallbackTextureViewSurface(reason: String) {

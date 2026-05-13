@@ -6,39 +6,41 @@ All notable product changes are recorded in this document.
 
 ### Added
 
-- Added audio decoder name to player diagnostics so FFmpeg-backed playback can be confirmed from the overlay.
-- Added FFmpeg artifact verification in the player build, plus bundled provenance and LGPL notice docs.
-- Added expert playback settings for audio output policy and persistent compatibility memory.
-- Added richer playback diagnostics for FFmpeg availability/version, audio path classification, and compatibility decision source.
-- Added APK companion plugin support with discovery, activation, capability sync, and plugin provider integration.
-- Added plugin installation from APK URL and local file picker, plus automatic detection of compatible plugins installed manually by the user.
-- Added a host-rendered plugin configuration schema so plugins can expose StreamVault-native settings screens, persisted values, validation, and plugin actions over IPC.
-- Added native Activity plugin configuration mode so rich plugin UIs can open from StreamVault with their own visual and interaction model.
-- Added a welcome-screen "Set up later" option so first-time users can enter the app and reach Settings before adding a provider.
-- Added Google Drive backup sync support with sign-in/out, push/pull actions, last-sync status in Settings, onboarding import-from-Drive progress flow, and private Drive credential sync so imported providers can restore saved usernames/passwords.
-- Added Live TV quick-filter management for hidden categories and hidden channels, including restore dialogs and channel-level hide actions from the home screen dialogs.
-- Added opt-in developer onboarding seeding from `local.properties` (Xtream + M3U) in debug builds, with a versioned `local.properties.example` template and `docs/DEV_SEEDING.md` guide.
-- Added real-time first-boot library sync progress on the welcome screen (Live/VOD/Series section state, determinate/indeterminate progress bar, current label, and indexed-items counter) powered by a typed sync progress bus.
+- Added close app icon, top right corner in settings tab.
+- Added audio decoder names to player diagnostics.
+- Added FFmpeg artifact verification plus provenance and LGPL docs.
+- Added advanced playback settings for audio output and compatibility memory.
+- Added richer FFmpeg and compatibility diagnostics.
+- Added APK companion plugin discovery, activation, and provider integration.
+- Added plugin installation from APK URLs and local files, plus auto-detection of compatible installed plugins.
+- Added host-rendered plugin settings screens with persisted values, validation, and plugin actions.
+- Added native Activity-based plugin configuration for richer plugin UIs.
+- Added a welcome-screen `Set up later` option.
+- Added Google Drive backup sync, onboarding import, and credential restore.
+- Added Live TV quick-filter management for hidden categories and channels.
+- Added opt-in debug onboarding seeding from `local.properties` with docs and template updates.
+- Added real-time first-boot library sync progress on the welcome screen.
 
 ### Changed
 
-- Updated the Plugins screen with compact StreamVault-styled controls and a dedicated blocks icon distinct from Settings.
-- Documented the plugin API, manifest metadata, installation model, IPC contract, host-rendered configuration schema, native Activity configuration mode, and visual integration guidance.
-- Clarified the Google Drive maintainer setup guide around the `drive.appdata` scope and the Testing-to-Production consent-screen flip for public rollout.
+- Refreshed the Plugins screen with denser StreamVault-styled controls and a dedicated icon.
+- Expanded plugin API docs for manifests, installation, IPC, configuration, and UI integration.
+- Clarified the Google Drive maintainer guide for `drive.appdata` and production rollout.
 
 ### Fixed
 
-- Fixed unsupported audio codec playback fallback by bundling Media3 FFmpeg decoder support for `AC-3`, `E-AC-3`, `DTS`, `MP2`, and `TrueHD` streams.
-- Fixed streams with unsupported audio codecs not retrying in software when FFmpeg support is available; the player now performs one automatic fallback retry.
-- Fixed software navigation bars cutting into the app on devices such as Nexus 5X by reapplying immersive fullscreen mode when the app resumes or regains focus.
-- Fixed touch/mouse activation behavior for TV controls used by plugin management on non-TV devices.
-- Fixed `TvClickableSurface` / `TvIconButton` long-click handling so home-screen category and channel actions keep their press-and-hold behavior.
-- Fixed series detail screens missing the favorite heart action; series info pages now match movies with add/remove favorite support directly from the detail view.
-- Fixed Xtream series detail pages sometimes showing no seasons or episodes when providers returned season metadata without inline episode rows; cached episodes are now preserved and metadata-only season payloads no longer render as empty detail screens.
-- Fixed Xtream live sync category requests stalling for several minutes near the end of large provider imports; segmented catalog calls now use shorter cancellable transport timeouts and timeout handling now surfaces as normal request failures instead of hanging the sync.
-- Fixed VOD category shelves and category browse ordering in both classic and modern views to sort by provider-added time instead of release metadata.
-- Fixed Stalker VOD category filtering drifting or appearing empty when filtered portal responses omit item category metadata; requested category context is now preserved during category hydration.
-- Fixed backup export/import to preserve hidden live categories and hidden channels preferences.
+- Fixed unsupported audio playback by bundling Media3 FFmpeg decoders for `AC-3`, `E-AC-3`, `DTS`, `MP2`, and `TrueHD`.
+- Fixed unsupported audio streams not retrying once in software when FFmpeg is available.
+- Fixed explicit `TextureView` live playback getting stuck on green or corrupted frames before first video render.
+- Fixed software nav bars overlapping the app on devices like Nexus 5X.
+- Fixed touch and mouse activation for TV plugin controls on non-TV devices.
+- Fixed `TvClickableSurface` and `TvIconButton` long-press behavior for home-screen actions.
+- Fixed missing favorite actions on series detail screens.
+- Fixed Xtream series detail pages rendering empty when only metadata-only season payloads were returned.
+- Fixed Xtream live sync category requests hanging near the end of large imports.
+- Fixed VOD category ordering to sort by provider-added time.
+- Fixed Stalker VOD category filtering drifting when portal responses omitted category metadata.
+- Fixed backup export and import to preserve hidden live categories and channels.
 
 ---
 

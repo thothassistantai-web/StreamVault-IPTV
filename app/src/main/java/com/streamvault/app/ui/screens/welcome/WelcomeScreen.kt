@@ -302,7 +302,7 @@ private fun WelcomeStartCard(
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.colors(
                         containerColor = AppColors.SurfaceElevated,
-                        focusedContainerColor = AppColors.BrandMuted,
+                        focusedContainerColor = Color.White,
                         contentColor = AppColors.TextPrimary
                     )
                 ) {

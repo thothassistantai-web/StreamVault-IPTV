@@ -22,6 +22,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.streamvault.app.backup.BackupFileBridge
 import com.streamvault.app.diagnostics.CrashReportStore
 import com.streamvault.app.util.OfficialBuildVerifier
+import com.streamvault.app.ui.components.shell.AppTopBarCloseAction
 import com.streamvault.app.ui.components.shell.AppNavigationChrome
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
 import com.streamvault.app.ui.theme.*
@@ -157,7 +158,12 @@ fun SettingsScreen(
             subtitle = stringResource(R.string.settings_providers_subtitle),
             navigationChrome = AppNavigationChrome.TopBar,
             compactHeader = true,
-            showScreenHeader = false
+            showScreenHeader = false,
+            topBarActions = {
+                AppTopBarCloseAction(
+                    onClick = { mainActivity?.finishAffinity() }
+                )
+            }
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 SettingsNavigationRail(

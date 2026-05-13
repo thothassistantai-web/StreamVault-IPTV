@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
@@ -74,6 +75,7 @@ import com.streamvault.app.ui.design.AppMotion
 import com.streamvault.app.ui.design.FocusSpec
 import com.streamvault.app.ui.interaction.mouseClickable
 import com.streamvault.app.ui.interaction.rememberTvInteractionSounds
+import com.streamvault.app.ui.interaction.TvIconButton
 import com.streamvault.app.ui.design.LocalAppShapes
 import com.streamvault.app.ui.design.LocalAppSpacing
 
@@ -94,6 +96,7 @@ fun AppScreenScaffold(
     compactHeader: Boolean = false,
     showScreenHeader: Boolean = true,
     header: (@Composable ColumnScope.() -> Unit)? = null,
+    topBarActions: (@Composable RowScope.() -> Unit)? = null,
     contentPadding: PaddingValues = PaddingValues(),
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -169,6 +172,7 @@ fun AppScreenScaffold(
                     TopNavigationBar(
                         currentRoute = currentRoute,
                         onNavigate = onNavigate,
+                        actions = topBarActions,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(10.dp))
@@ -243,6 +247,7 @@ fun AppScreenHeader(
 private fun TopNavigationBar(
     currentRoute: String,
     onNavigate: (String) -> Unit,
+    actions: (@Composable RowScope.() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val items = remember { buildDestinationItems() }
@@ -297,7 +302,44 @@ private fun TopNavigationBar(
                     )
                 }
             }
+            if (actions != null) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = actions
+                )
+            }
         }
+    }
+}
+
+@Composable
+fun AppTopBarCloseAction(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentDescription: String = stringResource(R.string.settings_close_app)
+) {
+    TvIconButton(
+        onClick = onClick,
+        modifier = modifier,
+        colors = androidx.tv.material3.IconButtonDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = AppColors.SurfaceEmphasis,
+            contentColor = AppColors.TextSecondary,
+            focusedContentColor = AppColors.TextPrimary
+        ),
+        border = androidx.tv.material3.IconButtonDefaults.border(
+            focusedBorder = Border(
+                border = BorderStroke(FocusSpec.BorderWidth, AppColors.Focus),
+                shape = RoundedCornerShape(14.dp)
+            )
+        )
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 
