@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamvault.app.di.AuxiliaryPlayerEngine
 import com.streamvault.app.player.LivePreviewHandoffManager
+import com.streamvault.app.plugins.StreamVaultPluginManager
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.app.ui.screens.multiview.MultiViewManager
 import com.streamvault.app.ui.model.applyProviderCategoryDisplayPreferences
@@ -30,6 +31,7 @@ import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.StreamInfo
+import com.streamvault.domain.model.StreamType
 import com.streamvault.domain.model.SyncState
 import com.streamvault.domain.model.VirtualCategoryIds
 import com.streamvault.domain.repository.CategoryRepository
@@ -55,6 +57,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -80,7 +83,8 @@ class HomeViewModel @Inject constructor(
     private val tvInputChannelSyncManager: TvInputChannelSyncManager,
     private val multiViewManager: MultiViewManager,
     private val livePreviewHandoffManager: LivePreviewHandoffManager,
-    @AuxiliaryPlayerEngine
+    private val pluginManager: StreamVaultPluginManager,
+    @param:AuxiliaryPlayerEngine
     private val playerEngineProvider: InjectProvider<PlayerEngine>
 ) : ViewModel() {
     private companion object {
@@ -88,6 +92,7 @@ class HomeViewModel @Inject constructor(
         const val CHANNEL_PAGE_SIZE = 200
         const val CHANNEL_SEARCH_PAGE_SIZE = 300
         const val LOAD_MORE_THRESHOLD = 5
+        const val ADAPTIVE_PREVIEW_REPRIME_DELAY_MS = 2_500L
     }
 
     private val appContext = application
@@ -1028,15 +1033,36 @@ class HomeViewModel @Inject constructor(
             when (val result = channelRepository.getStreamInfo(channel)) {
                 is Result.Success -> {
                     if (!isActivePreviewSession(previewVersion, channel.id)) return@launch
+                    val preparedStreamInfo = when (val pluginResult = pluginManager.preparePlaybackStreamInfo(result.data)) {
+                        is Result.Success -> pluginResult.data
+                        is Result.Error -> {
+                            if (!isActivePreviewSession(previewVersion, channel.id)) return@launch
+                            _uiState.update {
+                                it.copy(
+                                    isPreviewLoading = false,
+                                    previewErrorMessage = pluginResult.message.ifBlank { appContext.getString(R.string.live_preview_failed) }
+                                )
+                            }
+                            return@launch
+                        }
+                        Result.Loading -> result.data
+                    }
+                    if (!isActivePreviewSession(previewVersion, channel.id)) return@launch
                     engine.stop()
                     engine.setDecoderMode(preferencesRepository.playerDecoderMode.first())
                     engine.setSurfaceMode(preferencesRepository.playerSurfaceMode.first())
-                    engine.prepare(result.data)
+                    engine.prepare(preparedStreamInfo)
                     engine.setVolume(1f)
                     engine.play()
                     livePreviewHandoffManager.registerPreviewSession(
                         channel = channel,
-                        streamInfo = result.data,
+                        streamInfo = preparedStreamInfo,
+                        engine = engine
+                    )
+                    scheduleAdaptivePreviewReprime(
+                        previewVersion = previewVersion,
+                        channel = channel,
+                        streamInfo = preparedStreamInfo,
                         engine = engine
                     )
                 }
@@ -1052,6 +1078,32 @@ class HomeViewModel @Inject constructor(
                 Result.Loading -> Unit
             }
         }
+    }
+
+    private fun scheduleAdaptivePreviewReprime(
+        previewVersion: Long,
+        channel: Channel,
+        streamInfo: StreamInfo,
+        engine: PlayerEngine
+    ) {
+        if (!streamInfo.needsAdaptivePreviewReprime()) return
+
+        viewModelScope.launch {
+            delay(ADAPTIVE_PREVIEW_REPRIME_DELAY_MS)
+            if (!isActivePreviewSession(previewVersion, channel.id)) return@launch
+            if (_uiState.value.previewErrorMessage != null) return@launch
+            if (engine.playbackState.value != PlaybackState.READY) return@launch
+            if (!engine.isPlaying.value) return@launch
+            if (engine.playerStats.value.ttffMs > 0L) return@launch
+
+            engine.renewStreamUrl(streamInfo)
+            engine.play()
+        }
+    }
+
+    private fun StreamInfo.needsAdaptivePreviewReprime(): Boolean {
+        if (drmInfo == null) return false
+        return streamType == StreamType.DASH || streamType == StreamType.SMOOTH_STREAMING
     }
 
     fun beginPreviewHandoff(channel: Channel): Boolean {

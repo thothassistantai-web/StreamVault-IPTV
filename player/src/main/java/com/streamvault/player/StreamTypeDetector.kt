@@ -10,6 +10,7 @@ object StreamTypeDetector {
         return when (StreamTypeResolver.resolve(url = url, isLive = url.contains("/live/", ignoreCase = true))) {
             ResolvedStreamType.HLS -> StreamType.HLS
             ResolvedStreamType.DASH -> StreamType.DASH
+            ResolvedStreamType.SMOOTH_STREAMING -> StreamType.SMOOTH_STREAMING
             ResolvedStreamType.MPEG_TS_LIVE -> StreamType.MPEG_TS
             ResolvedStreamType.PROGRESSIVE -> StreamType.PROGRESSIVE
             ResolvedStreamType.RTSP -> StreamType.RTSP

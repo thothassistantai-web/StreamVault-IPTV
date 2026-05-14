@@ -1355,7 +1355,8 @@ fun PlayerScreen(
                     onCast = { viewModel.castCurrentMedia { mainActivity?.openCastRouteChooser() } },
                     onStopCasting = viewModel::stopCasting,
                     timeshiftUiState = timeshiftUiState,
-                    onTransientPanelVisibilityChanged = { channelInfoSubPanelOpen = it }
+                    onTransientPanelVisibilityChanged = { channelInfoSubPanelOpen = it },
+                    resolutionLabel = videoFormat.resolutionLabel.takeIf { it.isNotBlank() && !videoFormat.isEmpty }
                 )
             }
         }

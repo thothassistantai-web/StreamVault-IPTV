@@ -18,6 +18,12 @@ class StreamTypeResolverTest {
     }
 
     @Test
+    fun `isml manifest resolves to SmoothStreaming`() {
+        assertThat(StreamTypeResolver.resolve("https://example.com/index.isml/Manifest"))
+            .isEqualTo(ResolvedStreamType.SMOOTH_STREAMING)
+    }
+
+    @Test
     fun `live url resolves to MPEG TS live`() {
         assertThat(StreamTypeResolver.resolve("http://example.com/live/channel1", isLive = true))
             .isEqualTo(ResolvedStreamType.MPEG_TS_LIVE)
@@ -53,4 +59,3 @@ class StreamTypeResolverTest {
             .isEqualTo(ResolvedStreamType.UNKNOWN)
     }
 }
-

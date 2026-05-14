@@ -51,6 +51,7 @@ class PlayerTrackController(
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
             .setPreferredAudioLanguage(preferredAudioLanguageTag)
+            .setViewportSizeToPhysicalDisplaySize(context, true)
             .apply {
                 resolvedMaxVideoHeightForCurrentNetwork(constrainResolutionForMultiView)?.let { maxHeight ->
                     setMaxVideoSize(Int.MAX_VALUE, maxHeight)
@@ -277,4 +278,3 @@ internal fun normalizeSelectedVideoTrackId(
     availableTrackIds.size == 1 -> availableTrackIds.first()
     else -> PLAYER_TRACK_AUTO_ID
 }
-

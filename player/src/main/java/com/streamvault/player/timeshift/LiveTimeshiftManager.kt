@@ -145,6 +145,7 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
                 val session = when (support.streamType) {
                     StreamType.HLS -> HlsSession(streamInfo, config, backend, sessionDir)
                     StreamType.DASH -> DashSession(streamInfo, config, backend, sessionDir)
+                    StreamType.SMOOTH_STREAMING,
                     StreamType.MPEG_TS,
                     StreamType.PROGRESSIVE,
                     StreamType.UNKNOWN -> ProgressiveSession(streamInfo, config, backend, sessionDir)
@@ -244,6 +245,7 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
         val type = inferType(streamInfo)
         return when (type) {
             StreamType.RTSP -> SupportResult(false, "RTSP streams cannot use local rewind yet.", type)
+            StreamType.SMOOTH_STREAMING -> SupportResult(false, "SmoothStreaming streams cannot use local rewind yet.", type)
             else -> SupportResult(true, null, type)
         }
     }
@@ -254,6 +256,8 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
         return when {
             url.endsWith(".m3u8") -> StreamType.HLS
             url.endsWith(".mpd") -> StreamType.DASH
+            url.contains(".isml/manifest") || url.contains(".ism/manifest") || url.endsWith(".ism") || url.endsWith(".isml") ->
+                StreamType.SMOOTH_STREAMING
             url.endsWith(".ts") -> StreamType.MPEG_TS
             url.startsWith("rtsp") -> StreamType.RTSP
             else -> StreamType.PROGRESSIVE

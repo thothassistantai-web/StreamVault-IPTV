@@ -2,6 +2,7 @@ package com.streamvault.player.playback
 
 import android.net.Uri
 import android.util.Log
+import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -12,6 +13,7 @@ import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
+import androidx.media3.exoplayer.smoothstreaming.SsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -20,7 +22,6 @@ import com.streamvault.domain.model.DrmScheme
 import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.StreamType
 import java.util.UUID
-import androidx.media3.common.C
 
 @UnstableApi
 class PlayerMediaSourceFactory(
@@ -47,6 +48,15 @@ class PlayerMediaSourceFactory(
                 .createMediaSource(mediaItem)
 
             resolvedStreamType == ResolvedStreamType.DASH -> DashMediaSource.Factory(dataSourceFactory)
+                .setLoadErrorHandlingPolicy(retryPolicy)
+                .createMediaSource(mediaItem)
+
+            resolvedStreamType == ResolvedStreamType.SMOOTH_STREAMING -> SsMediaSource.Factory(dataSourceFactory)
+                .apply {
+                    if (streamInfo.drmInfo?.scheme == DrmScheme.CLEARKEY) {
+                        setManifestParser(ClearKeySmoothStreamingManifestParser())
+                    }
+                }
                 .setLoadErrorHandlingPolicy(retryPolicy)
                 .createMediaSource(mediaItem)
 
@@ -138,4 +148,3 @@ class PlayerMediaSourceFactory(
         )
     }
 }
-

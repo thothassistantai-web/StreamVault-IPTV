@@ -81,13 +81,14 @@ internal fun PlayerViewModel.finalizePreparedPlaybackContext(
         )
     } else {
         requestEpg(providerId = -1L, epgChannelId = null)
+        currentChannelFlow.value = null
     }
     observeRecentChannels()
     observeLastVisitedCategory()
 
     aspectRatioJob?.cancel()
     _aspectRatio.value = AspectRatio.FIT
-    if (internalChannelId != -1L) {
+    if (shouldResolveChannelPlaybackContext(currentContentType.name, internalChannelId)) {
         aspectRatioJob = viewModelScope.launch {
             preferencesRepository.getAspectRatioForChannel(internalChannelId).collect { savedRatio ->
                 _aspectRatio.value = try {

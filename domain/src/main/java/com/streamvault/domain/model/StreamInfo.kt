@@ -44,6 +44,7 @@ enum class DrmScheme {
 enum class StreamType {
     HLS,
     DASH,
+    SMOOTH_STREAMING,
     MPEG_TS,
     PROGRESSIVE,
     RTSP,    // PE-H03: native RTSP via Media3 RtspMediaSource
@@ -55,6 +56,7 @@ enum class StreamType {
                 "ts" -> MPEG_TS
                 "m3u8" -> HLS
                 "mpd" -> DASH
+                "ism", "isml" -> SMOOTH_STREAMING
                 "mp4", "mkv", "avi", "mov", "mp3", "aac", "m4a", "flv", "webm" -> PROGRESSIVE
                 else -> UNKNOWN
             }

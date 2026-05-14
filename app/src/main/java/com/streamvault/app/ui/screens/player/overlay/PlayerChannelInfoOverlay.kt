@@ -1,6 +1,7 @@
 package com.streamvault.app.ui.screens.player.overlay
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -108,7 +109,8 @@ fun ChannelInfoOverlay(
     onCast: () -> Unit = {},
     onStopCasting: () -> Unit = {},
     timeshiftUiState: PlayerTimeshiftUiState = PlayerTimeshiftUiState(),
-    onTransientPanelVisibilityChanged: (Boolean) -> Unit = {}
+    onTransientPanelVisibilityChanged: (Boolean) -> Unit = {},
+    resolutionLabel: String? = null
 ) {
     val appTimeFormat = LocalAppTimeFormat.current
     val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
@@ -231,7 +233,20 @@ fun ChannelInfoOverlay(
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .basicMarquee(
+                                            iterations = Int.MAX_VALUE,
+                                            initialDelayMillis = 900,
+                                            repeatDelayMillis = 1200,
+                                            velocity = 24.dp
+                                        )
+                                )
+                            }
+                            resolutionLabel?.takeIf { it.isNotBlank() }?.let { label ->
+                                StatusPill(
+                                    label = label,
+                                    containerColor = AppColors.SurfaceEmphasis
                                 )
                             }
                             currentChannel?.currentVariant

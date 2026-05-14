@@ -3,7 +3,9 @@ package com.streamvault.app.ui.screens.settings
 import com.streamvault.app.BuildConfig
 import com.streamvault.app.update.AppUpdateDownloadState
 import com.streamvault.app.update.AppUpdateDownloadStatus
+import com.streamvault.app.update.AppUpdateChannel
 import com.streamvault.app.update.GitHubReleaseInfo
+import java.time.Instant
 import kotlin.math.max
 
 data class AppUpdateUiModel(
@@ -57,17 +59,57 @@ internal fun SettingsPreferenceSnapshot.toCachedAppUpdateUiModel(): AppUpdateUiM
         releaseNotes = cachedAppUpdateReleaseNotes,
         publishedAt = cachedAppUpdatePublishedAt,
         isUpdateAvailable = versionName?.let {
-            isRemoteVersionNewer(cachedAppUpdateVersionCode, it)
+            isRemoteVersionNewer(cachedAppUpdateVersionCode, it, cachedAppUpdatePublishedAt)
         } ?: false,
         lastCheckedAt = lastAppUpdateCheckAt
     )
 }
 
-internal fun isRemoteVersionNewer(remoteVersionCode: Int?, remoteVersionName: String): Boolean {
-    if (remoteVersionCode != null && remoteVersionCode > BuildConfig.VERSION_CODE) {
+internal fun isRemoteVersionNewer(
+    remoteVersionCode: Int?,
+    remoteVersionName: String,
+    remotePublishedAt: String? = null
+): Boolean {
+    return isRemoteVersionNewerForBuild(
+        remoteVersionCode = remoteVersionCode,
+        remoteVersionName = remoteVersionName,
+        remotePublishedAt = remotePublishedAt,
+        currentVersionCode = BuildConfig.VERSION_CODE,
+        currentVersionName = BuildConfig.VERSION_NAME,
+        currentBuildTimestampUtc = BuildConfig.BUILD_TIMESTAMP_UTC,
+        currentChannel = AppUpdateChannel.fromCurrentBuild()
+    )
+}
+
+internal fun isRemoteVersionNewerForBuild(
+    remoteVersionCode: Int?,
+    remoteVersionName: String,
+    remotePublishedAt: String?,
+    currentVersionCode: Int,
+    currentVersionName: String,
+    currentBuildTimestampUtc: Long,
+    currentChannel: AppUpdateChannel
+): Boolean {
+    val remoteDescriptor = parseAppVersionDescriptor(remoteVersionName)
+    if (remoteDescriptor.channel != currentChannel) {
+        return false
+    }
+
+    if (remoteVersionCode != null && remoteVersionCode > currentVersionCode) {
         return true
     }
-    return compareVersionNamesStatic(remoteVersionName, BuildConfig.VERSION_NAME) > 0
+
+    val versionComparison = compareVersionNamesStatic(remoteDescriptor.baseVersionName, parseAppVersionDescriptor(currentVersionName).baseVersionName)
+    if (versionComparison != 0) {
+        return versionComparison > 0
+    }
+
+    if (currentChannel == AppUpdateChannel.Beta) {
+        val remotePublishedAtMillis = remotePublishedAt.toEpochMillisOrNull() ?: return false
+        return remotePublishedAtMillis > currentBuildTimestampUtc
+    }
+
+    return false
 }
 
 internal fun compareVersionNamesStatic(left: String, right: String): Int {
@@ -82,4 +124,31 @@ internal fun compareVersionNamesStatic(left: String, right: String): Int {
         }
     }
     return 0
+}
+
+private data class ParsedAppVersionDescriptor(
+    val baseVersionName: String,
+    val channel: AppUpdateChannel
+)
+
+private fun parseAppVersionDescriptor(versionName: String): ParsedAppVersionDescriptor {
+    val normalized = versionName.removePrefix("v").trim()
+    val betaIndex = normalized.indexOf("-beta", ignoreCase = true)
+    return if (betaIndex >= 0) {
+        ParsedAppVersionDescriptor(
+            baseVersionName = normalized.substring(0, betaIndex),
+            channel = AppUpdateChannel.Beta
+        )
+    } else {
+        ParsedAppVersionDescriptor(
+            baseVersionName = normalized,
+            channel = AppUpdateChannel.Stable
+        )
+    }
+}
+
+private fun String?.toEpochMillisOrNull(): Long? {
+    val value = this?.trim().orEmpty()
+    if (value.isEmpty()) return null
+    return runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
 }

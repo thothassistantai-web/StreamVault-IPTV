@@ -149,6 +149,35 @@ For `playback.prepare` and `cast.rewriteUrl`, plugins should set
 `handled=false` when the URL is not theirs. StreamVault then continues with other
 enabled plugins or the original URL.
 
+`MSG_PREPARE_PLAYBACK` may also enrich the stream that StreamVault sends to the
+player. When `handled=true` and `success=true`, the plugin can return:
+
+- `output_url`: final playable URL. If omitted, StreamVault keeps `input_url`.
+- `stream_type`: optional playback hint. Supported values are `DASH`, `HLS`,
+  `SMOOTH_STREAMING`, `MPEG_TS`, `PROGRESSIVE`, and `RTSP`.
+- `headers_json`: JSON object with HTTP request headers for the media request.
+- `user_agent`: optional user agent applied to the media request.
+- `drm_json`: JSON object with DRM information:
+
+```json
+{
+  "scheme": "clearkey",
+  "licenseUrl": "http://127.0.0.1:39077/license/clearkey/channel-id",
+  "headers": {
+    "Authorization": "Bearer token"
+  },
+  "multiSession": false,
+  "forceDefaultLicenseUrl": true,
+  "playClearContentWithoutKey": true
+}
+```
+
+`scheme` accepts `widevine`, `playready`, `clearkey`, or their platform UUID
+aliases (`com.widevine.alpha`, `com.microsoft.playready`, `org.w3.clearkey`).
+For `SMOOTH_STREAMING` + `clearkey`, StreamVault normalizes the ISML
+`ProtectionHeader` into ClearKey PSSH v1 init data before creating the Android
+MediaDrm session.
+
 ## Choosing a Configuration Mode
 
 Plugins should choose one primary configuration mode.

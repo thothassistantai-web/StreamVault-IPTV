@@ -39,6 +39,7 @@ enum class PlayerTimeoutProfile(
             if (streamInfo.streamType == StreamType.RTSP) return LIVE
             return when {
                 resolvedStreamType == ResolvedStreamType.HLS -> LIVE
+                resolvedStreamType == ResolvedStreamType.SMOOTH_STREAMING -> LIVE
                 resolvedStreamType == ResolvedStreamType.MPEG_TS_LIVE -> LIVE
                 resolvedStreamType == ResolvedStreamType.RTSP -> LIVE
                 resolvedStreamType == ResolvedStreamType.PROGRESSIVE -> PROGRESSIVE
@@ -48,4 +49,3 @@ enum class PlayerTimeoutProfile(
         }
     }
 }
-

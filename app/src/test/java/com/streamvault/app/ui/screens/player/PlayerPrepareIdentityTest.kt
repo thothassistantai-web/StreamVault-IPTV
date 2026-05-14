@@ -83,4 +83,14 @@ class PlayerPrepareIdentityTest {
             )
         ).isEqualTo("Morning News")
     }
+
+    @Test
+    fun `shouldResolveChannelPlaybackContext ignores movie content ids`() {
+        assertThat(shouldResolveChannelPlaybackContext("MOVIE", 42L)).isFalse()
+    }
+
+    @Test
+    fun `shouldResolveChannelPlaybackContext uses live channel ids`() {
+        assertThat(shouldResolveChannelPlaybackContext("LIVE", 42L)).isTrue()
+    }
 }

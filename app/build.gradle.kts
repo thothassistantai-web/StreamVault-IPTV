@@ -62,6 +62,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "OFFICIAL_APPLICATION_ID", "\"com.streamvault.app\"")
         buildConfigField("String", "OFFICIAL_SIGNING_CERT_SHA256", "\"$officialSigningCertSha256\"")
+        buildConfigField("String", "APP_UPDATE_CHANNEL", "\"stable\"")
+        buildConfigField("long", "BUILD_TIMESTAMP_UTC", "0L")
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
@@ -101,6 +103,8 @@ android {
             initWith(getByName("release"))
             applicationIdSuffix = ".beta"
             versionNameSuffix = "-beta"
+            buildConfigField("String", "APP_UPDATE_CHANNEL", "\"beta\"")
+            buildConfigField("long", "BUILD_TIMESTAMP_UTC", "${System.currentTimeMillis()}L")
             isDebuggable = false
             // Keep beta close to release behavior but faster for CI/test distribution.
             isMinifyEnabled = false
@@ -176,6 +180,7 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
+    implementation(libs.media3.exoplayer.smoothstreaming)
     implementation(libs.media3.exoplayer.rtsp)
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.ui)

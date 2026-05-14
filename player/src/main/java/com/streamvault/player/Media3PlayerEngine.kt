@@ -57,6 +57,8 @@ import com.streamvault.player.playback.PlayerRetryPolicy
 import com.streamvault.player.playback.PlayerTimeoutProfile
 import com.streamvault.player.playback.PreloadCoordinator
 import com.streamvault.player.playback.ResolvedStreamType
+import com.streamvault.player.playback.resolveRetryAttemptAfterReady
+import com.streamvault.player.playback.resolveRetrySeekPositionMs
 import com.streamvault.player.playback.StreamTypeResolver
 import com.streamvault.player.playback.VideoStallDetector
 import com.streamvault.player.stats.PlayerStatsCollector
@@ -613,8 +615,10 @@ class Media3PlayerEngine @Inject constructor(
         val player = exoPlayer ?: return
         val streamInfo = lastStreamInfo ?: return
         val retryPolicy = currentRetryPolicy ?: return
-        val position = player.currentPosition
-        val wasPlaying = player.playWhenReady
+        val transition = buildExternalSubtitlePlaybackTransition(
+            currentPositionMs = player.currentPosition,
+            playWhenReady = player.playWhenReady
+        )
 
         val (_, mainMediaSource) = mediaSourceFactory.create(
             streamInfo = streamInfo,
@@ -632,9 +636,11 @@ class Media3PlayerEngine @Inject constructor(
         ).createMediaSource(subtitleConfig, C.TIME_UNSET)
         val merged = androidx.media3.exoplayer.source.MergingMediaSource(mainMediaSource, subtitleSource)
 
-        player.setMediaSource(merged, position)
+        player.trackSelectionParameters = player.trackSelectionParameters.withExternalSubtitleEnabled()
+        player.setMediaSource(merged, /* resetPosition= */ false)
         player.prepare()
-        player.playWhenReady = wasPlaying
+        transition.resumePositionMs.takeIf { it > 0L }?.let(player::seekTo)
+        player.playWhenReady = transition.playWhenReady
         Log.i(TAG, "addExternalSubtitle language=$language uri=$subtitleUri")
     }
 
@@ -835,7 +841,10 @@ class Media3PlayerEngine @Inject constructor(
             policyModeFor(requestedDecoderMode, preferredDecoderMode)
         )
         val isLiveBuffer = currentResolvedStreamType in setOf(
-            ResolvedStreamType.HLS, ResolvedStreamType.MPEG_TS_LIVE, ResolvedStreamType.RTSP
+            ResolvedStreamType.HLS,
+            ResolvedStreamType.SMOOTH_STREAMING,
+            ResolvedStreamType.MPEG_TS_LIVE,
+            ResolvedStreamType.RTSP
         )
         val previousDecoderPolicy = activeDecoderPolicy
         val needsRecreate = activeDecoderMode != preferredDecoderMode ||
@@ -879,7 +888,10 @@ class Media3PlayerEngine @Inject constructor(
             seekPositionMs?.takeIf { it > 0L }?.let(player::seekTo)
 
             val isLive = currentResolvedStreamType in setOf(
-                ResolvedStreamType.HLS, ResolvedStreamType.MPEG_TS_LIVE, ResolvedStreamType.RTSP
+                ResolvedStreamType.HLS,
+                ResolvedStreamType.SMOOTH_STREAMING,
+                ResolvedStreamType.MPEG_TS_LIVE,
+                ResolvedStreamType.RTSP
             )
             val osContentType = if (isLive) {
                 android.media.AudioAttributes.CONTENT_TYPE_MUSIC
@@ -1199,6 +1211,11 @@ class Media3PlayerEngine @Inject constructor(
                 }
                 if (_playbackState.value == PlaybackState.READY) {
                     _retryStatus.value = null
+                    retryAttempt = resolveRetryAttemptAfterReady(
+                        currentAttempt = retryAttempt,
+                        playbackStarted = playbackStarted,
+                        isCurrentMediaItemLive = exoPlayer?.isCurrentMediaItemLive == true
+                    )
                     if (isPlayingTimeshiftSnapshot && pendingTimeshiftSeekToEnd) {
                         pendingTimeshiftSeekToEnd = false
                         playerOrNull()?.duration?.takeIf { it > 0L && it != C.TIME_UNSET }?.let { duration ->
@@ -1626,6 +1643,7 @@ class Media3PlayerEngine @Inject constructor(
 
     private fun isCurrentStreamLive(): Boolean = currentResolvedStreamType in setOf(
         ResolvedStreamType.HLS,
+        ResolvedStreamType.SMOOTH_STREAMING,
         ResolvedStreamType.MPEG_TS_LIVE,
         ResolvedStreamType.RTSP
     )
@@ -1928,11 +1946,14 @@ class Media3PlayerEngine @Inject constructor(
         val nextAttempt = retryAttempt + 1
         if (retryPolicy.shouldRetry(error, retryContext, playbackStarted, nextAttempt)) {
             val delayMs = retryPolicy.retryDelayMs(error, nextAttempt)
-            val retrySeekPositionMs = exoPlayer?.currentPosition?.takeIf {
-                category == PlaybackErrorCategory.FORMAT_UNSUPPORTED &&
-                    currentResolvedStreamType == ResolvedStreamType.PROGRESSIVE &&
-                    it > 0L
-            }
+            val player = exoPlayer
+            val retrySeekPositionMs = resolveRetrySeekPositionMs(
+                category = category,
+                resolvedStreamType = currentResolvedStreamType,
+                currentPositionMs = player?.currentPosition,
+                durationMs = player?.duration,
+                isCurrentMediaItemLive = player?.isCurrentMediaItemLive == true
+            )
             // retryGeneration captured and checked on Main — safe with
             // Dispatchers.Main.immediate. If the scope dispatcher is ever changed
             // (e.g. in tests), convert retryGeneration to AtomicLong.

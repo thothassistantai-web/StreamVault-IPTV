@@ -2,6 +2,7 @@ package com.streamvault.app.ui.screens.epg
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -409,7 +410,17 @@ fun EpgRow(
                         style = MaterialTheme.typography.labelLarge,
                         color = if (isFocused) TextPrimary else OnSurface,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = if (isFocused) {
+                            Modifier.basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 900,
+                                repeatDelayMillis = 1200,
+                                velocity = 24.dp
+                            )
+                        } else {
+                            Modifier
+                        }
                     )
                     Text(
                         text = currentProgram?.title ?: stringResource(R.string.epg_no_schedule_short),

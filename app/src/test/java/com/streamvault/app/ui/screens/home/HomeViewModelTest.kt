@@ -3,6 +3,7 @@ package com.streamvault.app.ui.screens.home
 import android.app.Application
 import androidx.lifecycle.ViewModel
 import com.streamvault.app.player.LivePreviewHandoffManager
+import com.streamvault.app.plugins.StreamVaultPluginManager
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.app.ui.screens.multiview.MultiViewManager
 import com.streamvault.data.preferences.PreferencesRepository
@@ -17,6 +18,8 @@ import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.PlaybackHistory
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderType
+import com.streamvault.domain.model.Result
+import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.SyncState
 import com.streamvault.domain.model.VirtualCategoryIds
 import com.streamvault.domain.repository.*
@@ -54,6 +57,7 @@ class HomeViewModelTest {
     private val tvInputChannelSyncManager: TvInputChannelSyncManager = mock()
     private val multiViewManager = MultiViewManager()
     private val livePreviewHandoffManager: LivePreviewHandoffManager = mock()
+    private val pluginManager: StreamVaultPluginManager = mock()
     private val playerEngine: PlayerEngine = mock()
     private val playerEngineProvider: InjectProvider<PlayerEngine> = mock()
     private val application: Application = mock()
@@ -102,6 +106,11 @@ class HomeViewModelTest {
             whenever(preferencesRepository.setLastActiveProviderId(any())).thenReturn(Unit)
         }
         whenever(playerEngineProvider.get()).thenReturn(playerEngine)
+        runBlocking {
+            whenever(pluginManager.preparePlaybackStreamInfo(any())).thenAnswer { invocation ->
+                Result.Success(invocation.getArgument<StreamInfo>(0))
+            }
+        }
 
         viewModel = createViewModel()
     }
@@ -132,6 +141,7 @@ class HomeViewModelTest {
             tvInputChannelSyncManager = tvInputChannelSyncManager,
             multiViewManager = multiViewManager,
             livePreviewHandoffManager = livePreviewHandoffManager,
+            pluginManager = pluginManager,
             playerEngineProvider = playerEngineProvider
         ).also(createdViewModels::add)
 

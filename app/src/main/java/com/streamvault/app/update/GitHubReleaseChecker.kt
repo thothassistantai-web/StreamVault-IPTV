@@ -1,5 +1,6 @@
 package com.streamvault.app.update
 
+import com.streamvault.app.BuildConfig
 import com.streamvault.domain.model.Result
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,6 +13,9 @@ import java.io.IOException
 import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/Davidona/StreamVault-IPTV/releases/latest"
+private const val GITHUB_RELEASES_LIST_URL = "https://api.github.com/repos/Davidona/StreamVault-IPTV/releases?per_page=20"
 
 data class GitHubReleaseInfo(
     val versionName: String,
@@ -27,15 +31,15 @@ class GitHubReleaseChecker @Inject constructor(
     private val okHttpClient: OkHttpClient
 ) {
     private companion object {
-        private const val RELEASES_LATEST_URL = "https://api.github.com/repos/Davidona/StreamVault-IPTV/releases/latest"
         private const val MAX_RESPONSE_BYTES = 512 * 1024L
         private val STRUCTURED_TAG_REGEX = Regex("""^v?(.+?)\+(\d+)$""", RegexOption.IGNORE_CASE)
     }
 
     suspend fun fetchLatestRelease(): Result<GitHubReleaseInfo> = withContext(Dispatchers.IO) {
         try {
+            val updateChannel = AppUpdateChannel.fromCurrentBuild()
             val request = Request.Builder()
-                .url(RELEASES_LATEST_URL)
+                .url(updateChannel.releaseApiUrl)
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", "StreamVault-Update-Checker")
                 .build()
@@ -55,7 +59,14 @@ class GitHubReleaseChecker @Inject constructor(
                     return@withContext Result.error("Update check failed: empty GitHub release response")
                 }
 
-                val json = JSONObject(body)
+                val json = selectReleaseJson(body, updateChannel)
+                    ?: return@withContext Result.error(
+                        if (updateChannel == AppUpdateChannel.Beta) {
+                            "Update check failed: no beta release found"
+                        } else {
+                            "Update check failed: latest release response was invalid"
+                        }
+                    )
                 val parsedTag = parseTagVersionInfo(json.optString("tag_name"))
                 if (parsedTag.versionName.isBlank()) {
                     return@withContext Result.error("Update check failed: latest release tag is missing")
@@ -67,7 +78,7 @@ class GitHubReleaseChecker @Inject constructor(
                 if (releaseUrl.isBlank()) {
                     return@withContext Result.error("Update check failed: latest release URL is not HTTPS")
                 }
-                val downloadUrl = findApkAssetUrl(assets)
+                val downloadUrl = findApkAssetUrl(assets, updateChannel)
 
                 return@withContext Result.success(
                     GitHubReleaseInfo(
@@ -84,6 +95,27 @@ class GitHubReleaseChecker @Inject constructor(
             Result.error("Update check failed: network error", error)
         } catch (error: Exception) {
             Result.error("Update check failed: ${error.message}", error)
+        }
+    }
+
+    private fun selectReleaseJson(body: String, updateChannel: AppUpdateChannel): JSONObject? {
+        return when (updateChannel) {
+            AppUpdateChannel.Stable -> JSONObject(body)
+            AppUpdateChannel.Beta -> {
+                val releases = org.json.JSONArray(body)
+                for (index in 0 until releases.length()) {
+                    val release = releases.optJSONObject(index) ?: continue
+                    if (release.optBoolean("draft")) continue
+                    if (!release.optBoolean("prerelease")) continue
+                    val tagName = release.optString("tag_name")
+                    if (!tagName.contains("-beta", ignoreCase = true)) continue
+                    val downloadUrl = findApkAssetUrl(release.optJSONArray("assets"), updateChannel)
+                    if (downloadUrl != null) {
+                        return release
+                    }
+                }
+                null
+            }
         }
     }
 
@@ -115,7 +147,7 @@ class GitHubReleaseChecker @Inject constructor(
         return Result.success(output.toString(charset.name()))
     }
 
-    private fun findApkAssetUrl(assets: org.json.JSONArray?): String? {
+    private fun findApkAssetUrl(assets: org.json.JSONArray?, updateChannel: AppUpdateChannel): String? {
         if (assets == null) return null
         var fallback: String? = null
         for (index in 0 until assets.length()) {
@@ -123,11 +155,29 @@ class GitHubReleaseChecker @Inject constructor(
             val name = asset.optString("name")
             val url = asset.optString("browser_download_url").takeIf { it.isNotBlank() } ?: continue
             if (!isHttpsUrl(url)) continue
-            if (name.equals("StreamVault.apk", ignoreCase = true)) {
-                return url
-            }
-            if (fallback == null && name.endsWith(".apk", ignoreCase = true)) {
-                fallback = url
+            when (updateChannel) {
+                AppUpdateChannel.Stable -> {
+                    if (name.equals("StreamVault.apk", ignoreCase = true)) {
+                        return url
+                    }
+                    if (fallback == null &&
+                        name.endsWith(".apk", ignoreCase = true) &&
+                        !name.contains("beta", ignoreCase = true)
+                    ) {
+                        fallback = url
+                    }
+                }
+                AppUpdateChannel.Beta -> {
+                    if (name.equals("StreamVault-beta.apk", ignoreCase = true)) {
+                        return url
+                    }
+                    if (fallback == null &&
+                        name.endsWith(".apk", ignoreCase = true) &&
+                        name.contains("beta", ignoreCase = true)
+                    ) {
+                        fallback = url
+                    }
+                }
             }
         }
         return fallback
@@ -156,6 +206,25 @@ class GitHubReleaseChecker @Inject constructor(
             val parsed = URI(normalized)
             parsed.scheme.equals("https", ignoreCase = true) && !parsed.host.isNullOrBlank()
         }.getOrDefault(false)
+    }
+}
+
+enum class AppUpdateChannel(val id: String, val releaseApiUrl: String) {
+    Stable(id = "stable", releaseApiUrl = GITHUB_RELEASES_LATEST_URL),
+    Beta(id = "beta", releaseApiUrl = GITHUB_RELEASES_LIST_URL);
+
+    companion object {
+        fun fromCurrentBuild(): AppUpdateChannel {
+            return fromBuildConfig(BuildConfig.APP_UPDATE_CHANNEL, BuildConfig.VERSION_NAME)
+        }
+
+        fun fromBuildConfig(channelId: String?, versionName: String): AppUpdateChannel {
+            return when {
+                channelId.equals(Beta.id, ignoreCase = true) -> Beta
+                versionName.contains("-beta", ignoreCase = true) -> Beta
+                else -> Stable
+            }
+        }
     }
 }
 

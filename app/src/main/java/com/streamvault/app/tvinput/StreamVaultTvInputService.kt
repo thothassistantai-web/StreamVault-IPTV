@@ -17,6 +17,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
+import androidx.media3.exoplayer.smoothstreaming.SsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.streamvault.domain.model.Channel
@@ -117,6 +118,7 @@ class StreamVaultTvInputService : TvInputService() {
             return when (streamType) {
                 StreamType.HLS -> HlsMediaSource.Factory(buildHttpDataSource(streamInfo)).createMediaSource(mediaItem)
                 StreamType.DASH -> DashMediaSource.Factory(buildHttpDataSource(streamInfo)).createMediaSource(mediaItem)
+                StreamType.SMOOTH_STREAMING -> SsMediaSource.Factory(buildHttpDataSource(streamInfo)).createMediaSource(mediaItem)
                 StreamType.RTSP -> RtspMediaSource.Factory().createMediaSource(mediaItem)
                 StreamType.MPEG_TS,
                 StreamType.PROGRESSIVE,
@@ -137,6 +139,8 @@ class StreamVaultTvInputService : TvInputService() {
             return when {
                 url.endsWith(".m3u8") -> StreamType.HLS
                 url.endsWith(".mpd") -> StreamType.DASH
+                url.contains(".isml/manifest") || url.contains(".ism/manifest") || url.endsWith(".ism") || url.endsWith(".isml") ->
+                    StreamType.SMOOTH_STREAMING
                 url.startsWith("rtsp") -> StreamType.RTSP
                 url.endsWith(".ts") -> StreamType.MPEG_TS
                 else -> StreamType.PROGRESSIVE

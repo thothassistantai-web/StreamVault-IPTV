@@ -1122,7 +1122,8 @@ class PlayerViewModel @Inject constructor(
             return false
         }
 
-        when (val pluginPrepareResult = pluginManager.preparePlaybackUrl(streamInfo.url)) {
+        var preparedStreamInfo = streamInfo
+        when (val pluginPrepareResult = pluginManager.preparePlaybackStreamInfo(streamInfo)) {
             is Result.Error -> {
                 if (!isActivePlaybackSession(requestVersion)) return false
                 setLastFailureReason(pluginPrepareResult.message)
@@ -1134,10 +1135,10 @@ class PlayerViewModel @Inject constructor(
                 return false
             }
             Result.Loading -> Unit
-            is Result.Success -> Unit
+            is Result.Success -> preparedStreamInfo = pluginPrepareResult.data
         }
 
-        probePlaybackUrl(streamInfo)?.let { failure ->
+        probePlaybackUrl(preparedStreamInfo)?.let { failure ->
             if (!isActivePlaybackSession(requestVersion)) return false
             setLastFailureReason(failure.message)
             showPlayerNotice(
@@ -1155,11 +1156,11 @@ class PlayerViewModel @Inject constructor(
         )
         applyPlaybackPreferences()
         if (!isActivePlaybackSession(requestVersion)) return false
-        currentResolvedPlaybackUrl = streamInfo.url
-        currentResolvedStreamInfo = streamInfo
+        currentResolvedPlaybackUrl = preparedStreamInfo.url
+        currentResolvedStreamInfo = preparedStreamInfo
         readySideEffectsRequestVersion = requestVersion
-        playerEngine.prepare(streamInfo)
-        startTokenRenewalMonitoring(streamInfo.expirationTime)
+        playerEngine.prepare(preparedStreamInfo)
+        startTokenRenewalMonitoring(preparedStreamInfo.expirationTime)
         return true
     }
 

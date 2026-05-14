@@ -165,6 +165,16 @@ internal fun hasArchivePlaybackIdentity(
         ContentType.LIVE
     } == ContentType.LIVE
 
+internal fun shouldResolveChannelPlaybackContext(
+    contentType: String,
+    internalContentId: Long
+): Boolean = internalContentId > 0L &&
+    try {
+        ContentType.valueOf(contentType)
+    } catch (_: Exception) {
+        ContentType.LIVE
+    } == ContentType.LIVE
+
 internal fun resolveRouteDisplayTitle(
     title: String,
     contentType: String,

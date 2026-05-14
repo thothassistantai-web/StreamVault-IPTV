@@ -199,6 +199,7 @@ internal fun StreamInfo.toCastRequest(
     val mimeType = when (inferCastStreamType()) {
         StreamType.HLS -> "application/x-mpegURL"
         StreamType.DASH -> "application/dash+xml"
+        StreamType.SMOOTH_STREAMING -> "application/vnd.ms-sstr+xml"
         StreamType.MPEG_TS -> "video/mp2t"
         StreamType.RTSP -> return null
         StreamType.PROGRESSIVE,
@@ -223,6 +224,8 @@ internal fun StreamInfo.inferCastStreamType(): StreamType {
     return when {
         normalizedUrl.endsWith(".m3u8") -> StreamType.HLS
         normalizedUrl.endsWith(".mpd") -> StreamType.DASH
+        normalizedUrl.contains(".isml/manifest") || normalizedUrl.contains(".ism/manifest") ||
+            normalizedUrl.endsWith(".ism") || normalizedUrl.endsWith(".isml") -> StreamType.SMOOTH_STREAMING
         normalizedUrl.endsWith(".ts") -> StreamType.MPEG_TS
         normalizedUrl.startsWith("rtsp") -> StreamType.RTSP
         else -> StreamType.PROGRESSIVE

@@ -14,10 +14,14 @@ import androidx.core.content.FileProvider
 import com.streamvault.app.BuildConfig
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.domain.model.ActiveLiveSource
+import com.streamvault.domain.model.DrmInfo
+import com.streamvault.domain.model.DrmScheme
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderEpgSyncMode
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.Result
+import com.streamvault.domain.model.StreamInfo
+import com.streamvault.domain.model.StreamType
 import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.ProviderRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -33,6 +37,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONObject
 
 @Singleton
 class StreamVaultPluginManager @Inject constructor(
@@ -256,8 +261,12 @@ class StreamVaultPluginManager @Inject constructor(
         response.toPluginActionResult("Plugin action completed")
     }
 
-    suspend fun preparePlaybackUrl(url: String): Result<Unit> = withContext(Dispatchers.IO) {
-        if (url.isBlank()) return@withContext Result.success(Unit)
+    suspend fun preparePlaybackUrl(url: String): Result<Unit> =
+        preparePlaybackStreamInfo(StreamInfo(url = url)).map { Unit }
+
+    suspend fun preparePlaybackStreamInfo(streamInfo: StreamInfo): Result<StreamInfo> = withContext(Dispatchers.IO) {
+        val url = streamInfo.url
+        if (url.isBlank()) return@withContext Result.success(streamInfo)
         val plugins = discoverPlugins()
             .filter { it.enabled && it.manifest.hasCapability(StreamVaultPluginContract.CAPABILITY_PLAYBACK_PREPARE) }
         for (plugin in plugins) {
@@ -273,14 +282,14 @@ class StreamVaultPluginManager @Inject constructor(
 
             if (!response.getBoolean(StreamVaultPluginContract.KEY_HANDLED, false)) continue
             if (response.getBoolean(StreamVaultPluginContract.KEY_SUCCESS, false)) {
-                return@withContext Result.success(Unit)
+                return@withContext Result.success(applyPlaybackPreparationResponse(streamInfo, response))
             }
             return@withContext Result.error(
                 response.getString(StreamVaultPluginContract.KEY_MESSAGE).orEmpty()
                     .ifBlank { "${plugin.displayName} could not prepare playback" }
             )
         }
-        Result.success(Unit)
+        Result.success(streamInfo)
     }
 
     suspend fun rewriteCastUrl(url: String): String? = withContext(Dispatchers.IO) {
@@ -304,6 +313,84 @@ class StreamVaultPluginManager @Inject constructor(
                 .ifBlank { url }
         }
         url
+    }
+
+    private fun applyPlaybackPreparationResponse(
+        streamInfo: StreamInfo,
+        response: Bundle
+    ): StreamInfo {
+        val outputUrl = response.getString(StreamVaultPluginContract.KEY_OUTPUT_URL).orEmpty()
+            .ifBlank { streamInfo.url }
+        val responseHeaders = parseHeadersJson(response.getString(StreamVaultPluginContract.KEY_HEADERS_JSON).orEmpty())
+        val responseUserAgent = response.getString(StreamVaultPluginContract.KEY_USER_AGENT)
+            ?.takeIf { it.isNotBlank() }
+        val streamType = parsePluginStreamType(response.getString(StreamVaultPluginContract.KEY_STREAM_TYPE))
+            ?: streamInfo.streamType
+        val drmInfo = parsePluginDrmInfo(response.getString(StreamVaultPluginContract.KEY_DRM_JSON))
+            ?: streamInfo.drmInfo
+        return streamInfo.copy(
+            url = outputUrl,
+            headers = streamInfo.headers + responseHeaders,
+            userAgent = responseUserAgent ?: streamInfo.userAgent,
+            streamType = streamType,
+            containerExtension = streamInfo.containerExtension ?: streamType.defaultContainerExtension(),
+            drmInfo = drmInfo
+        )
+    }
+
+    private fun parseHeadersJson(raw: String): Map<String, String> =
+        runCatching {
+            if (raw.isBlank()) return@runCatching emptyMap()
+            val jsonObject = JSONObject(raw)
+            val headers = linkedMapOf<String, String>()
+            jsonObject.keys().forEach { key ->
+                val value = jsonObject.optString(key).takeIf { it.isNotBlank() } ?: return@forEach
+                if (key.isSafeHttpHeaderName()) headers[key] = value
+            }
+            headers
+        }.getOrDefault(emptyMap())
+
+    private fun parsePluginDrmInfo(raw: String?): DrmInfo? =
+        runCatching {
+            if (raw.isNullOrBlank()) return@runCatching null
+            val jsonObject = JSONObject(raw)
+            val scheme = parsePluginDrmScheme(jsonObject.optString("scheme")) ?: return@runCatching null
+            val licenseUrl = jsonObject.optString("licenseUrl").ifBlank {
+                jsonObject.optString("license_url")
+            }
+            if (licenseUrl.isBlank()) return@runCatching null
+            DrmInfo(
+                scheme = scheme,
+                licenseUrl = licenseUrl,
+                headers = parseHeadersJson(jsonObject.optJSONObject("headers")?.toString().orEmpty()),
+                multiSession = jsonObject.optBoolean("multiSession", false),
+                forceDefaultLicenseUrl = jsonObject.optBoolean("forceDefaultLicenseUrl", true),
+                playClearContentWithoutKey = jsonObject.optBoolean("playClearContentWithoutKey", true)
+            )
+        }.getOrNull()
+
+    private fun parsePluginDrmScheme(raw: String): DrmScheme? {
+        val normalized = raw.trim().lowercase()
+        return when {
+            normalized == "widevine" || normalized == "com.widevine.alpha" -> DrmScheme.WIDEVINE
+            normalized == "playready" || normalized == "com.microsoft.playready" -> DrmScheme.PLAYREADY
+            normalized == "clearkey" || normalized == "org.w3.clearkey" -> DrmScheme.CLEARKEY
+            else -> null
+        }
+    }
+
+    private fun parsePluginStreamType(raw: String?): StreamType? {
+        val normalized = raw.orEmpty().trim().lowercase()
+        return when (normalized) {
+            "dash", "mpd", "application/dash+xml" -> StreamType.DASH
+            "smooth_streaming", "smoothstreaming", "smooth-streaming", "ss", "ism", "isml",
+            "application/vnd.ms-sstr+xml" -> StreamType.SMOOTH_STREAMING
+            "hls", "m3u8", "application/vnd.apple.mpegurl", "application/x-mpegurl" -> StreamType.HLS
+            "mpeg_ts", "mpeg-ts", "ts" -> StreamType.MPEG_TS
+            "progressive", "file" -> StreamType.PROGRESSIVE
+            "rtsp", "rtsps" -> StreamType.RTSP
+            else -> null
+        }
     }
 
     private suspend fun syncPluginProvider(
@@ -570,6 +657,21 @@ class StreamVaultPluginManager @Inject constructor(
 private fun kotlinx.coroutines.CoroutineScope.launchCatching(block: suspend () -> Unit) {
     launch { runCatching { block() } }
 }
+
+private fun StreamType.defaultContainerExtension(): String? = when (this) {
+    StreamType.DASH -> "mpd"
+    StreamType.SMOOTH_STREAMING -> "ism"
+    StreamType.HLS -> "m3u8"
+    StreamType.MPEG_TS -> "ts"
+    StreamType.PROGRESSIVE,
+    StreamType.RTSP,
+    StreamType.UNKNOWN -> null
+}
+
+private fun String.isSafeHttpHeaderName(): Boolean =
+    isNotBlank() && all { char ->
+        char.isLetterOrDigit() || char in setOf('!', '#', '$', '%', '&', '\'', '*', '+', '.', '^', '_', '`', '|', '~', '-')
+    }
 
 @Suppress("DEPRECATION")
 private fun Bundle.metaString(key: String): String = when (val value = get(key)) {

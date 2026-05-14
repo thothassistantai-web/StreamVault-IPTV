@@ -5,8 +5,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -34,12 +35,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -53,6 +56,8 @@ import com.streamvault.app.plugins.InstalledStreamVaultPlugin
 import com.streamvault.app.plugins.PluginConfigurationAction
 import com.streamvault.app.plugins.PluginConfigurationField
 import com.streamvault.app.plugins.PluginConfigurationSection
+import com.streamvault.app.ui.components.dialogs.PremiumDialog
+import com.streamvault.app.ui.components.dialogs.PremiumDialogFooterButton
 import com.streamvault.app.ui.components.shell.AppNavigationChrome
 import com.streamvault.app.ui.components.shell.AppScreenScaffold
 import com.streamvault.app.ui.components.shell.StatusPill
@@ -72,6 +77,7 @@ fun PluginsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showInstallUrlDialog by remember { mutableStateOf(false) }
     val apkPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.installFromLocalUri(uri)
     }
@@ -108,10 +114,8 @@ fun PluginsScreen(
                 )
             } else {
                 PluginInstallPanel(
-                    installUrl = uiState.installUrl,
                     isInstalling = uiState.isInstalling,
-                    onInstallUrlChange = viewModel::updateInstallUrl,
-                    onInstallFromUrl = viewModel::installFromUrl,
+                    onInstallFromUrl = { showInstallUrlDialog = true },
                     onInstallFromFile = {
                         apkPicker.launch(
                             arrayOf(
@@ -123,6 +127,19 @@ fun PluginsScreen(
                     },
                     onRefresh = viewModel::refreshPlugins
                 )
+
+                if (showInstallUrlDialog) {
+                    PluginInstallUrlDialog(
+                        installUrl = uiState.installUrl,
+                        isInstalling = uiState.isInstalling,
+                        onInstallUrlChange = viewModel::updateInstallUrl,
+                        onDismiss = { showInstallUrlDialog = false },
+                        onInstall = {
+                            showInstallUrlDialog = false
+                            viewModel.installFromUrl()
+                        }
+                    )
+                }
 
                 uiState.syncProgress?.let {
                     Text(
@@ -219,9 +236,7 @@ private fun PluginButton(
 
 @Composable
 private fun PluginInstallPanel(
-    installUrl: String,
     isInstalling: Boolean,
-    onInstallUrlChange: (String) -> Unit,
     onInstallFromUrl: () -> Unit,
     onInstallFromFile: () -> Unit,
     onRefresh: () -> Unit
@@ -238,24 +253,8 @@ private fun PluginInstallPanel(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedTextField(
-                value = installUrl,
-                onValueChange = onInstallUrlChange,
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = { androidx.compose.material3.Text("Plugin APK URL") },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = AppColors.TextPrimary,
-                    unfocusedTextColor = AppColors.TextPrimary,
-                    focusedBorderColor = AppColors.Brand,
-                    unfocusedBorderColor = AppColors.Outline,
-                    focusedLabelColor = AppColors.Brand,
-                    unfocusedLabelColor = AppColors.TextSecondary,
-                    cursorColor = AppColors.Brand
-                )
-            )
             PluginButton(
-                enabled = !isInstalling && installUrl.isNotBlank(),
+                enabled = !isInstalling,
                 onClick = onInstallFromUrl,
                 tone = PluginButtonTone.Primary
             ) {
@@ -277,6 +276,87 @@ private fun PluginInstallPanel(
             color = AppColors.TextTertiary
         )
     }
+}
+
+@Composable
+private fun PluginInstallUrlDialog(
+    installUrl: String,
+    isInstalling: Boolean,
+    onInstallUrlChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onInstall: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val normalizedUrl = installUrl.trim()
+
+    fun submitUrl() {
+        if (!isInstalling && normalizedUrl.isNotBlank()) {
+            keyboardController?.hide()
+            onInstall()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        runCatching { focusRequester.requestFocus() }
+        keyboardController?.show()
+    }
+
+    PremiumDialog(
+        title = "Install plugin from URL",
+        subtitle = "Enter the direct APK URL. StreamVault will download it and open the installer.",
+        onDismissRequest = {
+            keyboardController?.hide()
+            if (!isInstalling) onDismiss()
+        },
+        widthFraction = 0.5f,
+        heightFraction = null,
+        content = {
+            OutlinedTextField(
+                value = installUrl,
+                onValueChange = onInstallUrlChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+                enabled = !isInstalling,
+                singleLine = true,
+                label = { androidx.compose.material3.Text("Plugin APK URL") },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(onDone = { submitUrl() }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = AppColors.TextPrimary,
+                    unfocusedTextColor = AppColors.TextPrimary,
+                    disabledTextColor = AppColors.TextSecondary,
+                    focusedBorderColor = AppColors.Brand,
+                    unfocusedBorderColor = AppColors.Outline,
+                    disabledBorderColor = AppColors.Outline.copy(alpha = 0.4f),
+                    focusedLabelColor = AppColors.Brand,
+                    unfocusedLabelColor = AppColors.TextSecondary,
+                    disabledLabelColor = AppColors.TextTertiary,
+                    cursorColor = AppColors.Brand
+                )
+            )
+        },
+        footer = {
+            PremiumDialogFooterButton(
+                label = "Cancel",
+                onClick = {
+                    keyboardController?.hide()
+                    onDismiss()
+                },
+                enabled = !isInstalling
+            )
+            PremiumDialogFooterButton(
+                label = if (isInstalling) "Installing..." else "Download and install",
+                onClick = ::submitUrl,
+                enabled = !isInstalling && normalizedUrl.isNotBlank(),
+                emphasized = true
+            )
+        }
+    )
 }
 
 @Composable
