@@ -17,6 +17,7 @@ internal fun resolveRetrySeekPositionMs(
         ResolvedStreamType.PROGRESSIVE -> positionMs
         ResolvedStreamType.HLS,
         ResolvedStreamType.DASH,
+        ResolvedStreamType.SMOOTH_STREAMING,
         ResolvedStreamType.UNKNOWN -> positionMs.takeIf { durationMs.isFiniteMediaDuration() }
         ResolvedStreamType.MPEG_TS_LIVE,
         ResolvedStreamType.RTSP -> null
