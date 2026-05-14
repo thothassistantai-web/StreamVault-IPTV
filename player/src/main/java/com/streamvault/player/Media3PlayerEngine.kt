@@ -57,6 +57,7 @@ import com.streamvault.player.playback.PlayerRetryPolicy
 import com.streamvault.player.playback.PlayerTimeoutProfile
 import com.streamvault.player.playback.PreloadCoordinator
 import com.streamvault.player.playback.ResolvedStreamType
+import com.streamvault.player.playback.resolveRetrySeekPositionMs
 import com.streamvault.player.playback.StreamTypeResolver
 import com.streamvault.player.playback.VideoStallDetector
 import com.streamvault.player.stats.PlayerStatsCollector
@@ -1932,11 +1933,14 @@ class Media3PlayerEngine @Inject constructor(
         val nextAttempt = retryAttempt + 1
         if (retryPolicy.shouldRetry(error, retryContext, playbackStarted, nextAttempt)) {
             val delayMs = retryPolicy.retryDelayMs(error, nextAttempt)
-            val retrySeekPositionMs = exoPlayer?.currentPosition?.takeIf {
-                category == PlaybackErrorCategory.FORMAT_UNSUPPORTED &&
-                    currentResolvedStreamType == ResolvedStreamType.PROGRESSIVE &&
-                    it > 0L
-            }
+            val player = exoPlayer
+            val retrySeekPositionMs = resolveRetrySeekPositionMs(
+                category = category,
+                resolvedStreamType = currentResolvedStreamType,
+                currentPositionMs = player?.currentPosition,
+                durationMs = player?.duration,
+                isCurrentMediaItemLive = player?.isCurrentMediaItemLive == true
+            )
             // retryGeneration captured and checked on Main — safe with
             // Dispatchers.Main.immediate. If the scope dispatcher is ever changed
             // (e.g. in tests), convert retryGeneration to AtomicLong.
