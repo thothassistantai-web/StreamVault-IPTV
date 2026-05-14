@@ -57,6 +57,7 @@ import com.streamvault.player.playback.PlayerRetryPolicy
 import com.streamvault.player.playback.PlayerTimeoutProfile
 import com.streamvault.player.playback.PreloadCoordinator
 import com.streamvault.player.playback.ResolvedStreamType
+import com.streamvault.player.playback.resolveRetryAttemptAfterReady
 import com.streamvault.player.playback.resolveRetrySeekPositionMs
 import com.streamvault.player.playback.StreamTypeResolver
 import com.streamvault.player.playback.VideoStallDetector
@@ -1204,6 +1205,11 @@ class Media3PlayerEngine @Inject constructor(
                 }
                 if (_playbackState.value == PlaybackState.READY) {
                     _retryStatus.value = null
+                    retryAttempt = resolveRetryAttemptAfterReady(
+                        currentAttempt = retryAttempt,
+                        playbackStarted = playbackStarted,
+                        isCurrentMediaItemLive = exoPlayer?.isCurrentMediaItemLive == true
+                    )
                     if (isPlayingTimeshiftSnapshot && pendingTimeshiftSeekToEnd) {
                         pendingTimeshiftSeekToEnd = false
                         playerOrNull()?.duration?.takeIf { it > 0L && it != C.TIME_UNSET }?.let { duration ->

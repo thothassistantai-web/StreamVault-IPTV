@@ -23,6 +23,17 @@ internal fun resolveRetrySeekPositionMs(
     }
 }
 
+internal fun resolveRetryAttemptAfterReady(
+    currentAttempt: Int,
+    playbackStarted: Boolean,
+    isCurrentMediaItemLive: Boolean
+): Int {
+    if (currentAttempt <= 0) return currentAttempt
+    if (!playbackStarted) return currentAttempt
+    if (isCurrentMediaItemLive) return currentAttempt
+    return 0
+}
+
 private fun Long?.isFiniteMediaDuration(): Boolean {
     return this != null && this != C.TIME_UNSET && this > 0L
 }
