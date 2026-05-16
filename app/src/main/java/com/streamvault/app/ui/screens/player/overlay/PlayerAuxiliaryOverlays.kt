@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,6 +35,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +45,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -66,6 +69,7 @@ import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Program
 import com.streamvault.player.PlayerStats
 import java.util.Date
+import kotlinx.coroutines.launch
 import com.streamvault.app.ui.design.AppColors.Brand as Primary
 import com.streamvault.app.ui.design.AppColors.SurfaceElevated as SurfaceVariant
 import com.streamvault.app.ui.design.AppColors.TextSecondary as TextSecondary
@@ -706,127 +710,218 @@ fun DiagnosticsOverlay(
     diagnostics: PlayerDiagnosticsUiState,
     modifier: Modifier = Modifier
 ) {
-    PlayerOverlayPanel(modifier = modifier.width(320.dp)) {
-        Column(
+    val scrollState = rememberScrollState()
+    val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
+    val canScrollUp by remember { derivedStateOf { scrollState.value > 0 } }
+    val canScrollDown by remember { derivedStateOf { scrollState.value < scrollState.maxValue } }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    PlayerOverlayPanel(modifier = modifier.width(680.dp)) {
+        Box(
             modifier = Modifier
-                .heightIn(max = 300.dp)
+                .heightIn(max = 420.dp)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Text(
-                text = stringResource(R.string.player_diagnostics_title),
-                color = Primary,
-                style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
-                fontWeight = FontWeight.Bold
-            )
-            PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_source))
-            if (diagnostics.providerName.isNotBlank()) {
-                PlayerMetaRow(stringResource(R.string.player_diagnostics_provider), diagnostics.providerName)
-            }
-            if (diagnostics.providerSourceLabel.isNotBlank()) {
-                PlayerMetaRow(stringResource(R.string.player_diagnostics_source), diagnostics.providerSourceLabel)
-            }
-            PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_playback))
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_decoder), diagnostics.decoderMode.name)
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_active_decoder), diagnostics.activeDecoderName)
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_surface), diagnostics.renderSurfaceType)
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_stream_class), diagnostics.streamClassLabel)
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_playback_state), diagnostics.playbackStateLabel)
-            if (diagnostics.archiveSupportLabel.isNotBlank()) {
-                PlayerMetaRow(stringResource(R.string.player_diagnostics_archive), diagnostics.archiveSupportLabel)
-            }
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_alternates), diagnostics.alternativeStreamCount.toString())
-            if (diagnostics.channelErrorCount > 0) {
-                PlayerMetaRow(stringResource(R.string.player_diagnostics_channel_errors), diagnostics.channelErrorCount.toString())
-            }
-            PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_video))
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_resolution), "${stats.width}x${stats.height}")
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_video_codec), stats.videoCodec)
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_video_bitrate), "${stats.videoBitrate / 1000} kbps")
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_dropped_frames), stats.droppedFrames.toString())
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_video_stalls), diagnostics.videoStallCount.toString())
-            if (diagnostics.lastVideoFrameAgoMs > 0L) {
-                PlayerMetaRow(stringResource(R.string.player_diagnostics_last_frame), "${diagnostics.lastVideoFrameAgoMs} ms")
-            }
-            if (stats.ttffMs > 0L) {
-                PlayerMetaRow("TTFF", "${stats.ttffMs} ms")
-            }
-            PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_audio))
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_audio_codec), stats.audioCodec)
-            PlayerMetaRow(
-                stringResource(R.string.player_diagnostics_audio_decoder),
-                diagnostics.activeAudioDecoderName
-            )
-            PlayerMetaRow(
-                stringResource(R.string.player_diagnostics_audio_output_path),
-                diagnostics.audioOutputPath
-            )
-            PlayerMetaRow(
-                stringResource(R.string.player_diagnostics_ffmpeg),
-                if (diagnostics.ffmpegAvailable) {
-                    diagnostics.ffmpegVersion?.let { "Available ($it)" } ?: "Available"
-                } else {
-                    "Unavailable"
-                }
-            )
-            PlayerMetaRow(
-                stringResource(R.string.player_diagnostics_compatibility_source),
-                diagnostics.compatibilityDecisionSource
-            )
-            val avSyncPathLabel = when {
-                !diagnostics.audioVideoSyncEnabled -> stringResource(R.string.player_diagnostics_av_sync_stock)
-                diagnostics.audioVideoSyncSinkActive -> stringResource(R.string.player_diagnostics_av_sync_custom)
-                else -> stringResource(R.string.player_diagnostics_av_sync_waiting)
-            }
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_av_sync), avSyncPathLabel)
-            PlayerMetaRow(stringResource(R.string.player_diagnostics_av_offset), formatOffsetLabel(diagnostics.audioVideoOffsetMs))
-            if (diagnostics.compatibilityDecisionSource != "DEFAULT") {
-                PlayerMetaRow(
-                    stringResource(R.string.player_diagnostics_compatibility_note),
-                    stringResource(R.string.player_diagnostics_compatibility_note_value),
-                    maxLines = 3
-                )
-            }
-            PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_recovery))
-            diagnostics.lastFailureReason?.let { reason ->
-                PlayerMetaRow(stringResource(R.string.player_diagnostics_last_failure), reason, maxLines = 3)
-            }
-            if (diagnostics.recentRecoveryActions.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .focusable()
+                    .onPreviewKeyEvent { event ->
+                        if (event.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) {
+                            return@onPreviewKeyEvent false
+                        }
+                        when (event.nativeKeyEvent.keyCode) {
+                            android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                coroutineScope.launch {
+                                    scrollState.animateScrollTo((scrollState.value - 120).coerceAtLeast(0))
+                                }
+                                true
+                            }
+                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                coroutineScope.launch {
+                                    scrollState.animateScrollTo((scrollState.value + 120).coerceAtMost(scrollState.maxValue))
+                                }
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+                    .verticalScroll(scrollState)
+                    .padding(top = 14.dp, bottom = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
-                    text = stringResource(R.string.player_diagnostics_recovery_actions),
+                    text = stringResource(R.string.player_diagnostics_title),
                     color = Primary,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
                     fontWeight = FontWeight.Bold
                 )
-                diagnostics.recentRecoveryActions.forEach { action ->
+                val avSyncPathLabel = when {
+                    !diagnostics.audioVideoSyncEnabled -> stringResource(R.string.player_diagnostics_av_sync_stock)
+                    diagnostics.audioVideoSyncSinkActive -> stringResource(R.string.player_diagnostics_av_sync_custom)
+                    else -> stringResource(R.string.player_diagnostics_av_sync_waiting)
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(0.48f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_source))
+                        if (diagnostics.providerName.isNotBlank()) {
+                            PlayerMetaRow(stringResource(R.string.player_diagnostics_provider), diagnostics.providerName)
+                        }
+                        if (diagnostics.providerSourceLabel.isNotBlank()) {
+                            PlayerMetaRow(stringResource(R.string.player_diagnostics_source), diagnostics.providerSourceLabel)
+                        }
+                        PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_playback))
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_decoder), diagnostics.decoderMode.name)
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_active_decoder), diagnostics.activeDecoderName)
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_surface), diagnostics.renderSurfaceType)
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_stream_class), diagnostics.streamClassLabel)
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_playback_state), diagnostics.playbackStateLabel)
+                        if (diagnostics.archiveSupportLabel.isNotBlank()) {
+                            PlayerMetaRow(stringResource(R.string.player_diagnostics_archive), diagnostics.archiveSupportLabel)
+                        }
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_alternates), diagnostics.alternativeStreamCount.toString())
+                        if (diagnostics.channelErrorCount > 0) {
+                            PlayerMetaRow(stringResource(R.string.player_diagnostics_channel_errors), diagnostics.channelErrorCount.toString())
+                        }
+                        PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_video))
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_resolution), "${stats.width}x${stats.height}")
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_video_codec), stats.videoCodec)
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_video_bitrate), "${stats.videoBitrate / 1000} kbps")
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_dropped_frames), stats.droppedFrames.toString())
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_video_stalls), diagnostics.videoStallCount.toString())
+                        if (diagnostics.lastVideoFrameAgoMs > 0L) {
+                            PlayerMetaRow(stringResource(R.string.player_diagnostics_last_frame), "${diagnostics.lastVideoFrameAgoMs} ms")
+                        }
+                        if (stats.ttffMs > 0L) {
+                            PlayerMetaRow("TTFF", "${stats.ttffMs} ms")
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(0.48f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_audio))
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_audio_codec), stats.audioCodec)
+                        PlayerMetaRow(
+                            stringResource(R.string.player_diagnostics_audio_decoder),
+                            diagnostics.activeAudioDecoderName
+                        )
+                        PlayerMetaRow(
+                            stringResource(R.string.player_diagnostics_audio_output_path),
+                            diagnostics.audioOutputPath
+                        )
+                        PlayerMetaRow(
+                            stringResource(R.string.player_diagnostics_ffmpeg),
+                            if (diagnostics.ffmpegAvailable) {
+                                diagnostics.ffmpegVersion?.let { "Available ($it)" } ?: "Available"
+                            } else {
+                                "Unavailable"
+                            }
+                        )
+                        PlayerMetaRow(
+                            stringResource(R.string.player_diagnostics_compatibility_source),
+                            diagnostics.compatibilityDecisionSource
+                        )
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_av_sync), avSyncPathLabel)
+                        PlayerMetaRow(stringResource(R.string.player_diagnostics_av_offset), formatOffsetLabel(diagnostics.audioVideoOffsetMs))
+                        if (diagnostics.compatibilityDecisionSource != "DEFAULT") {
+                            PlayerMetaRow(
+                                stringResource(R.string.player_diagnostics_compatibility_note),
+                                stringResource(R.string.player_diagnostics_compatibility_note_value),
+                                maxLines = 3
+                            )
+                        }
+                    }
+                }
+
+                PlayerOverlaySectionLabel(stringResource(R.string.player_diagnostics_section_recovery))
+                diagnostics.lastFailureReason?.let { reason ->
+                    PlayerMetaRow(stringResource(R.string.player_diagnostics_last_failure), reason, maxLines = 3)
+                }
+                if (diagnostics.recentRecoveryActions.isNotEmpty()) {
                     Text(
-                        text = action,
-                        color = AppColors.TextSecondary,
+                        text = stringResource(R.string.player_diagnostics_recovery_actions),
+                        color = Primary,
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        fontWeight = FontWeight.Bold
                     )
+                    diagnostics.recentRecoveryActions.forEach { action ->
+                        Text(
+                            text = action,
+                            color = AppColors.TextSecondary,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (diagnostics.troubleshootingHints.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.player_diagnostics_troubleshooting),
+                        color = Primary,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        fontWeight = FontWeight.Bold
+                    )
+                    diagnostics.troubleshootingHints.forEach { hint ->
+                        Text(
+                            text = hint,
+                            color = AppColors.TextSecondary,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
-            if (diagnostics.troubleshootingHints.isNotEmpty()) {
-                Text(
-                    text = stringResource(R.string.player_diagnostics_troubleshooting),
-                    color = Primary,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    fontWeight = FontWeight.Bold
-                )
-                diagnostics.troubleshootingHints.forEach { hint ->
-                    Text(
-                        text = hint,
-                        color = AppColors.TextSecondary,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = canScrollUp,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter)
+            ) {
+                DiagnosticsScrollCue(label = "^")
+            }
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = canScrollDown,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                DiagnosticsScrollCue(label = "v")
             }
         }
+    }
+}
+
+@Composable
+private fun DiagnosticsScrollCue(label: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(AppColors.Canvas.copy(alpha = 0.78f))
+            .padding(horizontal = 10.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = label,
+            color = AppColors.TextSecondary,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

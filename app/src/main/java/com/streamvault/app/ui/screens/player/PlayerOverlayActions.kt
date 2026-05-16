@@ -6,6 +6,8 @@ import com.streamvault.domain.model.ContentType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private const val DIAGNOSTICS_EXTRA_VISIBLE_MS = 10_000L
+
 fun PlayerViewModel.openChannelListOverlay() {
     clearNumericChannelInput()
     showChannelListOverlayFlow.value = true
@@ -155,7 +157,7 @@ internal fun PlayerViewModel.scheduleDiagnosticsAutoHide() {
     }
     diagnosticsHideJob?.cancel()
     diagnosticsHideJob = viewModelScope.launch {
-        delay(diagnosticsTimeoutMs)
+        delay(diagnosticsTimeoutMs + DIAGNOSTICS_EXTRA_VISIBLE_MS)
         showDiagnosticsFlow.value = false
     }
 }

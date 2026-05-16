@@ -586,7 +586,7 @@ fun PlayerScreen(
                 if (contentType != "LIVE") {
                     return@onPreviewKeyEvent false
                 }
-                if (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay) {
+                if (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showDiagnostics) {
                     return@onPreviewKeyEvent false
                 }
                 if (showTrackSelection != null || showVariantSelection || showSpeedSelection || showAudioVideoOffsetDialog || showStopPlaybackTimerDialog || showIdleStandbyTimerDialog || showProgramHistory || showSplitDialog || showEpisodePicker) {
@@ -756,7 +756,7 @@ fun PlayerScreen(
                                 viewModel.onLiveOverlayInteraction()
                             }
                             if (showChannelInfoOverlay && channelInfoSubPanelOpen) return@onKeyEvent false
-                            if (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showChannelInfoOverlay) return@onKeyEvent false
+                            if (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showChannelInfoOverlay || showDiagnostics) return@onKeyEvent false
                             if (showControls && (contentType != "LIVE" || isCatchUpPlayback)) return@onKeyEvent false
 
                             if (contentType == "LIVE" && !isCatchUpPlayback) {
@@ -773,7 +773,7 @@ fun PlayerScreen(
                                 viewModel.onLiveOverlayInteraction()
                             }
                             if (showChannelInfoOverlay && channelInfoSubPanelOpen) return@onKeyEvent false
-                            if (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay) return@onKeyEvent false
+                            if (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showDiagnostics) return@onKeyEvent false
                             if (showControls && (contentType != "LIVE" || isCatchUpPlayback)) return@onKeyEvent false
 
                             if (contentType == "LIVE" && !isCatchUpPlayback) {
@@ -798,10 +798,11 @@ fun PlayerScreen(
                             true
                         }
                         KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_DPAD_UP_RIGHT -> {
-                            if (showChannelInfoOverlay && channelInfoSubPanelOpen) {
+                            if (showDiagnostics) {
                                 true
-                            } else
-                            if (contentType == "LIVE") {
+                            } else if (showChannelInfoOverlay && channelInfoSubPanelOpen) {
+                                true
+                            } else if (contentType == "LIVE") {
                                 viewModel.playNext()
                                 true
                             } else {
@@ -809,10 +810,11 @@ fun PlayerScreen(
                             }
                         }
                         KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_DPAD_DOWN_LEFT -> {
-                            if (showChannelInfoOverlay && channelInfoSubPanelOpen) {
+                            if (showDiagnostics) {
                                 true
-                            } else
-                            if (contentType == "LIVE") {
+                            } else if (showChannelInfoOverlay && channelInfoSubPanelOpen) {
+                                true
+                            } else if (contentType == "LIVE") {
                                 viewModel.playPrevious()
                                 true
                             } else {
