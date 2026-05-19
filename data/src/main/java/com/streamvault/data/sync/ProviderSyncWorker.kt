@@ -342,17 +342,14 @@ class ProviderSyncWorker(
                 else -> Unit
             }
         }
-        if (epgStale) {
-            when (val epgResult = entryPoint.syncManager().syncEpg(provider.id, force = false)) {
-                is com.streamvault.domain.model.Result.Error -> return epgResult
-                else -> Unit
-            }
-        }
         if (movieIndexDue) {
             entryPoint.syncManager().scheduleStalkerIndexSync(provider.id, ContentType.MOVIE)
         }
         if (seriesIndexDue) {
             entryPoint.syncManager().scheduleStalkerIndexSync(provider.id, ContentType.SERIES)
+        }
+        if (epgStale) {
+            entryPoint.syncManager().scheduleBackgroundEpgSync(provider.id)
         }
         return com.streamvault.domain.model.Result.success(Unit)
     }

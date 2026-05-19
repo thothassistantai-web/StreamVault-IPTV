@@ -119,6 +119,32 @@ class SearchRepositoryImplTest {
         verify(seriesRepository, never()).getSeriesByIds(any())
     }
 
+    @Test
+    fun `unified search uses the case-insensitive DAO path for mixed-case navbar queries`() = runTest {
+        whenever(searchDao.searchAll(eq(PROVIDER_ID), any(), any(), any(), eq(LIMIT)))
+            .thenReturn(flowOf(emptyList()))
+
+        repository.searchContent(
+            providerId = PROVIDER_ID,
+            query = " NeWs ",
+            includeLive = true,
+            includeMovies = true,
+            includeSeries = true,
+            maxResultsPerSection = LIMIT
+        ).first()
+
+        verify(searchDao).searchAll(
+            providerId = eq(PROVIDER_ID),
+            ftsQuery = eq("NeWs*"),
+            rawQuery = eq("NeWs"),
+            prefixLike = eq("NeWs%"),
+            limitPerSection = eq(LIMIT)
+        )
+        verify(channelRepository, never()).searchChannels(any(), any())
+        verify(movieRepository, never()).searchMovies(any(), any())
+        verify(seriesRepository, never()).searchSeries(any(), any())
+    }
+
     private fun hit(
         contentType: String,
         contentId: Long,

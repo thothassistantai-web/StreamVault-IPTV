@@ -1,6 +1,9 @@
 package com.streamvault.data.sync
 
 import com.google.common.truth.Truth.assertThat
+import com.streamvault.data.remote.dto.XtreamCategory
+import com.streamvault.domain.model.Provider
+import com.streamvault.domain.model.ProviderType
 import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
@@ -43,5 +46,46 @@ class SyncManagerXtreamSupportTest {
                 stage = XtreamAdaptiveSyncPolicy.Stage.CATEGORY
             )
         ).isEqualTo(1)
+    }
+
+    @Test
+    fun `continueFailedCategoryOutcomes reports sequential retry progress`() = runTest {
+        val provider = Provider(
+            id = 7L,
+            name = "Test Xtream",
+            type = ProviderType.XTREAM_CODES,
+            serverUrl = "https://example.test"
+        )
+        val failedCategory = XtreamCategory(categoryId = "13", categoryName = "Sports")
+        val progress = mutableListOf<String>()
+
+        val retried = support.continueFailedCategoryOutcomes(
+            provider = provider,
+            timedOutcomes = listOf(
+                TimedCategoryOutcome(
+                    category = XtreamCategory(categoryId = "12", categoryName = "News"),
+                    outcome = CategoryFetchOutcome.Success("News", emptyList()),
+                    elapsedMs = 25L
+                ),
+                TimedCategoryOutcome(
+                    category = failedCategory,
+                    outcome = CategoryFetchOutcome.Failure("Sports", IOException("boom")),
+                    elapsedMs = 50L
+                )
+            ),
+            fetchSequentially = { category ->
+                TimedCategoryOutcome(
+                    category = category,
+                    outcome = CategoryFetchOutcome.Success(category.categoryName, emptyList()),
+                    elapsedMs = 30L
+                )
+            },
+            onCategoryRetried = { completed, total, currentLabel ->
+                progress += "$completed/$total:$currentLabel"
+            }
+        )
+
+        assertThat(progress).containsExactly("1/1:Sports")
+        assertThat(retried.last().outcome).isInstanceOf(CategoryFetchOutcome.Success::class.java)
     }
 }

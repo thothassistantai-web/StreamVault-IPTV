@@ -298,6 +298,71 @@ class StalkerProviderTest {
     }
 
     @Test
+    fun resolvePlaybackInfo_sends_absolute_portal_channel_commands_through_create_link() = runTest {
+        val api = FakeStalkerApiService(
+            profile = StalkerProviderProfile(accountName = "Room"),
+            createLinkUrl = "http://fdox.org:8080/play/live.php?mac=00:1A:79:BA:73:FA&stream=390414&extension=ts&play_token=abc123"
+        )
+        val provider = StalkerProvider(
+            providerId = 7,
+            api = api,
+            portalUrl = "https://portal.example.com/c/",
+            macAddress = "00:1A:79:12:34:56",
+            deviceProfile = "MAG322",
+            timezone = "UTC",
+            locale = "en"
+        )
+
+        val result = provider.resolvePlaybackInfo(
+            kind = StalkerStreamKind.LIVE,
+            descriptor = checkNotNull(
+                buildStalkerPlaybackDescriptor(
+                    primaryCmd = "ffmpeg http://portal.example.com/ch/390414_"
+                )
+            )
+        )
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        val success = result as Result.Success
+        assertThat(success.data.url).contains("/play/live.php")
+        assertThat(api.createLinkCalls).isEqualTo(1)
+    }
+
+    @Test
+    fun resolvePlaybackInfo_corrects_stored_direct_mode_for_absolute_portal_channel_commands() = runTest {
+        val api = FakeStalkerApiService(
+            profile = StalkerProviderProfile(accountName = "Room"),
+            createLinkUrl = "http://fdox.org:8080/play/live.php?mac=00:1A:79:BA:73:FA&stream=390414&extension=ts&play_token=abc123"
+        )
+        val provider = StalkerProvider(
+            providerId = 7,
+            api = api,
+            portalUrl = "https://portal.example.com/c/",
+            macAddress = "00:1A:79:12:34:56",
+            deviceProfile = "MAG322",
+            timezone = "UTC",
+            locale = "en"
+        )
+        val descriptor = StalkerPlaybackDescriptor(
+            primaryMode = StalkerPlaybackMode.DIRECT_URL,
+            candidates = listOf(
+                StalkerCommandVariant(
+                    cmd = "ffmpeg http://portal.example.com/ch/390414_",
+                    playbackMode = StalkerPlaybackMode.DIRECT_URL
+                )
+            )
+        )
+
+        val result = provider.resolvePlaybackInfo(
+            kind = StalkerStreamKind.LIVE,
+            descriptor = descriptor
+        )
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        assertThat(api.createLinkCalls).isEqualTo(1)
+    }
+
+    @Test
     fun authenticate_persists_effective_learned_mag_identity() = runTest {
         val provider = StalkerProvider(
             providerId = 7,
@@ -339,6 +404,9 @@ class StalkerProviderTest {
         private val createLinkUrl: String = "http://cdn.example.com/stream.ts",
         private val currentCookieHeader: String = ""
     ) : StalkerApiService {
+        var createLinkCalls: Int = 0
+            private set
+
         override suspend fun authenticate(profile: StalkerDeviceProfile): Result<Pair<StalkerSession, StalkerProviderProfile>> =
             Result.success(
                 StalkerSession(
@@ -454,7 +522,10 @@ class StalkerProviderTest {
             seriesNumber: Int?,
             archiveStartSeconds: Long?,
             archiveEndSeconds: Long?
-        ) = Result.success(createLinkUrl)
+        ): Result<String> {
+            createLinkCalls += 1
+            return Result.success(createLinkUrl)
+        }
 
         override fun currentCookieHeader(session: StalkerSession): String = currentCookieHeader
     }

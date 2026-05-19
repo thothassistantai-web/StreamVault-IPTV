@@ -107,6 +107,9 @@ internal fun detectStalkerPlaybackMode(
         host.isBlank() || host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" ->
             StalkerPlaybackMode.LOCALHOST_CMD
 
+        uri?.isStalkerChannelCommandPath() == true ->
+            StalkerPlaybackMode.LOCALHOST_CMD
+
         path.endsWith("/play/live.php") ->
             StalkerPlaybackMode.PLAY_LIVE_PORTAL
 
@@ -135,8 +138,36 @@ internal fun detectStalkerPlaybackMode(
 internal fun orderStalkerCommandVariants(
     variants: List<StalkerCommandVariant>
 ): List<StalkerCommandVariant> = variants
+    .map { variant -> variant.correctStoredCommandMode() }
     .distinctBy { it.cmd.trim() }
     .sortedWith(compareBy<StalkerCommandVariant>({ playbackModeRank(it.playbackMode) }, { it.priority }))
+
+internal fun URI.isStalkerChannelCommandPath(): Boolean {
+    val segments = path
+        ?.trim('/')
+        ?.split('/')
+        ?.filter { it.isNotBlank() }
+        .orEmpty()
+    val channelTarget = segments
+        .dropLast(1)
+        .zip(segments.drop(1))
+        .firstOrNull { (previous, _) -> previous.equals("ch", ignoreCase = true) }
+        ?.second
+        ?: return false
+    return channelTarget.trimEnd('_').all(Char::isDigit) &&
+        channelTarget.trimEnd('_').isNotBlank()
+}
+
+private fun StalkerCommandVariant.correctStoredCommandMode(): StalkerCommandVariant {
+    if (playbackMode != StalkerPlaybackMode.DIRECT_URL) {
+        return this
+    }
+    return if (detectStalkerPlaybackMode(cmd) == StalkerPlaybackMode.LOCALHOST_CMD) {
+        copy(playbackMode = StalkerPlaybackMode.LOCALHOST_CMD)
+    } else {
+        this
+    }
+}
 
 private fun playbackModeRank(mode: StalkerPlaybackMode): Int = when (mode) {
     StalkerPlaybackMode.DIRECT_URL -> 0

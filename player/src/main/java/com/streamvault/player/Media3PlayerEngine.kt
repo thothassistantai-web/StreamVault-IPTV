@@ -24,6 +24,7 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.session.MediaSession
@@ -108,6 +109,12 @@ class Media3PlayerEngine @Inject constructor(
         private const val KNOWN_BAD_FAILURE_THRESHOLD = 3
         private const val MEDIA_SESSION_ID_PREFIX = "streamvault"
         private val nextMediaSessionInstanceId = AtomicLong(1L)
+        private val LIVE_RESOLVED_STREAM_TYPES = setOf(
+            ResolvedStreamType.HLS,
+            ResolvedStreamType.SMOOTH_STREAMING,
+            ResolvedStreamType.MPEG_TS_LIVE,
+            ResolvedStreamType.RTSP
+        )
     }
 
     var constrainResolutionForMultiView: Boolean = false
@@ -339,6 +346,9 @@ class Media3PlayerEngine @Inject constructor(
             preload = false,
             playbackStarted = { playbackStarted }
         )
+        val resumePositionMs = player.currentPosition.takeIf {
+            it > 0L && playbackPlan.resolvedStreamType !in LIVE_RESOLVED_STREAM_TYPES
+        }
 
         lastStreamInfo = streamInfo
         lastMediaId = mediaSourceFactory.mediaIdFor(streamInfo)
@@ -358,8 +368,9 @@ class Media3PlayerEngine @Inject constructor(
             preload = false
         ).second
 
-        player.setMediaSource(mediaSource, /* resetPosition= */ false)
+        replaceMediaSource(player, mediaSource, resetPosition = false, reason = "renew-url")
         player.prepare()
+        resumePositionMs?.let(player::seekTo)
 
         Log.i(
             TAG,
@@ -382,8 +393,20 @@ class Media3PlayerEngine @Inject constructor(
 
     override fun stop() {
         retryJob?.cancel()
-        exoPlayer?.stop()
+        retryJob = null
+        preloadCoordinator.invalidate("stop")
+        exoPlayer?.let { player ->
+            releaseCurrentMedia(player, reason = "stop")
+        }
+        playbackStarted = false
+        hasRenderedFirstVideoFrame = false
+        lastStreamInfo = null
+        lastMediaId = null
         _playbackState.value = PlaybackState.IDLE
+        _isPlaying.value = false
+        _mediaTitle.value = null
+        statsCollector.stop()
+        statsCollector.reset()
         audioFocusController.onPauseOrStop()
     }
 
@@ -856,12 +879,7 @@ class Media3PlayerEngine @Inject constructor(
         val nextDecoderPolicy = recoveryDecoderPolicyOverride ?: resolveActiveDecoderPolicy(
             policyModeFor(requestedDecoderMode, preferredDecoderMode)
         )
-        val isLiveBuffer = currentResolvedStreamType in setOf(
-            ResolvedStreamType.HLS,
-            ResolvedStreamType.SMOOTH_STREAMING,
-            ResolvedStreamType.MPEG_TS_LIVE,
-            ResolvedStreamType.RTSP
-        )
+        val isLiveBuffer = currentResolvedStreamType in LIVE_RESOLVED_STREAM_TYPES
         val previousDecoderPolicy = activeDecoderPolicy
         val needsRecreate = activeDecoderMode != preferredDecoderMode ||
             previousDecoderPolicy != nextDecoderPolicy ||
@@ -900,16 +918,11 @@ class Media3PlayerEngine @Inject constructor(
                     preload = false
                 ).second
             preloadCoordinator.onPlaybackStarted(mediaId)
-            player.setMediaSource(mediaSource)
+            replaceMediaSource(player, mediaSource, resetPosition = true, reason = "prepare")
             player.prepare()
             seekPositionMs?.takeIf { it > 0L }?.let(player::seekTo)
 
-            val isLive = currentResolvedStreamType in setOf(
-                ResolvedStreamType.HLS,
-                ResolvedStreamType.SMOOTH_STREAMING,
-                ResolvedStreamType.MPEG_TS_LIVE,
-                ResolvedStreamType.RTSP
-            )
+            val isLive = currentResolvedStreamType in LIVE_RESOLVED_STREAM_TYPES
             val osContentType = if (isLive) {
                 android.media.AudioAttributes.CONTENT_TYPE_MUSIC
             } else {
@@ -942,6 +955,24 @@ class Media3PlayerEngine @Inject constructor(
         exoPlayer = null
         viewBinder.attachPlayer(null)
         // The caller (prepareInternal) will create a fresh player and set it up fully.
+    }
+
+    private fun replaceMediaSource(
+        player: ExoPlayer,
+        mediaSource: MediaSource,
+        resetPosition: Boolean,
+        reason: String
+    ) {
+        releaseCurrentMedia(player, reason)
+        player.setMediaSource(mediaSource, resetPosition)
+    }
+
+    private fun releaseCurrentMedia(player: ExoPlayer, reason: String) {
+        if (player.mediaItemCount == 0 && player.playbackState == Player.STATE_IDLE) return
+        player.playWhenReady = false
+        player.stop()
+        player.clearMediaItems()
+        Log.i(TAG, "released current media reason=$reason")
     }
 
     private fun getOrCreatePlayer(): ExoPlayer {

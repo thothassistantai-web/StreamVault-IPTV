@@ -496,10 +496,12 @@ internal class SyncManagerXtreamLiveStrategy(
                 categoryOutcomes
             )
         ) {
+            val failedRetryTotal = timedOutcomes.count { it.outcome is CategoryFetchOutcome.Failure }
             Log.w(
                 XTREAM_LIVE_STRATEGY_TAG,
                 "Xtream live category sync is continuing in sequential mode for failed categories on provider ${provider.id}."
             )
+            progress(provider.id, onProgress, "Retrying failed Live TV categories 0/$failedRetryTotal...")
             timedOutcomes = xtreamSupport.continueFailedCategoryOutcomes(
                 provider = provider,
                 timedOutcomes = timedOutcomes,
@@ -511,6 +513,9 @@ internal class SyncManagerXtreamLiveStrategy(
                         stageBatchSize = runtimeProfile.stageBatchSize,
                         onMappedBatch = ::stageMappedBatch
                     )
+                },
+                onCategoryRetried = { completed, total, _ ->
+                    progress(provider.id, onProgress, "Retrying failed Live TV categories $completed/$total...")
                 }
             )
             fallbackWarnings = (fallbackWarnings + if (downgradeRecommended) listOf(liveCategorySequentialModeWarning) else emptyList()).distinct()

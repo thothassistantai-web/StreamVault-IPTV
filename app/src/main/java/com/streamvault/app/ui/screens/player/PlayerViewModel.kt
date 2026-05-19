@@ -1062,8 +1062,6 @@ class PlayerViewModel @Inject constructor(
 
         val adoptedEngine = session.engine
         return runCatching {
-            // Detach the Home preview surface before Player binds its own.
-            adoptedEngine.clearRenderBinding()
             // Media3 requires a globally unique session ID. Release the main engine's
             // session before the adopted live engine enables its own replacement.
             mainPlayerEngine.setMediaSessionEnabled(false)
@@ -1090,10 +1088,11 @@ class PlayerViewModel @Inject constructor(
                 )
                 // Re-prime the adopted engine against the fullscreen surface path.
                 // Preview-to-fullscreen handoff can temporarily leave the reused live
-                // player with an audio-only pipeline until the new render view binds.
-                // Refreshing the current live media source makes the handoff more
-                // robust without re-resolving provider URLs or abandoning the adopted
-                // engine instance.
+                // player with a stale render target if the old view is detached before
+                // the new one attaches. The shared binder now switches PlayerViews in
+                // Media3's recommended order, and refreshing the live media source keeps
+                // the adopted engine synced to the fullscreen render path without
+                // re-resolving provider URLs or abandoning the engine instance.
                 playerEngine.renewStreamUrl(session.streamInfo)
                 playerEngine.play()
                 startTokenRenewalMonitoring(session.streamInfo.expirationTime)

@@ -52,4 +52,17 @@ class PlayerZapActionsTest {
 
         assertThat(states).containsExactly(true, false).inOrder()
     }
+
+    @Test
+    fun `releaseOutgoingLiveZapPlayback closes active fetchers before clearing preload`() {
+        val calls = mutableListOf<String>()
+
+        releaseOutgoingLiveZapPlayback(
+            stopPlayback = { calls += "stopPlayback" },
+            stopLiveTimeshift = { calls += "stopLiveTimeshift" },
+            clearPreload = { calls += "clearPreload" }
+        )
+
+        assertThat(calls).containsExactly("stopPlayback", "stopLiveTimeshift", "clearPreload").inOrder()
+    }
 }

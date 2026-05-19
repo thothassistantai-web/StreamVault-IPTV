@@ -40,7 +40,10 @@ class PlayerDataSourceFactoryProvider(
         preload: Boolean = false
     ): Pair<PlayerTimeoutProfile, DataSource.Factory> {
         val profile = PlayerTimeoutProfile.resolve(streamInfo, resolvedStreamType, preload)
-        val headers = streamInfo.headers
+        val headers = effectivePlaybackRequestProperties(
+            headers = streamInfo.headers,
+            userAgent = streamInfo.userAgent
+        )
         logRequestShape(streamInfo, headers, preload)
         val forceHttp1 = PlayerHttpProtocolPolicy.forceHttp1(
             resolvedStreamType = resolvedStreamType,
@@ -66,7 +69,6 @@ class PlayerDataSourceFactoryProvider(
             Log.i(TAG, "data-source streamType=$resolvedStreamType timeout=$profile httpProtocol=HTTP_1_1")
         }
         val upstreamFactory = OkHttpDataSource.Factory(client).apply {
-            streamInfo.userAgent?.takeIf { it.isNotBlank() }?.let(::setUserAgent)
             if (headers.isNotEmpty()) {
                 setDefaultRequestProperties(headers)
             }
@@ -104,6 +106,24 @@ class PlayerDataSourceFactoryProvider(
             "https" -> 443
             else -> -1
         }
+    }
+}
+
+internal fun effectivePlaybackRequestProperties(
+    headers: Map<String, String>,
+    userAgent: String?
+): Map<String, String> {
+    val normalizedUserAgent = userAgent?.trim().orEmpty()
+    if (normalizedUserAgent.isBlank()) {
+        return headers
+    }
+    return buildMap(headers.size + 1) {
+        headers.forEach { (name, value) ->
+            if (!name.equals("User-Agent", ignoreCase = true)) {
+                put(name, value)
+            }
+        }
+        put("User-Agent", normalizedUserAgent)
     }
 }
 

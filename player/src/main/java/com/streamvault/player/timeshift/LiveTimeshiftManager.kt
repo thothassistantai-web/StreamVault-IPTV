@@ -32,6 +32,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 
 internal interface LiveTimeshiftManager {
     val state: StateFlow<LiveTimeshiftState>
@@ -281,11 +282,13 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
         val effectiveDepthMs: Long = config.effectiveDepthMs(backend)
         protected val sequence = AtomicLong(0L)
         protected val stateStartMs = System.currentTimeMillis()
+        @Volatile private var activeCall: okhttp3.Call? = null
 
         abstract suspend fun capture()
         abstract suspend fun createSnapshot(): LiveTimeshiftSnapshot?
 
         open suspend fun stop() {
+            activeCall?.cancel()
             job?.cancel()
             sessionDir.deleteRecursively()
         }
@@ -294,6 +297,27 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
             streamInfo.userAgent?.takeIf { it.isNotBlank() }?.let { header("User-Agent", it) }
             streamInfo.headers.forEach { (key, value) -> header(key, value) }
         }.build()
+
+        protected fun trackCall(request: Request): okhttp3.Call {
+            val call = okHttpClient.newCall(request)
+            activeCall = call
+            return call
+        }
+
+        protected fun clearTrackedCall(call: okhttp3.Call) {
+            if (activeCall === call) {
+                activeCall = null
+            }
+        }
+
+        protected fun <T> executeRequest(request: Request, block: (Response) -> T): T {
+            val call = trackCall(request)
+            return try {
+                call.execute().use(block)
+            } finally {
+                clearTrackedCall(call)
+            }
+        }
 
         protected fun updateWindow(windowDurationMs: Long, message: String? = null) {
             val now = System.currentTimeMillis()
@@ -335,13 +359,7 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
 
         private val chunks = ArrayDeque<ProgressiveChunk>()
         private val chunkMutex = Mutex()
-        @Volatile private var activeCall: okhttp3.Call? = null
         private var runningChunkDurationMs = 0L
-
-        override suspend fun stop() {
-            activeCall?.cancel()
-            super.stop()
-        }
 
         override suspend fun capture() {
             var retryDelay = 1_000L
@@ -350,30 +368,33 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
                 currentCoroutineContext().ensureActive()
                 try {
                     val request = makeRequest(streamInfo.url)
-                    val call = okHttpClient.newCall(request)
-                    activeCall = call
-                    call.execute().use { response ->
-                        if (!response.isSuccessful) throw IOException("Timeshift stream failed with HTTP ${response.code}")
-                        val input = response.body?.byteStream() ?: throw IOException("Timeshift stream returned an empty body")
-                        retryDelay = 1_000L
-                        retryCount = 0
-                        input.use { source ->
-                            var current = createChunk()
-                            val buffer = ByteArray(PROGRESSIVE_READ_BUFFER_SIZE)
-                            while (true) {
-                                currentCoroutineContext().ensureActive()
-                                val read = source.read(buffer)
-                                if (read <= 0) break
-                                current.write(buffer, read)
-                                if (System.currentTimeMillis() - current.startedAtMs >= PROGRESSIVE_CHUNK_MS) {
+                    val call = trackCall(request)
+                    try {
+                        call.execute().use { response ->
+                            if (!response.isSuccessful) throw IOException("Timeshift stream failed with HTTP ${response.code}")
+                            val input = response.body?.byteStream() ?: throw IOException("Timeshift stream returned an empty body")
+                            retryDelay = 1_000L
+                            retryCount = 0
+                            input.use { source ->
+                                var current = createChunk()
+                                val buffer = ByteArray(PROGRESSIVE_READ_BUFFER_SIZE)
+                                while (true) {
+                                    currentCoroutineContext().ensureActive()
+                                    val read = source.read(buffer)
+                                    if (read <= 0) break
+                                    current.write(buffer, read)
+                                    if (System.currentTimeMillis() - current.startedAtMs >= PROGRESSIVE_CHUNK_MS) {
+                                        finalizeChunk(current)
+                                        current = createChunk()
+                                    }
+                                }
+                                if (current.bytesWritten > 0L) {
                                     finalizeChunk(current)
-                                    current = createChunk()
                                 }
                             }
-                            if (current.bytesWritten > 0L) {
-                                finalizeChunk(current)
-                            }
                         }
+                    } finally {
+                        clearTrackedCall(call)
                     }
                     break  // stream ended normally
                 } catch (t: Throwable) {
@@ -574,7 +595,7 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
         }
 
         private fun streamSegmentToDisk(url: String, target: File) {
-            okHttpClient.newCall(makeRequest(url)).execute().use { response ->
+            executeRequest(makeRequest(url)) { response ->
                 if (!response.isSuccessful) throw IOException("Timeshift segment failed with HTTP ${response.code}")
                 val body = response.body ?: throw IOException("Timeshift segment returned an empty body")
                 body.byteStream().use { input -> target.outputStream().use { output -> input.copyTo(output, bufferSize = PROGRESSIVE_READ_BUFFER_SIZE) } }
@@ -590,16 +611,16 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
         }
 
         private fun fetchText(url: String): String {
-            okHttpClient.newCall(makeRequest(url)).execute().use { response ->
+            return executeRequest(makeRequest(url)) { response ->
                 if (!response.isSuccessful) throw IOException("Timeshift playlist failed with HTTP ${response.code}")
-                return response.body?.string().orEmpty()
+                response.body?.string().orEmpty()
             }
         }
 
         private fun fetchBytes(url: String): ByteArray {
-            okHttpClient.newCall(makeRequest(url)).execute().use { response ->
+            return executeRequest(makeRequest(url)) { response ->
                 if (!response.isSuccessful) throw IOException("Timeshift segment failed with HTTP ${response.code}")
-                return response.body?.bytes() ?: ByteArray(0)
+                response.body?.bytes() ?: ByteArray(0)
             }
         }
 
@@ -840,7 +861,7 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
         }
 
         private fun streamSegmentToDisk(url: String, target: File) {
-            okHttpClient.newCall(makeRequest(url)).execute().use { response ->
+            executeRequest(makeRequest(url)) { response ->
                 if (!response.isSuccessful) throw IOException("DASH segment fetch failed: HTTP ${response.code}")
                 val body = response.body ?: throw IOException("DASH segment returned empty body")
                 body.byteStream().use { input -> target.outputStream().use { out -> input.copyTo(out, bufferSize = PROGRESSIVE_READ_BUFFER_SIZE) } }
@@ -848,16 +869,16 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
         }
 
         private fun fetchText(url: String): String {
-            okHttpClient.newCall(makeRequest(url)).execute().use { response ->
+            return executeRequest(makeRequest(url)) { response ->
                 if (!response.isSuccessful) throw IOException("MPD fetch failed: HTTP ${response.code}")
-                return response.body?.string().orEmpty()
+                response.body?.string().orEmpty()
             }
         }
 
         private fun fetchBytes(url: String): ByteArray {
-            okHttpClient.newCall(makeRequest(url)).execute().use { response ->
+            return executeRequest(makeRequest(url)) { response ->
                 if (!response.isSuccessful) throw IOException("DASH segment fetch failed: HTTP ${response.code}")
-                return response.body?.bytes() ?: ByteArray(0)
+                response.body?.bytes() ?: ByteArray(0)
             }
         }
 

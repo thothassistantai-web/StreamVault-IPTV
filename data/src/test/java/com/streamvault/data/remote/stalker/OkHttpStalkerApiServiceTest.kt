@@ -5,6 +5,7 @@ import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.StalkerAuthMode
 import com.streamvault.domain.model.StalkerBootstrapRecipe
 import com.streamvault.domain.model.StalkerMagPreset
+import com.streamvault.domain.model.StalkerPlaybackBackendHint
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
@@ -237,6 +238,100 @@ class OkHttpStalkerApiServiceTest {
         )
 
         assertThat(requested).containsExactly("itv" to "undefined", "vod" to "0").inOrder()
+    }
+
+    @Test
+    fun createLink_prefers_portal_endpoint_for_strict_live_temp_links() = runTest {
+        val requestedPaths = mutableListOf<String>()
+        val service = OkHttpStalkerApiService(
+            okHttpClient = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    requestedPaths += request.url.encodedPath
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(
+                            """{"js":{"cmd":"ffmpeg http://portal.example.com/play/live.php?stream=301&play_token=abc"}}"""
+                                .toResponseBody("application/json".toMediaType())
+                        )
+                        .build()
+                }
+                .build(),
+            json = Json { ignoreUnknownKeys = true }
+        )
+
+        val result = service.createLink(
+            session = StalkerSession(
+                loadUrl = "https://portal.example.com/server/load.php",
+                portalReferer = "https://portal.example.com/c/",
+                token = "token-123",
+                fingerprintEvidence = StalkerFingerprintEvidence(
+                    playbackBackendHint = StalkerPlaybackBackendHint.TEMP_LINK_STRICT
+                )
+            ),
+            profile = buildStalkerDeviceProfile(
+                portalUrl = "https://portal.example.com/c",
+                macAddress = "00:1A:79:12:34:56",
+                deviceProfile = "MAG322",
+                timezone = "UTC",
+                locale = "en"
+            ),
+            kind = StalkerStreamKind.LIVE,
+            cmd = "ffmpeg http://localhost/ch/301_"
+        )
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        assertThat(requestedPaths).containsExactly("/portal.php")
+    }
+
+    @Test
+    fun createLink_keeps_server_endpoint_for_strict_vod_links() = runTest {
+        val requestedPaths = mutableListOf<String>()
+        val service = OkHttpStalkerApiService(
+            okHttpClient = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    requestedPaths += request.url.encodedPath
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(
+                            """{"js":{"cmd":"ffmpeg http://portal.example.com/play/movie.php?stream=401.mkv&play_token=abc"}}"""
+                                .toResponseBody("application/json".toMediaType())
+                        )
+                        .build()
+                }
+                .build(),
+            json = Json { ignoreUnknownKeys = true }
+        )
+
+        val result = service.createLink(
+            session = StalkerSession(
+                loadUrl = "https://portal.example.com/server/load.php",
+                portalReferer = "https://portal.example.com/c/",
+                token = "token-123",
+                fingerprintEvidence = StalkerFingerprintEvidence(
+                    playbackBackendHint = StalkerPlaybackBackendHint.TEMP_LINK_STRICT
+                )
+            ),
+            profile = buildStalkerDeviceProfile(
+                portalUrl = "https://portal.example.com/c",
+                macAddress = "00:1A:79:12:34:56",
+                deviceProfile = "MAG322",
+                timezone = "UTC",
+                locale = "en"
+            ),
+            kind = StalkerStreamKind.MOVIE,
+            cmd = "ffmpeg http://localhost/movie/401"
+        )
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        assertThat(requestedPaths).containsExactly("/server/load.php")
     }
 
     @Test

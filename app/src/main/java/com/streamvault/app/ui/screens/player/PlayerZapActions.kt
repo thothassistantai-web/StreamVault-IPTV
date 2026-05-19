@@ -79,6 +79,16 @@ internal suspend fun <T> withScopedScrubbingMode(
     }
 }
 
+internal fun releaseOutgoingLiveZapPlayback(
+    stopPlayback: () -> Unit,
+    stopLiveTimeshift: () -> Unit,
+    clearPreload: () -> Unit
+) {
+    stopPlayback()
+    stopLiveTimeshift()
+    clearPreload()
+}
+
 fun PlayerViewModel.playNext() {
     clearNumericChannelInput()
     if (channelList.isEmpty()) return
@@ -189,6 +199,11 @@ internal fun PlayerViewModel.changeChannel(index: Int, isAutoFallback: Boolean =
         previousChannelIndex = currentChannelIndex
     }
     val requestVersion = beginPlaybackSession()
+    releaseOutgoingLiveZapPlayback(
+        stopPlayback = playerEngine::stop,
+        stopLiveTimeshift = playerEngine::stopLiveTimeshift,
+        clearPreload = { playerEngine.preload(null) }
+    )
     val channel = channelList[index]
     currentChannelIndex = index
     currentContentId = channel.id

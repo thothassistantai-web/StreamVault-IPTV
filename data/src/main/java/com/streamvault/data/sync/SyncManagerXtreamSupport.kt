@@ -242,7 +242,8 @@ internal class SyncManagerXtreamSupport(
     suspend fun <T> continueFailedCategoryOutcomes(
         provider: Provider,
         timedOutcomes: List<TimedCategoryOutcome<T>>,
-        fetchSequentially: suspend (XtreamCategory) -> TimedCategoryOutcome<T>
+        fetchSequentially: suspend (XtreamCategory) -> TimedCategoryOutcome<T>,
+        onCategoryRetried: ((completed: Int, total: Int, currentLabel: String) -> Unit)? = null
     ): List<TimedCategoryOutcome<T>> {
         val failedCategories = timedOutcomes
             .filter { it.outcome is CategoryFetchOutcome.Failure }
@@ -251,8 +252,9 @@ internal class SyncManagerXtreamSupport(
             return timedOutcomes
         }
         val replacements = LinkedHashMap<String, TimedCategoryOutcome<T>>()
-        failedCategories.forEach { category ->
+        failedCategories.forEachIndexed { index, category ->
             replacements[category.categoryId] = fetchSequentially(category)
+            onCategoryRetried?.invoke(index + 1, failedCategories.size, category.categoryName)
         }
         return timedOutcomes.map { existing ->
             replacements[existing.category.categoryId] ?: existing

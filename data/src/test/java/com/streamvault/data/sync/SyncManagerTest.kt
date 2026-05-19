@@ -646,6 +646,25 @@ class SyncManagerTest {
     }
 
     @Test
+    fun `retrySection_live_xtream_reports_saving_progress_after_category_download`() = runTest {
+        val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
+        val progressMessages = mutableListOf<String>()
+        stubXtreamLiveCatalog()
+
+        val result = mgr.retrySection(
+            providerId = 1L,
+            section = SyncRepairSection.LIVE,
+            onProgress = progressMessages::add
+        )
+        advanceUntilIdle()
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(progressMessages).contains("Saving Live TV channels...")
+        assertThat(progressMessages.indexOf("Saving Live TV channels..."))
+            .isGreaterThan(progressMessages.indexOf("Downloading Live TV by category 1/1..."))
+    }
+
+    @Test
     fun `retrySection_live_xtream_auto_manual_sync_uses_category_mode_on_mid_profile`() = runTest {
         val mgr = buildManager(providerType = ProviderType.XTREAM_CODES)
         xtreamBackend.respond(

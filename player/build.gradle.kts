@@ -78,6 +78,33 @@ val verifyLocalFfmpegArtifact by tasks.registering {
                 "FFmpeg artifact is missing required class $requiredClass"
             }
         }
+
+        val enabledDecoders = manifest.getProperty("enabledDecoders")
+            .split(',')
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toSet()
+        check("mp2" in enabledDecoders) {
+            "FFmpeg artifact must include the mp2 decoder for MPEG layer II audio streams"
+        }
+
+        val ffmpegLibraryClass = zipTree(classesJar)
+            .matching { include("androidx/media3/decoder/ffmpeg/FfmpegLibrary.class") }
+            .singleFile
+        val ffmpegLibraryClassText = ffmpegLibraryClass.readBytes().toString(Charsets.ISO_8859_1)
+        check("audio/mpeg-L2" in ffmpegLibraryClassText && "mp2" in ffmpegLibraryClassText) {
+            "FFmpeg FfmpegLibrary must map audio/mpeg-L2 to the bundled mp2 decoder"
+        }
+
+        zipTree(ffmpegAarFile)
+            .matching { include("jni/*/libffmpegJNI.so") }
+            .files
+            .forEach { nativeLibrary ->
+                val nativeLibraryText = nativeLibrary.readBytes().toString(Charsets.ISO_8859_1)
+                check("ff_mp2_decoder" in nativeLibraryText) {
+                    "FFmpeg native library is missing the mp2 decoder: ${nativeLibrary.name}"
+                }
+            }
     }
 }
 

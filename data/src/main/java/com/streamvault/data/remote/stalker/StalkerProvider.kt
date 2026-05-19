@@ -213,6 +213,18 @@ class StalkerProvider(
             )
         }
 
+    suspend fun getVodStreamsPageUsingItemCategories(categoryId: Long?, page: Int): Result<StalkerPagedResult<Movie>> =
+        mapPagedItems(ContentType.MOVIE, categoryId) { session, profile, rawCategoryId ->
+            api.getVodStreamsPage(session, profile, rawCategoryId, page)
+        }.mapData { paged ->
+            StalkerPagedResult(
+                items = paged.items.mapNotNull { item -> toMovie(item, requestedCategoryId = null) },
+                page = paged.page,
+                totalPages = paged.totalPages,
+                pageSize = paged.pageSize
+            )
+        }
+
     override suspend fun getVodInfo(vodId: Long): Result<Movie> {
         return when (val moviesResult = getVodStreams(null)) {
             is Result.Success -> moviesResult.data
@@ -409,9 +421,10 @@ class StalkerProvider(
                 val (session, accountProfile) = authResult.data
                 val profile = currentDeviceProfile()
                 var lastError: Result.Error? = null
-                val orderedCandidates = descriptor.candidates.sortedBy { variant ->
-                    if (preferredPlaybackMode != null && variant.playbackMode == preferredPlaybackMode) 0 else 1
-                }
+                val orderedCandidates = orderStalkerCommandVariants(descriptor.candidates)
+                    .sortedBy { variant ->
+                        if (preferredPlaybackMode != null && variant.playbackMode == preferredPlaybackMode) 0 else 1
+                    }
                 orderedCandidates.forEach { variant ->
                     val adapter = resolveStalkerPlaybackAdapter(
                         descriptor = descriptor,
@@ -1005,6 +1018,11 @@ class StalkerProvider(
         val host = parsed.host?.trim()?.lowercase(Locale.ROOT).orEmpty()
         if (host.isBlank()) return false
         if (host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0") return false
+        if ((kind == StalkerStreamKind.LIVE || kind == StalkerStreamKind.ARCHIVE) &&
+            parsed.isStalkerChannelCommandPath()
+        ) {
+            return false
+        }
         if ((kind == StalkerStreamKind.LIVE || kind == StalkerStreamKind.ARCHIVE) && !hasUsableLiveStreamTarget(parsed)) return false
 
         return true

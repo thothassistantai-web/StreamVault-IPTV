@@ -64,6 +64,8 @@ interface PlayerEngine {
     fun renewStreamUrl(streamInfo: StreamInfo)
     fun play()
     fun pause()
+
+    /** Stop playback and release the active media source/network connection. */
     fun stop()
     fun seekTo(positionMs: Long)
     fun seekForward(ms: Long = 10_000)

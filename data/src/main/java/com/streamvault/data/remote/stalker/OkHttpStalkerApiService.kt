@@ -772,8 +772,9 @@ class OkHttpStalkerApiService @Inject constructor(
             StalkerStreamKind.MOVIE,
             StalkerStreamKind.EPISODE -> "0"
         }
+        val playbackLoadUrl = createLinkLoadUrl(session, kind)
         val payload = requestJson(
-            url = session.loadUrl,
+            url = playbackLoadUrl,
             profile = profile,
             referer = session.portalReferer,
             token = session.token,
@@ -808,6 +809,25 @@ class OkHttpStalkerApiService @Inject constructor(
                 playbackUrl
             }
             ?: throw IOException("Portal did not return a playable URL.")
+    }
+
+    private fun createLinkLoadUrl(
+        session: StalkerSession,
+        kind: StalkerStreamKind
+    ): String {
+        if (kind != StalkerStreamKind.LIVE && kind != StalkerStreamKind.ARCHIVE) {
+            return session.loadUrl
+        }
+        if (session.fingerprintEvidence.playbackBackendHint != StalkerPlaybackBackendHint.TEMP_LINK_STRICT) {
+            return session.loadUrl
+        }
+        val normalized = StalkerUrlFactory.normalizePortalUrl(session.loadUrl)
+        if (!normalized.lowercase(Locale.ROOT).endsWith("/server/load.php")) {
+            return session.loadUrl
+        }
+        return siblingLoadUrl(normalized)
+            ?.takeIf { it.lowercase(Locale.ROOT).endsWith("/portal.php") }
+            ?: session.loadUrl
     }
 
     override fun currentCookieHeader(session: StalkerSession): String =

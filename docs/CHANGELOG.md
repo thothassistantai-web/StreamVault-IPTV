@@ -30,6 +30,8 @@ All notable product changes are recorded in this document.
 - Fixed Stalker series detail season selection when some portals returned season-shell rows again for per-season requests, which could make multiple seasons show the same pseudo-episode list instead of that season's episodes.
 - Fixed the Movies and Series Filter & Sort dialog layout so chip rows wrap cleanly instead of clipping or wasting space in the VOD modal.
 - Fixed VOD category browse sort wiring so `Newest` and `Recently Updated` no longer collapse to the same behavior; Movies now separate release-date ordering from provider-added ordering, while Series keeps `Recently Updated` based on `last_modified` and uses release metadata for `Newest` when available across both Xtream and Stalker category views.
+- Fixed top navbar unified search so mixed-case queries match live TV, movies, and series results case-insensitively.
+- Fixed `TextureView` live preview and fullscreen playback turning solid green by correcting the player-view handoff path and stale frame retention during render-surface reuse.
 - fixed diagnostics window, size and scrolling capabilities.
 
 ## [1.0.11] - 2026-05-13
