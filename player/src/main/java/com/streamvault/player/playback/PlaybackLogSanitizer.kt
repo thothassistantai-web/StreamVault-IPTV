@@ -21,12 +21,18 @@ internal object PlaybackLogSanitizer {
     private fun sanitizePath(path: String): String = sanitizePathSegments(path).take(120)
 
     private fun sanitizePathSegments(value: String): String {
-        return credentialPathRegex.replace(value) { match ->
-            "${match.groupValues[1]}${match.groupValues[2]}/<redacted>/<redacted>${match.groupValues[3]}"
+        return opaqueSegmentPathRegex.replace(
+            credentialPathRegex.replace(value) { match ->
+                "${match.groupValues[1]}${match.groupValues[2]}/<redacted>/<redacted>${match.groupValues[3]}"
+            }
+        ) { match ->
+            "${match.groupValues[1]}${match.groupValues[2]}/<redacted>${match.groupValues[3]}"
         }
     }
 
     private val credentialQueryRegex = Regex("""([?&](?:username|password|token|auth)=)[^&#\s]+""", RegexOption.IGNORE_CASE)
     private val credentialPathRegex =
         Regex("""(/)(live|movie|series|timeshift|timeshifts)/[^/\s]+/[^/\s]+([^?\s#]*)""", RegexOption.IGNORE_CASE)
+    private val opaqueSegmentPathRegex =
+        Regex("""(/)(r)/[^/\s]+([^?\s#]*)""", RegexOption.IGNORE_CASE)
 }

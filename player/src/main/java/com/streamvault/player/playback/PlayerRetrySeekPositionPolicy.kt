@@ -39,6 +39,16 @@ internal fun resolveRetryAttemptAfterPlaybackStarted(currentAttempt: Int): Int {
     return 0
 }
 
+internal fun resolveRetryAttemptForCategory(
+    currentAttempt: Int,
+    lastCategory: PlaybackErrorCategory?,
+    nextCategory: PlaybackErrorCategory
+): Int {
+    if (currentAttempt <= 0) return 1
+    if (lastCategory != nextCategory) return 1
+    return currentAttempt + 1
+}
+
 private fun Long?.isFiniteMediaDuration(): Boolean {
     return this != null && this != C.TIME_UNSET && this > 0L
 }

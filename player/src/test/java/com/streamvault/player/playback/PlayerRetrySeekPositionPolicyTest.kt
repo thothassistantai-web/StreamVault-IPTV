@@ -102,4 +102,26 @@ class PlayerRetrySeekPositionPolicyTest {
 
         assertThat(nextAttempt).isEqualTo(0)
     }
+
+    @Test
+    fun `new retry category starts its own attempt budget`() {
+        val nextAttempt = resolveRetryAttemptForCategory(
+            currentAttempt = 1,
+            lastCategory = PlaybackErrorCategory.LIVE_WINDOW,
+            nextCategory = PlaybackErrorCategory.SOURCE_MALFORMED
+        )
+
+        assertThat(nextAttempt).isEqualTo(1)
+    }
+
+    @Test
+    fun `same retry category increments current attempt`() {
+        val nextAttempt = resolveRetryAttemptForCategory(
+            currentAttempt = 2,
+            lastCategory = PlaybackErrorCategory.SOURCE_MALFORMED,
+            nextCategory = PlaybackErrorCategory.SOURCE_MALFORMED
+        )
+
+        assertThat(nextAttempt).isEqualTo(3)
+    }
 }

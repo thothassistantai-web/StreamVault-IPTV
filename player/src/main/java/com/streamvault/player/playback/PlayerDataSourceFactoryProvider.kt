@@ -14,6 +14,9 @@ import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 
+internal fun shouldUsePlatformHttpDataSource(resolvedStreamType: ResolvedStreamType): Boolean =
+    false
+
 @UnstableApi
 class PlayerDataSourceFactoryProvider(
     private val context: Context,
@@ -64,7 +67,16 @@ class PlayerDataSourceFactoryProvider(
                 setDefaultRequestProperties(headers)
             }
         }
-        val factory = DefaultDataSource.Factory(context, upstreamFactory)
+        val defaultFactory = DefaultDataSource.Factory(context, upstreamFactory)
+        val factory = if (shouldWrapDataSourceReadStats(resolvedStreamType)) {
+            PlayerDataSourceReadStatsFactory(
+                upstream = defaultFactory,
+                resolvedStreamType = resolvedStreamType,
+                initialTargetUrl = streamInfo.url
+            )
+        } else {
+            defaultFactory
+        }
         return profile to factory
     }
 

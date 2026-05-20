@@ -11,6 +11,7 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 private const val LIVE_WINDOW_RETRY_DELAY_MS = 500L
+private const val LIVE_HLS_MALFORMED_RETRY_ATTEMPTS_AFTER_START = 12
 
 data class PlaybackRetryContext(
     val resolvedStreamType: ResolvedStreamType,
@@ -62,7 +63,24 @@ class PlayerRetryPolicy(
             PlaybackErrorCategory.LIVE_WINDOW -> "refresh-live-window"
             PlaybackErrorCategory.NETWORK -> "transient-network"
             PlaybackErrorCategory.HTTP_SERVER -> "server-retryable"
-            else -> "retryable-source"
+            PlaybackErrorCategory.SOURCE_MALFORMED ->
+                if (streamContext.resolvedStreamType == ResolvedStreamType.HLS) {
+                    "malformed-live-hls-refresh"
+                } else {
+                    "malformed-source"
+                }
+            PlaybackErrorCategory.HTTP_AUTH -> "terminal-auth"
+            PlaybackErrorCategory.SSL -> "terminal-tls"
+            PlaybackErrorCategory.CLEAR_TEXT_BLOCKED -> "terminal-cleartext"
+            PlaybackErrorCategory.DRM -> "terminal-drm"
+            PlaybackErrorCategory.DECODER -> "terminal-decoder"
+            PlaybackErrorCategory.FORMAT_UNSUPPORTED -> "format-unsupported"
+            PlaybackErrorCategory.UNKNOWN ->
+                if (streamContext.isLive) {
+                    "retryable-live-unknown"
+                } else {
+                    "retryable-source"
+                }
         }
     }
 
@@ -101,7 +119,8 @@ class PlayerRetryPolicy(
             PlaybackErrorCategory.DECODER,
             PlaybackErrorCategory.CLEAR_TEXT_BLOCKED,
             PlaybackErrorCategory.SSL,
-            PlaybackErrorCategory.HTTP_AUTH,
+            PlaybackErrorCategory.HTTP_AUTH -> 0
+
             PlaybackErrorCategory.FORMAT_UNSUPPORTED -> if (playbackStarted) 1 else 0
 
             PlaybackErrorCategory.LIVE_WINDOW -> 1
@@ -118,11 +137,16 @@ class PlayerRetryPolicy(
             }
 
             PlaybackErrorCategory.SOURCE_MALFORMED -> when {
+                streamContext.resolvedStreamType == ResolvedStreamType.HLS && playbackStarted ->
+                    LIVE_HLS_MALFORMED_RETRY_ATTEMPTS_AFTER_START
+                playbackStarted -> 0
+                else -> 1
+            }
+            PlaybackErrorCategory.UNKNOWN -> when {
                 streamContext.isLive && playbackStarted -> 3
                 playbackStarted -> 0
                 else -> 1
             }
-            PlaybackErrorCategory.UNKNOWN -> if (playbackStarted) 0 else 1
         }
     }
 

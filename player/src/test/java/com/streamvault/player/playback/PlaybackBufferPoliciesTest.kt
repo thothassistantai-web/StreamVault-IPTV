@@ -14,6 +14,8 @@ class PlaybackBufferPoliciesTest {
         assertThat(policy.maxBufferMs).isEqualTo(30_000)
         assertThat(policy.playbackBufferMs).isEqualTo(1_500)
         assertThat(policy.rebufferMs).isEqualTo(5_000)
+        assertThat(policy.targetBufferBytes).isEqualTo(-1)
+        assertThat(policy.prioritizeTimeOverSizeThresholds).isTrue()
     }
 
     @Test
@@ -25,6 +27,24 @@ class PlaybackBufferPoliciesTest {
         assertThat(policy.maxBufferMs).isEqualTo(45_000)
         assertThat(policy.playbackBufferMs).isEqualTo(1_500)
         assertThat(policy.rebufferMs).isEqualTo(5_000)
+        assertThat(policy.targetBufferBytes).isEqualTo(-1)
+        assertThat(policy.prioritizeTimeOverSizeThresholds).isTrue()
+    }
+
+    @Test
+    fun `mpeg ts live prioritizes playable time over byte target`() {
+        val policy = PlaybackBufferPolicies.forPlayback(
+            resolvedStreamType = ResolvedStreamType.MPEG_TS_LIVE,
+            compatibilityMode = false
+        )
+
+        assertThat(policy.label).isEqualTo("mpeg-ts-live")
+        assertThat(policy.minBufferMs).isEqualTo(5_000)
+        assertThat(policy.maxBufferMs).isEqualTo(10_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(1_500)
+        assertThat(policy.rebufferMs).isEqualTo(5_000)
+        assertThat(policy.targetBufferBytes).isEqualTo(16 * 1024 * 1024)
+        assertThat(policy.prioritizeTimeOverSizeThresholds).isTrue()
     }
 
     @Test
@@ -36,5 +56,7 @@ class PlaybackBufferPoliciesTest {
         assertThat(policy.maxBufferMs).isEqualTo(240_000)
         assertThat(policy.playbackBufferMs).isEqualTo(8_000)
         assertThat(policy.rebufferMs).isEqualTo(18_000)
+        assertThat(policy.targetBufferBytes).isEqualTo(-1)
+        assertThat(policy.prioritizeTimeOverSizeThresholds).isTrue()
     }
 }

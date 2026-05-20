@@ -26,6 +26,18 @@ internal data class PlayerPlaybackStreamResolution(
     val credentialFailureMessage: String? = null
 )
 
+internal fun shouldUseStoredLiveStreamInfo(
+    logicalUrl: String,
+    storedStreamUrl: String
+): Boolean {
+    val requestedUrl = logicalUrl.trim()
+    val storedUrl = storedStreamUrl.trim()
+    return requestedUrl.isBlank() || requestedUrl == storedUrl
+}
+
+internal fun shouldStartLiveTimeshiftForStreamClass(streamClassLabel: String): Boolean =
+    streamClassLabel != "Catch-up" && streamClassLabel != "MPEG-TS fallback"
+
 internal fun buildSeriesEpisodeResolution(
     series: Series,
     episodeId: Long,
@@ -75,10 +87,12 @@ internal suspend fun resolvePlayerPlaybackStreamInfo(
                 channelRepository.getChannel(internalContentId)?.let { channel ->
                     fallbackStreamId = channel.streamId.takeIf { it > 0L }
                         ?: channel.epgChannelId?.toLongOrNull()
-                    channelRepository.getStreamInfo(channel).getOrNull()?.let { resolved ->
-                        return PlayerPlaybackStreamResolution(
-                            streamInfo = resolved.copy(title = resolved.title ?: currentTitle)
-                        )
+                    if (shouldUseStoredLiveStreamInfo(logicalUrl, channel.streamUrl)) {
+                        channelRepository.getStreamInfo(channel).getOrNull()?.let { resolved ->
+                            return PlayerPlaybackStreamResolution(
+                                streamInfo = resolved.copy(title = resolved.title ?: currentTitle)
+                            )
+                        }
                     }
                 }
             }
