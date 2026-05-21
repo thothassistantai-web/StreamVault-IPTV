@@ -115,6 +115,7 @@ internal fun PlayerViewModel.applyPrepareSessionState(
     if (currentContentType != ContentType.SERIES_EPISODE || providerId <= 0 || currentSeriesId == null) {
         clearSeriesEpisodeContext()
     }
+    reconcileStalkerPlaybackFetchDeferral()
     if (currentContentType != ContentType.LIVE) {
         lastRecordedLivePlaybackKey = null
         recentChannelsJob?.cancel()

@@ -2,6 +2,7 @@ package com.streamvault.app.ui.screens.player
 
 import androidx.lifecycle.viewModelScope
 import com.streamvault.domain.model.ContentType
+import com.streamvault.domain.model.ProviderType
 import com.streamvault.player.PlayerEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -65,6 +66,43 @@ internal fun PlayerViewModel.startTokenRenewalMonitoring(expirationTime: Long?) 
     }
 }
 
+internal suspend fun PlayerViewModel.synchronizeStalkerPlaybackFetchDeferral(isPlaying: Boolean) {
+    if (!isPlaying) {
+        stopActiveStalkerPlaybackFetchDeferral()
+        return
+    }
+
+    val providerId = currentProviderId.takeIf { it > 0L } ?: run {
+        stopActiveStalkerPlaybackFetchDeferral()
+        return
+    }
+    val provider = providerRepository.getProvider(providerId)
+    if (provider?.type != ProviderType.STALKER_PORTAL) {
+        stopActiveStalkerPlaybackFetchDeferral()
+        return
+    }
+    val previousProviderId = activeStalkerPlaybackProviderId
+    if (previousProviderId != null && previousProviderId != providerId) {
+        syncManager.noteStalkerPlaybackStopped(previousProviderId)
+    }
+    if (previousProviderId != providerId) {
+        syncManager.noteStalkerPlaybackStarted(providerId)
+        activeStalkerPlaybackProviderId = providerId
+    }
+}
+
+internal fun PlayerViewModel.reconcileStalkerPlaybackFetchDeferral() {
+    viewModelScope.launch {
+        synchronizeStalkerPlaybackFetchDeferral(playerEngine.isPlaying.value)
+    }
+}
+
+internal fun PlayerViewModel.stopActiveStalkerPlaybackFetchDeferral() {
+    val providerId = activeStalkerPlaybackProviderId ?: return
+    activeStalkerPlaybackProviderId = null
+    syncManager.noteStalkerPlaybackStopped(providerId)
+}
+
 fun PlayerViewModel.onAppBackgrounded() {
     if (!isAppInForeground) return
     isAppInForeground = false
@@ -90,6 +128,7 @@ fun PlayerViewModel.onAppForegrounded() {
 }
 
 fun PlayerViewModel.onPlayerScreenDisposed() {
+    stopActiveStalkerPlaybackFetchDeferral()
     if (currentContentType != ContentType.LIVE) {
         viewModelScope.launch {
             persistPlaybackProgress()

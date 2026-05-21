@@ -15,6 +15,7 @@ import com.streamvault.app.util.isPlaybackComplete
 import com.streamvault.app.tv.LauncherRecommendationsManager
 import com.streamvault.app.tv.WatchNextManager
 import com.streamvault.data.remote.stalker.StalkerUrlFactory
+import com.streamvault.data.sync.SyncManager
 import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.data.security.CredentialDecryptionException
 import com.streamvault.domain.manager.RecordingManager
@@ -98,6 +99,7 @@ class PlayerViewModel @Inject constructor(
     internal val xtreamStreamUrlResolver: XtreamStreamUrlResolver,
     internal val seekThumbnailProvider: SeekThumbnailProvider,
     internal val livePreviewHandoffManager: LivePreviewHandoffManager,
+    internal val syncManager: SyncManager,
     private val okHttpClient: OkHttpClient,
 ) : ViewModel() {
     companion object {
@@ -305,6 +307,7 @@ class PlayerViewModel @Inject constructor(
     internal var currentCombinedProfileMembers: List<CombinedM3uProfileMember> = emptyList()
     internal var combinedCategoriesById: Map<Long, CombinedCategory> = emptyMap()
     private var lastObservedPlaybackState: PlaybackState = PlaybackState.IDLE
+    internal var activeStalkerPlaybackProviderId: Long? = null
 
     internal var epgJob: Job? = null
     internal var playlistJob: Job? = null
@@ -466,6 +469,14 @@ class PlayerViewModel @Inject constructor(
                     }
                 }
             }
+        }
+        viewModelScope.launch {
+            activePlayerEngineFlow
+                .flatMapLatest { it.isPlaying }
+                .distinctUntilChanged()
+                .collect { isPlaying ->
+                    synchronizeStalkerPlaybackFetchDeferral(isPlaying)
+                }
         }
         viewModelScope.launch {
             activePlayerEngineFlow.flatMapLatest { it.retryStatus }.collect { status ->

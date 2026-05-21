@@ -16,6 +16,7 @@ import com.streamvault.data.local.entity.MovieBrowseEntity
 import com.streamvault.data.local.entity.MovieEntity
 import com.streamvault.data.local.entity.PlaybackHistoryLiteEntity
 import com.streamvault.data.local.entity.ProviderEntity
+import com.streamvault.data.local.entity.XtreamIndexJobEntity
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.data.remote.stalker.StalkerDeviceProfile
 import com.streamvault.data.remote.stalker.StalkerProviderProfile
@@ -239,6 +240,36 @@ class MovieRepositoryImplTest {
         verify(movieDao, never()).replaceCategory(eq(7L), eq(42L), any())
         verify(movieCategoryHydrationDao, never()).upsert(any())
         verify(xtreamApiService, never()).getVodStreams(any(), any())
+    }
+
+    @Test
+    fun `getMoviesByCategory prioritizes stalker category when background fetch is already running`() = runTest {
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
+        whenever(preferencesRepository.xtreamBase64TextCompatibility).thenReturn(flowOf(false))
+        whenever(movieDao.getCountByCategory(7L, 42L)).thenReturn(flowOf(0))
+        whenever(movieDao.getByCategory(7L, 42L)).thenReturn(flowOf(emptyList()))
+        whenever(movieCategoryHydrationDao.get(7L, 42L)).thenReturn(null)
+        whenever(xtreamIndexJobDao.get(7L, ContentType.MOVIE.name)).thenReturn(
+            XtreamIndexJobEntity(providerId = 7L, section = ContentType.MOVIE.name, state = "RUNNING")
+        )
+        whenever(providerDao.getById(7L)).thenReturn(
+            ProviderEntity(
+                id = 7L,
+                name = "Stalker",
+                type = ProviderType.STALKER_PORTAL,
+                serverUrl = "http://example.com",
+                username = "",
+                password = "pass",
+                status = ProviderStatus.ACTIVE
+            )
+        )
+        val repository = createRepository()
+
+        val result = repository.getMoviesByCategory(7L, 42L).first()
+
+        assertThat(result).isEmpty()
+        verify(syncManager).prioritizeStalkerIndexCategory(7L, ContentType.MOVIE, 42L)
+        verify(stalkerApiService, never()).getVodStreamsPage(any(), any(), anyOrNull(), any())
     }
 
     @Test

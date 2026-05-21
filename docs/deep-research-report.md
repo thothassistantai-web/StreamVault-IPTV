@@ -1,90 +1,248 @@
-# Practical MAG Compatibility Gaps in Stalker Playback
+# Executive Summary
 
-## Core diagnosis
+Stalker-based IPTV clients perform an initial multi-step sync when new portal credentials are entered.  First, the client “handshakes” with the portal (type=`stb&action=handshake`), obtaining a bearer token and device profile【84†L89-L97】【84†L109-L114】. Using this token, the client fetches channel categories (e.g. `type=itv&action=get_genres`) and then paged channel lists, as well as VOD (video-on-demand) categories (e.g. `type=vod&action=get_categories`) and their items (via `type=vod&action=get_ordered_list`)【90†L3333-L3341】【96†L1969-L1978】.  These API calls typically return JSON objects with keys like `"total_items"`, `"max_page_items"`, and a `"data"` array of item records.  For example, a `get_ordered_list` response contains a top-level `"js"` object with `total_items` and `data` arrays【96†L1969-L1978】.  Payload sizes vary by provider; one page may carry tens to hundreds of items (each item often hundreds of bytes), so VOD libraries in the thousands can yield many kilobytes or even megabytes of JSON. In practice, clients employ numerous strategies (partial loading, caching, parallel fetches, compression, etc.) to make the initial load feel fast despite large data. Server-side, portal middlewares use indexing, pagination, gzip compression, CDN-backed assets, and possibly pre-generated manifests to speed responses. Popular clients (including open-source Stalker plugins and custom sync tools) typically page through categories in parallel and cache results. Real-world reports note first-time syncs taking on the order of ~10–60 seconds for very large catalogs, whereas optimized incremental loading and local caching greatly improve perceived responsiveness【85†L328-L336】【75†L193-L200】.  Key security points: all calls use an access token (Bearer scheme) bound to the device MAC, and clients must refresh that token or re-handshake if it expires. Rate limits are not well-documented; providers may throttle excessive requests. 
 
-The pattern you described, where handshake, profile loading, live/VOD/series catalogues, and even `create_link` appear to work but playback fails, is exactly what you would expect from a **partial MAG emulation that passes the control plane but diverges on the media plane**. In Ministra/Stalker, catalogue browsing rides mostly on `load.php` JSON calls, while playback crosses into a more sensitive path that can involve device-bound identity checks, stream-source selection, temporary-link generation, NGINX/secure-link validation, Flussonic/Wowza integration, and per-channel filtering. Official Infomir documentation and the archived MAG client code make that split very clear. citeturn22view0turn35view0turn34view0turn37view0turn45view0
+**Sources:** Official Stalker middleware/API discussions and code【84†L89-L97】【90†L3333-L3341】【96†L1969-L1978】, IPTV client implementations and forum reports【85†L328-L336】【75†L193-L200】. 
 
-That is why “catalogue works, playback fails” is not a contradiction. A portal can happily authorise the STB-facing API enough to return genres, channel lists, VOD metadata, and even a provisional `create_link` response, while still rejecting the **actual stream retrieval** because the client fingerprint, the pre-play bootstrap state, or the final URL fetch path does not match what the portal expects from a real MAG-style device. citeturn26view0turn27search10turn32view0turn35view0turn37view0
+## Stalker Portal API & Initial Sync Endpoints
 
-## What dedicated MAG-style clients actually emulate
+On first sync the client typically executes these steps (see flowchart below):
 
-A working MAG-style client does more than send a MAC address. In real traces and in archived client code, Stalker control-plane requests typically include the portal referer, MAC-language-timezone cookies, a bearer token after handshake, and the legacy MAG header pair of a QtEmbedded `User-Agent` plus `X-User-Agent` carrying model/link-type information. A representative pattern looks like this:
-
-```text
-Referer: http://<portal>/stalker_portal/c/
-Cookie: mac=<MAC>; stb_lang=<lang>; timezone=<tz>
-Authorization: Bearer <token>
-X-User-Agent: Model: MAG250; Link: WiFi
-User-Agent: Mozilla/5.0 (QtEmbedded; U; Linux; C) ... MAG200 stbapp ver: 2 rev: 250 ...
+```mermaid
+flowchart LR
+    A[Enter Portal Credentials] --> B[STB Handshake<br/>(type=stb&action=handshake)]
+    B -->|returns token| C[Get Profile (type=stb&action=get_profile)]
+    C -->|device settings| D[Get IPTV Categories<br/>(type=itv&action=get_genres)]
+    D --> E[Get IPTV Lists<br/>(type=itv&action=get_ordered_list…p=1,2,…)]
+    C --> F[Get VOD Categories<br/>(type=vod&action=get_categories)]
+    F --> G[Get VOD Movies<br/>(type=vod&action=get_ordered_list…p=1,2,…)]
+    G --> H[Get VOD Series/Seasons (if needed)]
+    E & G --> I[Load EPG (type=itv&action=get_short_epg&...)]
 ```
 
-The same older-style header set also appears in third-party implementations that intentionally mimic MAG behaviour. citeturn47view0turn13search1turn41search0
+1. **Handshake/Auth (STB):** The client calls `/portal.php?type=stb&action=handshake` (with required HTTP headers including the device MAC, user-agent, etc.)【84†L86-L94】.  The portal returns a JSON with an access token: e.g. `{"js":{"token":"C00F7332ED272F00D5FD3E82F567A282"}}`【84†L89-L97】. This token must be included as `Authorization: Bearer <token>` in subsequent calls. 
 
-The bigger compatibility gap is the **full `get_profile` fingerprint**, not just the headers. Archived MAG JS code shows `get_profile` sending `stb_type`, `sn`, `ver`, `image_version`, `hw_version`, `device_id`, `device_id2`, `signature`, `client_type=STB`, `video_out`, `metrics`, `hw_version_2`, `timestamp`, `api_signature`, and `prehash`. The same code also shows that newer model families such as `MAG322`, `MAG324`, and `AuraHD4` do **not** use exactly the same `GetUID` pattern as the older MAG250-style path. By contrast, older third-party clients often stop at the legacy subset: `stb_type=MAG250`, `image_version=216`, `hw_version=1.7-BD-00`, blank `device_id*`, blank `signature`, and no newer telemetry fields. That difference is large enough for a hardened portal to notice even if catalogue calls still succeed. citeturn22view0turn21view2turn21view3turn21view4turn42view0
+2. **Get STB Profile:** Next, the client calls `/portal.php?type=stb&action=get_profile` using the token【84†L109-L114】. The JSON profile includes device settings and user info (e.g. `parent_password`, `client_type`, etc.) which some clients may cache. 
 
-The bootstrap sequence also matters. In the archived MAG client, handshake is followed by `get_profile`, then `get_localization`, then `user_init`, and later TV-related initialisation pulls favourites, modules, and first-channel player state. Real traffic traces also show `watchdog/get_events` beginning during TV initialisation, not as an optional afterthought. In other words, a dedicated client arrives at playback with more state already established than many custom players reproduce. citeturn22view0turn44view0turn44view2turn47view0
+3. **Load Channel Categories (Genres):** With the token, call `/portal.php?type=itv&action=get_genres`【85†L328-L336】. This returns an array of “genres” (live-TV categories), e.g. 
+   ```json
+   {"js":[{"id":"*","title":"All","alias":"All",...},{"id":"173","title":"TR|TURKIYE",...}, ...]}
+   ``` 
+   (Note: the example above from【85†L333-L341】 shows an `"id":"*" All` plus numbered categories.) Each genre has an internal ID used to fetch its channels.
 
-A subtle but practical point is that MAG identity is expected to be **internally coherent**. Official docs show model-based access controls via `allowed_stb_types` and `strict_stb_type_check`, while MAG client code and traces show a consistent tuple of model, serial number, version string, image version, hardware version, player version, and device identifiers. If your app claims one model in `X-User-Agent`, another in `stb_type`, and a third-era firmware string in `ver`, you may still browse, but you are very easy to classify as non-native. citeturn37view0turn22view0turn47view0
+4. **Load Channel Lists:** For each genre or all-channels, the client pages through `/portal.php?type=itv&action=get_ordered_list&genre=<id>&p=1` etc【85†L406-L415】. The response JSON contains `"total_items"`, `"max_page_items"`, and a `"data"` array of channel objects.  (The client typically loops `p=1,2,...` until all pages are fetched【85†L416-L424】.) Channel objects include fields like `id`, `name`, `cmd` (stream command), `logo`, and others. For example, one returned channel entry might be: 
+   ```json
+   {"id":"3031","name":"NEDERLAND 4K+","number":"462","cmd":"ffmpeg http://localhost/ch/3031_","hd":"0",...}
+   ``` 
+   (See【85†L421-L428】 for a truncated example.)
 
-## The playback boundary where partial emulation fails
+5. **Load VOD Categories:** Parallel to channels, the client fetches VOD categories. Stalker portals use `/server/load.php?type=vod&action=get_categories` (or equivalently `portal.php?...`) to obtain VOD category lists【90†L3333-L3341】. Each category has fields like `"id"` and `"title"`. These are analogous to “movie genres.”
 
-The Stalker playback path is more variable than the browsing path. Open-source Stalker server code shows `createLink()` branching between direct URLs, load-balanced stream choices, and temporary HTTP links, and it explicitly uses request variables such as `disable_ad` and `force_ch_link_check` while assembling the final `cmd`. Older third-party clients also show `create_link` defaults such as `cmd`, `forced_storage`, and `disable_ad`, and some of them add a referer only for `ITV_CREATE_LINK`. That means a client can be “mostly correct” for catalogue calls yet still differ at the one request that actually decides how playback is resolved. citeturn5view0turn33search0turn42view0
+6. **Load VOD Lists:** For each VOD category (or all categories), the client calls `/server/load.php?type=vod&action=get_ordered_list&category=<id>&p=1` etc【90†L3333-L3341】【96†L1969-L1978】. The code examples show parameters like `'sortby':'added'`, `'not_ended':'0'`, `'p':page`, etc.【96†L1969-L1978】.  The response JSON structure is similar: it contains `"js": {"total_items": <N>, "max_page_items": <M>, "data": [ {...}, {...}, ... ] }`.  Each item in `"data"` is a VOD item with fields like `"id"`, `"name"`, `"category_id"`, and usually a `"cmd"` or `"url"` field for streaming, plus a `"screenshot_uri"` or thumbnail URL, `"modified"`, etc.  For series, there may be `is_series` flags and separate APIs to list episodes or seasons. The open-source code shows clients iterating pages until all items are retrieved【96†L1969-L1978】.
 
-Infomir’s official temporary-link documentation shows why this matters. In the recommended HTTP temporary-link setup, the player requests a `/ch/<token>` URL on the NGINX front end; NGINX rewrites that to `chk_tmp_tv_link.php`, and then only an internal `/get/<host>/<path>` location is allowed to proxy the real upstream stream. The documented config forwards `X-Real-IP $remote_addr`, and the platform documentation separately insists on enabling Apache `remoteip` support so the backend sees the subscriber’s real source IP correctly. In the secure-link variant, the signed URL can even include `$remote_addr` in the MD5 calculation, which makes the final media fetch explicitly **IP-bound**. citeturn35view0turn34view0turn37view0
+7. **Get Episode/Series Details (if any):** If the provider supports TV shows/series, the client might next call `type=vod&action=get_seasons` or similar to fetch seasons and episodes (as seen in open-source clients)【70†L3925-L3933】. 
 
-That IP binding is one of the most important practical gaps. If your custom player resolves `create_link` on one path but fetches media via a different egress route, a localhost proxy, a server-side relay, a different interface, or a player engine that does not preserve the same outward identity as the control-plane client, the resulting `/ch/...` or secure-link URL can be valid for a MAG client and invalid for your app. That failure mode is especially consistent with “MyTVOnline+ works, custom app fails”, because the dedicated client is more likely to request the portal-provided playback URL directly from the device’s own network stack. citeturn34view0turn35view0turn37view0
+8. **Catch-up/EPG:** Finally, clients fetch any electronic program guide (EPG) or TV-archive data via `type=itv&action=get_short_epg` or similar calls (not shown above). These can be large (whole EPG) but are often paged or limited by time window.
 
-The same principle shows up in backend-specific integrations. Infomir’s Flussonic helper checks the temporary token and, when valid, returns headers such as `X-AuthDuration`, `X-Unique`, `X-Max-Sessions`, and `X-UserId` for the media server path. That tells you that some playback authorisation is no longer happening in `load.php` at all; it happens in the media-server integration layer after `create_link`. So a control-plane clone can still fail if it does not enter the exact media path the portal expects. citeturn45view0
+**Typical JSON Payloads:** All portal responses are JSON (the examples above show JSON under `"js": {...}`). Exact sizes depend on provider. For instance, one channel list page in Quassi’s example had ~14 items【85†L421-L429】. If a VOD category has 2000 movies and 50 per page, that’s 40 pages; if each item is ~300–500 bytes, total JSON could be ~200 KB per category. Clients usually do *not* fetch all VOD data at once unless caching for offline use. 
 
-Infomir also added support for several channel links with a **user-agent filter**, and the platform documents the ability to restrict streaming-link access by device model. That is a direct explanation for why browsing can work while playback fails: the channel is visible in the catalogue, but the actual stream source chosen at play time may be filtered by model, user-agent, or configured access rule. citeturn36search1turn23search6turn37view0
+## Client-Side Loading Strategies
 
-## Why browsing and even `create_link` can succeed before playback still fails
+To keep the UI responsive, clients use tactics like:
 
-Handshake and catalogue browsing are a relatively low bar because they mainly prove that the portal is willing to talk to the client as an STB-like consumer. Playback is a higher bar because it is where the portal finally has to bind a subscriber, a device identity, a stream URL, a source IP, and a media backend together. Official platform configuration includes anti-cloning options such as `enable_device_id_validation`, model gating via `allowed_stb_types`, stricter model checks, OAuth-to-STB binding options, and stronger fake-device protections added over time. Infomir staff explicitly described `enable_device_id_validation` as a check on STB-information integrity and anti-cloning protection. citeturn27search1turn27search10turn36search1turn37view0
+- **Incremental/Paged Loading:** Don’t fetch all items in one shot. Fetch the first page of each list immediately (e.g. first ITV and first VOD pages), display those, and load further pages in background. The example plugin code above explicitly loops pages 1..max in a background loop【96†L1969-L1978】. 
 
-That anti-cloning behaviour is not theoretical. In an official support thread, a maintainer responded to a `device_id2 mismatch` authorisation failure by advising the operator to clear `device_id` and `device_id2` for that MAC, and when the operator disabled device-ID validation to make the box work, the maintainer warned against it because it would let emulators use the portal. In parallel, experienced users of STBEmu and Formuler/MyTVOnline-class devices report that some subscriptions only work after copying **MAC + serial + device_id + device_id2 + signature + hw_version** into the emulator. That is exactly the sort of gap that lets browsing work on a custom client but stops playback at the moment the portal needs stronger confidence that the caller is the same device it believes it provisioned. citeturn26view0turn32view0
+- **Lazy Loading:** Delay loading of large sections until needed. For example, show VOD *categories* immediately (quick summary), but load each category’s contents only when the user browses that category. This avoids long waits for seldom-used categories.
 
-`create_link` itself can also be misleading. Server-side code can accept the request, enter the channel-link logic, and still end up with no valid `result.cmd` because the selected source is filtered out, temporary-link generation fails, a link-check path is required, or the eventual command resolves to a backend URL your player cannot actually consume. From the outside, that often looks like “`create_link` works but playback is empty”, when the real failure is either late in command assembly or one step later on the stream fetch. citeturn5view0turn33search0turn35view0
+- **Parallel Fetches:** Issue multiple API calls concurrently (e.g. fetch channel list and first page of movies at the same time). Multi-threaded or async fetching can fill multiple list views quickly. The open-source client concurrently fetched all pages using a thread pool【70†L3925-L3933】 to reduce wall-clock time.
 
-A final category is modern Ministra hardening around non-native devices. Community discussions around Ministra 5.4.x show operators reporting that Formuler boxes and STBEmu clients stopped being accepted after upgrades even with `disable_third_party_devices = false`, and Infomir’s current commercial positioning also ties provider support to Ministra Player Apps subscriptions rather than the older licence-key model. That does not prove every playback failure is a licensing problem, but it does show that newer Ministra deployments can enforce a stricter distinction between “looks close enough to a MAG” and “is a supported client”. citeturn30view0turn29search0turn31search1
+- **Metadata-Only Sync:** At first login, clients may only download item metadata (title, ID, thumbnail URL), deferring heavy data (e.g. full description, or actual video manifest) until playback. That way the initial JSON is smaller. For example, some clients fetch only top-level JSON and lazy-load video streams separately.
 
-## Ranked list of the most likely causes
+- **Background Prefetch:** Once initial data is shown, quietly fetch more in the background (e.g. successive pages, EPG, series details) so that by the time a user scrolls or selects, data is ready.
 
-| Likelihood | Cause | Why it fits the exact symptom |
-| --- | --- | --- |
-| Very high | **Persisted device binding mismatch**: `sn`, `device_id`, `device_id2`, `signature`, `hw_version`, or model/firmware tuple do not match what the portal stored for that MAC | Infomir exposes anti-cloning controls such as `enable_device_id_validation`, maintainers diagnose `device_id2 mismatch` explicitly, and working STBEmu/MyTVOnline-class setups often need the full identifier tuple copied from a real client. This is the cleanest explanation for “catalogue works, playback fails, real client works”. citeturn26view0turn27search10turn32view0 |
-| Very high | **IP-bound temporary-link or secure-link failure** on the final media request | Official NGINX temp-link and secure-link docs bind playback to the NGINX front end, to `X-Real-IP`, and in secure-link mode even to `$remote_addr` in the URL signature. If your player, proxy, or playback engine changes the network path between `create_link` and stream fetch, the final URL is rejected even though the control plane succeeded. citeturn35view0turn34view0turn37view0 |
-| High | **Incomplete MAG bootstrap before first play** | Archived MAG code does more than handshake + profile: it runs localisation, user initialisation, TV/player setup, favourites/modules loading, and watchdog traffic before normal TV use. Custom clients that jump straight from catalogue to `create_link` can miss state that some portals expect around playback. citeturn22view0turn44view0turn44view2turn47view0 |
-| High | **`create_link` request mismatch**: missing or wrong `force_ch_link_check`, `disable_ad`, `forced_storage`, referer, or control-plane headers | Server code consumes `disable_ad` and `force_ch_link_check`, and third-party clients show explicit `forced_storage`, `disable_ad`, and referer handling for `create_link`. This is a common place where a custom player looks “close enough” elsewhere but differs at playback resolution time. citeturn5view0turn33search0turn42view0turn47view0 |
-| Medium | **Per-channel source filtering by user-agent or device model** | Infomir added several-source channels with user-agent filters and documents model-based restriction of streaming-link access. That can leave the catalogue visible but deny or divert the actual stream source when play is pressed. citeturn36search1turn23search6turn37view0 |
-| Medium | **Newer MAG fingerprint fields missing**: `client_type`, `metrics`, `hw_version_2`, `timestamp`, `api_signature`, `prehash` | Archived MAG JS sends a much richer fingerprint than many older open-source emulators. A portal that has learned to distinguish native and non-native clients can use those gaps as a hardening signal even if it still tolerates browsing. citeturn22view0turn42view0 |
-| Lower but real | **Third-party-device support or certification hardening in newer Ministra** | Community reports from 5.4.x show non-native clients being rejected despite the old `disable_third_party_devices` toggle. This is less likely when your app already reaches the catalogue, but it still belongs on the list for mixed portal fleets and upgraded deployments. citeturn30view0turn29search0turn31search1 |
+- **Thumbnail-First:** Load small thumbnail images early, while larger cover images or detailed info load later. Many portals provide low-res images (screenshots) versus full poster art; clients may download the smaller ones first.
 
-## Concrete diff checklist and the implementation changes most likely to improve compatibility
+- **Caching:** Store results locally (e.g. on device cache or database). On subsequent app starts, reuse cached metadata and only fetch deltas via HTTP cache validation (ETag/If-Modified-Since). For example, clients may use the HTTP `Last-Modified` header of portal responses to check for updates, or simply store a timestamp and only fetch changed data. The plugin code even caches data in files and updates every 12 hours【86†L1934-L1943】【96†L2011-L2014】. This dramatically improves perceived load time after the first sync.
 
-The fastest way to debug this class of problem is to diff your app against a known-good MAG-style client at **three layers at once**: control-plane requests, `create_link`, and the final media fetch. Compare at least the following items:
+- **Compression & Delta Sync:** Ensure requests use gzip (portals typically compress JSON). For updates, use `If-Modified-Since` or ETag headers on each API (if supported) so that unchanged lists yield small “304 Not Modified” responses.
 
-| Layer | What to compare exactly | Why it matters |
-| --- | --- | --- |
-| Portal entry | Referer path (`/c/` vs `/c/index.html`), `User-Agent`, `X-User-Agent`, `Cookie: mac/stb_lang/timezone`, bearer token use | Real traces and emulators reproduce a very specific header envelope, and some portals key off it. citeturn47view0turn13search1turn41search0 |
-| Handshake | Presence of saved token reuse and `prehash` | MAG JS includes both; token handling changed across middleware versions. citeturn22view0turn27search2 |
-| `get_profile` | Full field set and coherence of `stb_type`, `sn`, `ver`, `image_version`, `hw_version`, `device_id*`, `signature`, `client_type`, telemetry fields | This is the single biggest fingerprint surface. citeturn22view0turn21view2turn42view0 |
-| Bootstrap | Whether you do `get_localization`, `user_init`-equivalent setup, module loading, favourites/TV initialisation, watchdog traffic before first play | A working client reaches playback with more state already established. citeturn44view0turn44view2turn47view0 |
-| `create_link` | Query parameters, header set, referer, `disable_ad`, `force_ch_link_check`, `forced_storage`, and exact submitted `cmd` | Small request differences here can alter source selection or return an unusable command. citeturn5view0turn33search0turn42view0 |
-| Returned command | Whether you preserve the command **byte-for-byte**, including solution prefixes such as `ffmpeg `, query strings, and token parameters | Server code can prepend player-solution tokens and signed URLs that must not be normalised away. citeturn5view0 |
-| Temp-link playback | Whether you request the front-end `/ch/<token>` URL as-is, through the same outward IP, instead of rewriting it to backend hosts or localhost paths | Official temp-link flow depends on front-end NGINX rewrite and internal redirecting. citeturn35view0turn34view0turn37view0 |
-| Network identity | Whether the actual media fetch originates from the same client IP the portal/backend expects | Secure-link and real-IP forwarding make this decisive. citeturn34view0turn35view0turn37view0 |
-| Stream-source filtering | Whether the working client receives a different source because of user-agent/model filters on the channel | The catalogue can be identical while the selected stream link differs. citeturn36search1turn23search6 |
-| Server logs | Apache auth failures, `device_id2 mismatch`, NGINX `403/410`, Flussonic auth headers, channel-monitoring/link-check errors | The decisive clue is often on the media side, not in `load.php`. citeturn26view0turn34view0turn45view0 |
+Below is a **timeline flow** of an initial sync showing parallel steps:
 
-If your goal is to maximise compatibility rather than keep the implementation minimal, the changes most likely to move the needle are these.
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Portal
+    Client->>Portal: GET /portal.php?type=stb&action=handshake (with MAC)
+    Portal-->>Client: JSON { "js":{"token":"ABC123..."} }
+    Client->>Portal: GET /portal.php?type=stb&action=get_profile (Bearer token)
+    Portal-->>Client: JSON profile {...}
+    par Parallel fetching
+        Client->>Portal: GET type=itv&action=get_genres (page 1)
+        Portal-->>Client: JSON { "js":[{...}, ...] } (genres list)
+        Client->>Portal: GET type=vod&action=get_categories
+        Portal-->>Client: JSON { "js":[{...}, ...] } (VOD categories)
+    end
+    par Load first content pages
+        Client->>Portal: GET type=itv&action=get_ordered_list&genre=<firstID>&p=1
+        Portal-->>Client: JSON { "js":{"total_items":N,"data":[...20 items...]}}
+        Client->>Portal: GET type=vod&action=get_ordered_list&category=<firstCat>&p=1
+        Portal-->>Client: JSON { "js":{"total_items":M,"data":[...20 items...]}}
+    end
+    Note over Client,Portal: Show UI lists (channels, movies) as they arrive 
+```
 
-First, treat each portal as needing a **persisted device profile**, not just a MAC and a generic MAG persona. Persist `sn`, `stb_type`, `ver`, `image_version`, `hw_version`, `device_id`, `device_id2`, and `signature` per portal profile, and allow importing them from a known-good client trace when necessary. The sources above strongly suggest that this beats trying to re-derive “mostly MAG-like” values from the MAC alone. citeturn22view0turn26view0turn32view0
+**Trade-Offs:** Loading everything upfront (“eager load”) gives completeness but may delay the first screen. Lazy or paged loading trades initial completeness for responsiveness: the UI appears quickly with partial data. Many clients strike a balance: load genre/category lists (small) immediately, then fill in items. 
 
-Secondly, support a **modern `get_profile` mode** alongside your legacy MAG250 mode. For portals that are sensitive, send the richer MAG fields that archived MAG JS sends, including `client_type`, `video_out`, `metrics`, `hw_version_2`, `timestamp`, `api_signature`, and `prehash`, and keep the whole model/firmware story internally consistent. Many custom Stalker implementations fail because they still emulate only the older subset that lax portals accept. citeturn22view0turn42view0
+**Table – Strategy Comparison:**
 
-Thirdly, replicate the **pre-play bootstrap** of a real client before the first playback attempt. At minimum, do handshake, `get_profile`, `get_localization`, module initialisation, TV/player initialisation, and watchdog start in the same broad order as the working client, and carry any playback-affecting flags such as `force_ch_link_check`, `disable_ad`, and `forced_storage` into `create_link`. citeturn44view0turn44view2turn47view0turn5view0
+| Strategy              | Pros                            | Cons                              | Impact on First-Load Time         |
+|-----------------------|---------------------------------|-----------------------------------|-----------------------------------|
+| **Full upfront**      | All data available at once      | Very slow initial sync, heavy load| Very long delay (seconds to minutes) for large catalogs |
+| **Paged/Incremental** | Faster UI start, avoids freezing| Requires more complex code (looping) | Moderate: first page quick (few sec), rest gradually  |
+| **Lazy (on-demand)**  | Only fetch needed data          | First access to new section delayed | Very fast startup; slight lag when opening each new category |
+| **Parallel fetch**    | Better CPU/network usage        | Possible rate-limit or sync complexity | Reduces wall-clock time (fetching multiple lists at once) |
+| **Cache (client)**    | Instant reload after first sync | Stale data if not updated          | Negligible (loads from local cache) |
+| **Compression/gzip**  | Reduces bytes over wire         | None (adds CPU for decompress)     | Reduces bandwidth impact, speeds transfer if large JSON |
 
-Fourthly, make playback URL handling **opaque and lossless**. Do not strip prefixes like `ffmpeg `, do not re-encode signed query parameters, do not rewrite `/ch/<token>` to backend paths, and do not insert a local proxy unless you can guarantee the same outbound IP and header behaviour as direct device playback. This one change can eliminate a large class of temp-link and secure-link failures. citeturn35view0turn34view0turn37view0turn45view0
+_Source:_ Portal API observations and client implementations【90†L3333-L3341】【96†L1969-L1978】.
 
-Finally, build a **wire-level diff mode** into your app. For one failing portal, capture a working MyTVOnline+/STBEmu session and your own session, then diff: request headers, cookies, query params, pre-play sequence timing, `create_link` body, returned `cmd`, final URL, redirect chain, and server response codes. With Stalker compatibility, the winning fixes are usually not architectural; they are small deltas in identity, sequencing, or final URL handling that only become obvious when you compare both traces side by side. citeturn47view0turn22view0turn35view0turn45view0
+## Server-Side Optimizations
+
+Middleware providers and portal servers can aid speed by:
+
+- **Indexing & Pre-aggregation:** The portal’s database is typically indexed on category and alphabetical fields, making queries for each `get_ordered_list` fast. Some systems precompute popular lists or maintain cached JSON. 
+
+- **API Pagination:** As seen, the `get_ordered_list` API inherently paginates results (`p=` parameter) to limit response size. Server indexes support fast pagination (using LIMIT/OFFSET or cursor-based paging). 
+
+- **Compressed Responses:** Stalker middleware supports gzip/deflate. Clients should set `Accept-Encoding: gzip` and expect compressed JSON. This cuts payload size significantly for large JSON arrays.
+
+- **CDN & Caching:** While metadata is dynamic, static assets (thumbnails, logos) can be served via CDN. Even the portal might use HTTP caching headers on API responses to allow 304s.
+
+- **Thumbnails vs Full Manifests:** Portals often provide two sets of URLs: one for small preview images (e.g. “screenshot_uri”) and one for full resolution art. Using smaller images in listings reduces transfer. For streaming, Stalker often provides either direct stream URLs or “vod/get_file” endpoints which may redirect via CDN.
+
+- **Manifest Generation:** For on-demand video, portals might not generate HLS/DASH on the fly. Instead, streams can be direct file URLs or pre-encoded HLS. If dynamic, media servers ensure quick response by reusing existing manifests or performing on-demand muxing with segment caching.
+
+- **Content Delivery:** For catch-up (TV archive), servers often use a separate domain or server. Clients request segments in real time; servers should have seek indexes to satisfy range requests quickly.
+
+If payload sizes are unknown from documentation, we note that “portal payload sizes are unspecified per provider” – providers control how much metadata is returned (some include synopsis or actors, others minimal). In practice, clients observe that initial `get_ordered_list` pages often range from a few dozen KB to hundreds of KB of JSON.
+
+## Real-World Examples
+
+- **Open-Source Clients:** The [stalker.py](https://github.com/Cyogenus/IPTV-MAC-STALKER-PLAYER) library fetches VOD categories via `/stalker_portal/server/load.php?type=vod&action=get_categories`【90†L3333-L3341】 and iterates `get_ordered_list` for each (as shown above). The [plugin.video.stalker](https://github.com/esxbr/plugin.video.stalker) Kodi plugin similarly performs a handshake then loops through pages of `get_ordered_list` calls with parameters like `sortby=added, not_ended=0`【96†L1969-L1978】. These code examples illustrate the typical access patterns.  
+
+- **Commercial Apps:** Proprietary apps (e.g. TiviMate, Stalker-based STB apps) follow the same API pattern. A technical overview notes that TiviMate “fetches load.php (handshake), then get.php (content lists), then epg.php”【20†L55-L60】. (In effect, `load.php` is the same as `portal.php?type=stb&action=handshake` on MAG portals.) These clients often preload the first page of all lists. Some even allow specifying a shorter “device ID” to speed recognition by the portal. 
+
+- **Forum Reports:** Users report initial VOD sync times of tens of seconds. For example, on Formuler devices, a first-time VOD load could take ~45 seconds for large libraries【74†L83-L91】【75†L193-L200】. Once data is cached, subsequent access is nearly instantaneous. One forum noted that a new firmware implemented auto-cache-clearing on reboot to avoid stale data issues【75†L193-L200】, indicating the importance of cache management in perceived speed. 
+
+- **GitHub Implementations:** Some repos generate M3U playlists from Stalker portals. For instance, [santhosh101066/stalker-m3u-server](https://github.com/santhosh101066/stalker-m3u-server) proxies Stalker APIs to produce playlists (using `api.php` to fetch content【45†L243-L249】). Others, like [generator scripts](https://github.com/Cyogenus/IPTV-MAC-STALKER-PLAYER), parse portal JSON directly. The fact that so much code exists for parsing the same endpoints underscores these patterns.
+
+## Network Traffic Patterns & Performance
+
+Analyzing traffic, we see:
+
+- **Handshake (~100–300 bytes):** The `handshake` request is small (no query data except type/action), response ~50–100 bytes (token). 
+- **Profile (~1–2 KB):** The profile JSON (all the fields in【84†L119-L127】) is ~1–2 KB. 
+- **Genres/Categories (~several KB):** A genre list of tens of items is on the order of 5–20 KB. 
+- **List Pages (~10–100 KB+):** Each page of channels or movies varies. In Quassi’s example, 14 channels were returned in ~24-items JSON【85†L420-L428】 (likely ~5–10 KB). If hundreds of movies per page, the JSON can be tens of KB. For example, one client code stopped fetching after 10 pages or so【96†L1970-L1978】 to cap the output. 
+- **EPG (~100 KB+):** Fetching EPG for all channels (several hours) can be large (100 KB or more), so it’s often split by time window. 
+- **Streaming Links:** Not part of initial sync, but to play, clients call `create_link` or direct URLs, often resulting in short responses (redirect to actual stream).
+
+**Timing:** In practice, a well-optimized portal can reply to a `get_ordered_list` page request in a few hundred milliseconds, but when doing dozens of pages across multiple categories, total time adds up. Client-side parallelism helps hide this. A bulletin board user noted **“First time load maybe 45 sec”** for a large subscription, whereas subsequent loads “in the background” are fast【74†L83-L91】. 
+
+## Security and Rate Limiting
+
+- **Authentication:** Stalker portal uses a bearer token (OAuth2-style) bound to the device (MAC). The token is short-lived (hours) and must be refreshed by re-running the handshake if expired. Clients must include it in every API call in the `Authorization` header【84†L109-L114】.
+
+- **Device Verification:** The portal compares the provided MAC and token to ensure the same device. If a client changes its device ID or MAC between calls, the portal will reject the requests.
+
+- **Rate Limits:** Official limits aren’t documented, but providers often throttle abusive patterns. In practice, clients avoid hammering the portal (e.g. pause between calls, use caching). Extremely high parallel requests might cause HTTP 429 responses from some servers.
+
+- **Data Privacy:** All video streams still require credentials; knowing an item’s metadata doesn’t give the stream URL without a valid session token. Some portals watermark URLs with play tokens to prevent link sharing.
+
+## Recommendations and Trade-offs
+
+For best UX on first load, clients should:
+
+- **Show progress:** Inform the user that sync is happening, e.g. “Loading movies 1/10…”. This sets expectations for longer waits (minutes) if needed.
+
+- **Prioritize UI readiness:** Always fetch category lists before item lists, so the UI can show “(Loading…)” instead of a blank screen.
+
+- **Use caching:** Persist data locally. On app restart, show cached content immediately, then silently update in background (UX feels instant).
+
+- **Compress and Parallelize:** Enable gzip and make requests concurrently (subject to server tolerance). Many open-source clients do exactly this to minimize elapsed time【70†L3925-L3933】.
+
+- **Balance pagination vs size:** Choose a page size that balances JSON overhead versus call overhead. Some portals allow tuning `max_page_items`; clients should use a moderately large page (e.g. 50 items) to reduce number of requests but avoid giant JSON dumps.
+
+- **Table of Pros/Cons (excerpt):**
+
+```markdown
+| Approach           | Pros                                      | Cons                                  |
+|--------------------|-------------------------------------------|---------------------------------------|
+| Full download      | No more sync needed (complete library)    | Very slow initial load, heavy memory  |
+| Page-by-page       | Fast initial pages, lower memory use      | Need to handle multiple requests      |
+| Lazy per-category  | Quick start, fetch only viewed sections   | Each new category load has delay      |
+| Cache & Refresh   | Instant reload after first sync           | Risk of stale info if not updated     |
+| Parallel fetching  | Reduces wait by overlapping requests      | Server may throttle many simultaneous |
+```
+
+## Diagrams of Initial Sync
+
+Below is a high-level **flowchart** of an example initial sync data flow:
+
+```mermaid
+flowchart TB
+    subgraph Client Device
+      A(Credentials Entry) --> B(Handshake: GET type=stb&action=handshake)
+      B -->|token| C(Get Profile)
+      C --> D(Get ITV Genres)
+      C --> E(Get VOD Categories)
+      D --> F{Channels by genre}
+      F -->|GET for genre i| G(ITV List Page 1)
+      G --> H(UI list gets channels)
+      E --> I{Movies by category}
+      I -->|GET for category j| J(VOD List Page 1)
+      J --> K(UI list gets movies)
+      %% Parallel arrow style
+      C -->|concurrent| D
+      C -->|concurrent| E
+      F -->|pages| G
+      I -->|pages| J
+    end
+    subgraph Server (Portal API)
+      B[Portal.php: handshake] -- returns token --> B
+      C[Portal.php: get_profile] -- returns settings --> C
+      D[Portal.php: get_genres] -- returns genre list --> D
+      E[Portal.php: get_categories] -- returns VOD cats --> E
+      G[Portal.php: get_ordered_list (itv)] -- returns channels --> G
+      J[Portal.php: get_ordered_list (vod)] -- returns movies --> J
+    end
+```
+
+This flow highlights that after the handshake (`B`) and profile (`C`), the client can load live-TV and VOD data in parallel.
+
+Below is a **sequence timeline** of typical API calls (latency not to scale):
+
+```mermaid
+sequenceDiagram
+    participant U as User/Client
+    participant S as Portal Server
+    U->>S: GET /portal.php?type=stb&action=handshake
+    S-->>U: {"js":{"token":"XYZ","..."}}
+    U->>S: GET /portal.php?type=stb&action=get_profile (Bearer token)
+    S-->>U: {"js":{...profile data...}}
+    par
+      U->>S: GET /portal.php?type=itv&action=get_genres
+      S-->>U: {"js":[...genre list...]}
+      U->>S: GET /portal.php?type=vod&action=get_categories
+      S-->>U: {"js":[...VOD cat list...]}
+    end
+    U->>S: GET /portal.php?type=itv&action=get_ordered_list&genre=ID&p=1
+    S-->>U: {"js":{"total_items":N,"data":[...channels...]}}
+    U->>S: GET /portal.php?type=vod&action=get_ordered_list&category=ID&p=1
+    S-->>U: {"js":{"total_items":M,"data":[...movies...]}}
+    Note over U: UI displays first pages; app continues fetching more pages...
+```
+
+These diagrams illustrate that initial sync is multi-step and often involves overlapping requests for best performance. 
+
+**Sources:** Based on Infomir/Stalker portal documentation and source code【84†L89-L97】【90†L3333-L3341】, client implementations【96†L1969-L1978】, and user reports【85†L328-L336】【75†L193-L200】. Each cited source provides concrete details on endpoints, request/response formats, or performance anecdotes, supporting the strategies and patterns described above.

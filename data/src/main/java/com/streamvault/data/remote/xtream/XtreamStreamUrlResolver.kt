@@ -8,6 +8,7 @@ import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.stalker.StalkerPlaybackMode
 import com.streamvault.data.remote.stalker.StalkerPlaybackResolutionException
 import com.streamvault.data.remote.stalker.StalkerStreamKind
+import com.streamvault.data.remote.stalker.StalkerTrafficCoordinator
 import com.streamvault.data.remote.stalker.StalkerUrlFactory
 import com.streamvault.data.remote.stalker.buildStalkerPlaybackDescriptor
 import com.streamvault.data.security.CredentialCrypto
@@ -156,6 +157,7 @@ class XtreamStreamUrlResolver @Inject constructor(
                         expirationTime = extractStreamExpirationTime(passthroughUrl)
                     )
                 }
+                StalkerTrafficCoordinator.notePlaybackActivity(resolvedProvider.id)
                 val playbackInfo = when (
                     val resolvedResult = getOrCreateStalkerProvider(resolvedProvider)
                         .resolvePlaybackInfo(
@@ -211,6 +213,7 @@ class XtreamStreamUrlResolver @Inject constructor(
         fallbackContentType: ContentType?,
         fallbackContainerExtension: String?
     ): ResolvedStreamUrl? {
+        StalkerTrafficCoordinator.notePlaybackActivity(provider.id)
         val kind = when (fallbackContentType) {
             ContentType.LIVE -> StalkerStreamKind.LIVE
             ContentType.MOVIE -> StalkerStreamKind.MOVIE

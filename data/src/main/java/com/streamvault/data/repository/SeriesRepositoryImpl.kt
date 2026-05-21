@@ -9,6 +9,7 @@ import com.streamvault.data.remote.http.toGenericRequestProfile
 import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.stalker.StalkerPlaybackMode
 import com.streamvault.data.remote.stalker.StalkerProvider
+import com.streamvault.data.remote.stalker.StalkerTrafficCoordinator
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.XtreamProvider
 import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
@@ -1245,6 +1246,9 @@ class SeriesRepositoryImpl @Inject constructor(
             return
         }
         if (provider.type == ProviderType.STALKER_PORTAL) {
+            if (localCount <= 0) {
+                syncManager.prioritizeStalkerIndexCategory(providerId, ContentType.SERIES, categoryId)
+            }
             if (!shouldUseStalkerLazyFallback(providerId, hydration, localCount)) {
                 return
             }
@@ -1279,6 +1283,9 @@ class SeriesRepositoryImpl @Inject constructor(
                 val hydration = seriesCategoryHydrationDao.get(providerId, categoryId)
                 if (localCount == 0 && hydration?.isEmptyRetryCoolingDown() == true) return@launch
                 if (provider.type == ProviderType.STALKER_PORTAL) {
+                    if (localCount <= 0) {
+                        syncManager.prioritizeStalkerIndexCategory(providerId, ContentType.SERIES, categoryId)
+                    }
                     if (!shouldUseStalkerLazyFallback(providerId, hydration, localCount)) {
                         return@launch
                     }
@@ -1344,6 +1351,7 @@ class SeriesRepositoryImpl @Inject constructor(
             // totalPages; subsequent iterations use the in-loop updated value.
             var firstIteration = true
             while (currentCount < requiredCount) {
+                if (StalkerTrafficCoordinator.shouldDeferCatalogFetch(providerId)) break
                 val attemptStartedAt = System.currentTimeMillis()
                 if (isPreviewLoad && nextPage > STALKER_PREVIEW_MAX_REMOTE_PAGES) break
                 val totalPages = currentHydration?.totalPages ?: 0

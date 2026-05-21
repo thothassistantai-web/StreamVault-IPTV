@@ -16,6 +16,7 @@ import com.streamvault.data.local.entity.EpisodeEntity
 import com.streamvault.data.local.entity.SeriesEntity
 import com.streamvault.data.local.entity.SeriesBrowseEntity
 import com.streamvault.data.local.entity.ProviderEntity
+import com.streamvault.data.local.entity.XtreamIndexJobEntity
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.data.remote.dto.XtreamSeason
 import com.streamvault.data.remote.dto.XtreamSeriesInfoResponse
@@ -112,6 +113,37 @@ class SeriesRepositoryImplTest {
         verify(syncManager).prioritizeXtreamIndexCategory(7L, ContentType.SERIES, 77L)
         verify(seriesDao, never()).replaceCategory(eq(7L), eq(77L), any())
         verify(xtreamApiService, never()).getSeriesList(any(), any())
+        verify(episodeDao, never()).deleteOrphans()
+    }
+
+    @Test
+    fun `getSeriesByCategory prioritizes stalker category when background fetch is already running`() = runTest {
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
+        whenever(preferencesRepository.xtreamBase64TextCompatibility).thenReturn(flowOf(false))
+        whenever(seriesDao.getCountByCategory(7L, 77L)).thenReturn(flowOf(0))
+        whenever(seriesDao.getByCategory(7L, 77L)).thenReturn(flowOf(emptyList()))
+        whenever(seriesCategoryHydrationDao.get(7L, 77L)).thenReturn(null)
+        whenever(xtreamIndexJobDao.get(7L, ContentType.SERIES.name)).thenReturn(
+            XtreamIndexJobEntity(providerId = 7L, section = ContentType.SERIES.name, state = "RUNNING")
+        )
+        whenever(providerDao.getById(7L)).thenReturn(
+            ProviderEntity(
+                id = 7L,
+                name = "Stalker",
+                type = ProviderType.STALKER_PORTAL,
+                serverUrl = "http://example.com",
+                username = "",
+                password = "pass",
+                status = ProviderStatus.ACTIVE
+            )
+        )
+        val repository = createRepository()
+
+        val result = repository.getSeriesByCategory(7L, 77L).first()
+
+        assertThat(result).isEmpty()
+        verify(syncManager).prioritizeStalkerIndexCategory(7L, ContentType.SERIES, 77L)
+        verify(stalkerApiService, never()).getSeriesPage(any(), any(), anyOrNull(), any())
         verify(episodeDao, never()).deleteOrphans()
     }
 
