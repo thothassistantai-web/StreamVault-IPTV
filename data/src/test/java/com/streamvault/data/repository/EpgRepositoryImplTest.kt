@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
+import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Before
@@ -322,6 +323,27 @@ class EpgRepositoryImplTest {
         val insertedPrograms = argumentCaptor<List<ProgramEntity>>()
         verify(programDao, atLeastOnce()).insertAll(insertedPrograms.capture())
         assertThat(insertedPrograms.allValues.flatten().map { it.title }).contains("CDN Morning News")
+    }
+
+    @Test
+    fun `refreshEpg does not force identity encoding`() = runTest {
+        val requestRef = java.util.concurrent.atomic.AtomicReference<Request>()
+        val repository = EpgRepositoryImpl(
+            programDao = programDao,
+            providerDao = providerDao,
+            xmltvParser = xmltvParser,
+            okHttpClient = okHttpClientReturningBody(
+                body = "<tv></tv>".toByteArray(Charsets.UTF_8),
+                onRequest = { requestRef.set(it) }
+            ),
+            transactionRunner = transactionRunner,
+            epgSourceRepository = epgSourceRepository
+        )
+
+        val result = repository.refreshEpg(7L, "https://example.com/epg.xml")
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(requestRef.get()?.header("Accept-Encoding")).isNull()
     }
 
     @Test
@@ -630,10 +652,12 @@ class EpgRepositoryImplTest {
     private fun okHttpClientReturningBody(
         body: ByteArray,
         contentType: String = "application/xml",
-        headers: Map<String, String> = emptyMap()
+        headers: Map<String, String> = emptyMap(),
+        onRequest: ((Request) -> Unit)? = null
     ): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor { chain ->
+                onRequest?.invoke(chain.request())
                 Response.Builder().apply {
                     headers.forEach { (name, value) -> addHeader(name, value) }
                 }

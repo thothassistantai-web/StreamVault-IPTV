@@ -348,6 +348,36 @@ class EpgSourceRepositoryImplTest {
     }
 
     @Test
+    fun `refreshSource does not force identity encoding for remote downloads`() = runTest {
+        val source = EpgSourceEntity(
+            id = 10L,
+            name = "MyEPG",
+            url = "https://myepg.example/download?order=private&key=redacted",
+            lastRefreshAt = 0L
+        )
+        val requestCaptor = argumentCaptor<Request>()
+        val response = Response.Builder()
+            .request(Request.Builder().url(source.url).build())
+            .protocol(Protocol.HTTP_1_1)
+            .code(200)
+            .message("OK")
+            .body("<tv></tv>".toResponseBody("application/xml".toMediaType()))
+            .build()
+        val call: Call = mock()
+
+        whenever(epgSourceDao.getById(10L)).thenReturn(source)
+        whenever(okHttpClient.newCall(requestCaptor.capture())).thenReturn(call)
+        whenever(call.execute()).thenReturn(response)
+        whenever(providerEpgSourceDao.getProviderIdsForSourceSync(10L)).thenReturn(emptyList())
+        whenever(xmltvParser.maybeDecompressGzip(eq(source.url), any())).thenAnswer { it.arguments[1] }
+
+        val result = repository.refreshSource(10L)
+
+        assertThat(result is Result.Success).isTrue()
+        assertThat(requestCaptor.firstValue.header("Accept-Encoding")).isNull()
+    }
+
+    @Test
     fun `refreshSource rebuilds affected providers when remote source returns 304`() = runTest {
         val source = EpgSourceEntity(
             id = 10L,
