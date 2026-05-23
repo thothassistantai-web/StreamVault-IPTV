@@ -696,7 +696,14 @@ class StalkerProvider(
                 val (session, _) = authResult.data
                 when (val result = loader(session, currentDeviceProfile())) {
                     is Result.Success -> {
-                        val categories = result.data.map { record ->
+                        val categoryRecords = result.data.ifEmpty {
+                            when (type) {
+                                ContentType.MOVIE -> listOf(StalkerCategoryRecord(id = "*", name = "All Movies"))
+                                ContentType.SERIES -> listOf(StalkerCategoryRecord(id = "*", name = "All Series"))
+                                else -> emptyList()
+                            }
+                        }
+                        val categories = categoryRecords.map { record ->
                             val id = syntheticCategoryId(type, record.id.ifBlank { record.name })
                             CategorySeed(
                                 id = id,

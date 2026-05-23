@@ -66,43 +66,6 @@ internal fun PlayerViewModel.startTokenRenewalMonitoring(expirationTime: Long?) 
     }
 }
 
-internal suspend fun PlayerViewModel.synchronizeStalkerPlaybackFetchDeferral(isPlaying: Boolean) {
-    if (!isPlaying) {
-        stopActiveStalkerPlaybackFetchDeferral()
-        return
-    }
-
-    val providerId = currentProviderId.takeIf { it > 0L } ?: run {
-        stopActiveStalkerPlaybackFetchDeferral()
-        return
-    }
-    val provider = providerRepository.getProvider(providerId)
-    if (provider?.type != ProviderType.STALKER_PORTAL) {
-        stopActiveStalkerPlaybackFetchDeferral()
-        return
-    }
-    val previousProviderId = activeStalkerPlaybackProviderId
-    if (previousProviderId != null && previousProviderId != providerId) {
-        syncManager.noteStalkerPlaybackStopped(previousProviderId)
-    }
-    if (previousProviderId != providerId) {
-        syncManager.noteStalkerPlaybackStarted(providerId)
-        activeStalkerPlaybackProviderId = providerId
-    }
-}
-
-internal fun PlayerViewModel.reconcileStalkerPlaybackFetchDeferral() {
-    viewModelScope.launch {
-        synchronizeStalkerPlaybackFetchDeferral(playerEngine.isPlaying.value)
-    }
-}
-
-internal fun PlayerViewModel.stopActiveStalkerPlaybackFetchDeferral() {
-    val providerId = activeStalkerPlaybackProviderId ?: return
-    activeStalkerPlaybackProviderId = null
-    syncManager.noteStalkerPlaybackStopped(providerId)
-}
-
 fun PlayerViewModel.onAppBackgrounded() {
     if (!isAppInForeground) return
     isAppInForeground = false
@@ -128,7 +91,6 @@ fun PlayerViewModel.onAppForegrounded() {
 }
 
 fun PlayerViewModel.onPlayerScreenDisposed() {
-    stopActiveStalkerPlaybackFetchDeferral()
     if (currentContentType != ContentType.LIVE) {
         viewModelScope.launch {
             persistPlaybackProgress()
@@ -136,6 +98,7 @@ fun PlayerViewModel.onPlayerScreenDisposed() {
         }
     }
     playerEngine.stopLiveTimeshift()
+    stopActiveStalkerPlaybackFetchDeferral()
     clearPlaybackTimers()
 }
 
@@ -151,11 +114,42 @@ internal fun PlayerViewModel.clearPlaybackTimers() {
     _sleepTimerUiState.value = SleepTimerUiState()
 }
 
+internal fun PlayerViewModel.stopActiveStalkerPlaybackFetchDeferral() {
+    val providerId = activeStalkerPlaybackProviderId ?: return
+    activeStalkerPlaybackProviderId = null
+    viewModelScope.launch {
+        syncManager.noteStalkerPlaybackStopped(providerId)
+    }
+}
+
+internal suspend fun PlayerViewModel.synchronizeStalkerPlaybackFetchDeferral(isPlaying: Boolean) {
+    if (!isPlaying) {
+        stopActiveStalkerPlaybackFetchDeferral()
+        return
+    }
+
+    val providerId = currentProviderId.takeIf { it > 0L } ?: run {
+        stopActiveStalkerPlaybackFetchDeferral()
+        return
+    }
+    val provider = providerRepository.getProvider(providerId)
+    if (provider?.type != ProviderType.STALKER_PORTAL) {
+        stopActiveStalkerPlaybackFetchDeferral()
+        return
+    }
+    if (activeStalkerPlaybackProviderId == providerId) return
+
+    stopActiveStalkerPlaybackFetchDeferral()
+    activeStalkerPlaybackProviderId = providerId
+    syncManager.noteStalkerPlaybackStarted(providerId)
+}
+
 fun PlayerViewModel.handOffPlaybackToMultiView() {
     if (currentContentType != ContentType.LIVE) {
         viewModelScope.launch { persistPlaybackProgress() }
     }
     playerEngine.stopLiveTimeshift()
+    stopActiveStalkerPlaybackFetchDeferral()
     livePreviewHandoffManager.clear(playerEngine)
 }
 

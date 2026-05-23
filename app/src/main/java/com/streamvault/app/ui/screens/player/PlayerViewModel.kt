@@ -15,9 +15,9 @@ import com.streamvault.app.util.isPlaybackComplete
 import com.streamvault.app.tv.LauncherRecommendationsManager
 import com.streamvault.app.tv.WatchNextManager
 import com.streamvault.data.remote.stalker.StalkerUrlFactory
-import com.streamvault.data.sync.SyncManager
 import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.data.security.CredentialDecryptionException
+import com.streamvault.data.sync.SyncManager
 import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.model.Category
 import com.streamvault.domain.model.ChannelNumberingMode
@@ -307,7 +307,6 @@ class PlayerViewModel @Inject constructor(
     internal var currentCombinedProfileMembers: List<CombinedM3uProfileMember> = emptyList()
     internal var combinedCategoriesById: Map<Long, CombinedCategory> = emptyMap()
     private var lastObservedPlaybackState: PlaybackState = PlaybackState.IDLE
-    internal var activeStalkerPlaybackProviderId: Long? = null
 
     internal var epgJob: Job? = null
     internal var playlistJob: Job? = null
@@ -339,6 +338,7 @@ class PlayerViewModel @Inject constructor(
     private var defaultIdleStandbyTimerMinutes: Int = 0
     internal var playbackTimerDefaultsApplied = false
     internal var sleepTimerExitEmitted = false
+    internal var activeStalkerPlaybackProviderId: Long? = null
 
     val castConnectionState: StateFlow<CastConnectionState> = castManager.connectionState
 

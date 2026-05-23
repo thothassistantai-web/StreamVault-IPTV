@@ -1429,7 +1429,7 @@ class SyncManagerTest {
     }
 
     @Test
-    fun `processQueuedStalkerIndexJobs allows movie and series sections to overlap for same provider`() = runTest {
+    fun `processQueuedStalkerIndexJobs runs movies before series for same provider`() = runTest {
         val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
             serverUrl = "http://example.com",
             username = "",
@@ -1477,22 +1477,28 @@ class SyncManagerTest {
                 )
             )
         )
-        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.MOVIE.name)).thenReturn(
-            XtreamIndexJobEntity(
+        val indexJobs = mutableMapOf(
+            ContentType.MOVIE.name to XtreamIndexJobEntity(
                 providerId = 1L,
                 section = ContentType.MOVIE.name,
                 state = "QUEUED",
                 totalCategories = 1
-            )
-        )
-        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.SERIES.name)).thenReturn(
-            XtreamIndexJobEntity(
+            ),
+            ContentType.SERIES.name to XtreamIndexJobEntity(
                 providerId = 1L,
                 section = ContentType.SERIES.name,
                 state = "QUEUED",
                 totalCategories = 1
             )
         )
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(eq(1L), any())).thenAnswer { invocation ->
+            indexJobs[invocation.getArgument<String>(1)]
+        }
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.upsert(any())).thenAnswer { invocation ->
+            val entity = invocation.getArgument<XtreamIndexJobEntity>(0)
+            indexJobs[entity.section] = entity
+            Unit
+        }
         val movieHydrationByCategory = mutableMapOf<Long, MovieCategoryHydrationEntity>()
         org.mockito.kotlin.whenever(movieCategoryHydrationDao.get(eq(1L), any())).thenAnswer { invocation ->
             movieHydrationByCategory[invocation.getArgument<Long>(1)]
@@ -1573,13 +1579,15 @@ class SyncManagerTest {
             )
         }
 
+        advanceUntilIdle()
+        assertThat(seriesFetchStarted.isCompleted).isFalse()
+        releaseMovieFetch.complete(Unit)
+
+        val movieResult = movieJob.await()
         withTimeout(1_000) {
             seriesFetchStarted.await()
         }
-        releaseMovieFetch.complete(Unit)
-
         val seriesResult = seriesJob.await()
-        val movieResult = movieJob.await()
 
         if (seriesResult is Result.Error) fail(seriesResult.exception?.stackTraceToString() ?: seriesResult.message)
         if (movieResult is Result.Error) fail(movieResult.exception?.stackTraceToString() ?: movieResult.message)
@@ -1587,6 +1595,373 @@ class SyncManagerTest {
         assertThat(movieResult.isSuccess).isTrue()
         verify(stalkerApiService).getVodStreamsPage(any(), any(), eq("5"), eq(1))
         verify(stalkerApiService).getSeriesPage(any(), any(), eq("9"), eq(1))
+    }
+
+    @Test
+    fun `processQueuedStalkerIndexJobs retries failed movie category before moving to series`() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.SKIP,
+            maxConnections = 1
+        )
+        val movieCategoryId = stalkerSyntheticCategoryId(providerEntity.id, ContentType.MOVIE, "5")
+        val seriesCategoryId = stalkerSyntheticCategoryId(providerEntity.id, ContentType.SERIES, "9")
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        org.mockito.kotlin.whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getVodCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "5", name = "Action")))
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getSeriesCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "9", name = "Drama")))
+        )
+        org.mockito.kotlin.whenever(categoryDao.getByProviderAndTypeSync(1L, ContentType.MOVIE.name)).thenReturn(
+            listOf(
+                CategoryEntity(
+                    categoryId = movieCategoryId,
+                    name = "Action",
+                    type = ContentType.MOVIE,
+                    providerId = 1L
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(categoryDao.getByProviderAndTypeSync(1L, ContentType.SERIES.name)).thenReturn(
+            listOf(
+                CategoryEntity(
+                    categoryId = seriesCategoryId,
+                    name = "Drama",
+                    type = ContentType.SERIES,
+                    providerId = 1L
+                )
+            )
+        )
+        val indexJobs = mutableMapOf(
+            ContentType.MOVIE.name to XtreamIndexJobEntity(
+                providerId = 1L,
+                section = ContentType.MOVIE.name,
+                state = "QUEUED",
+                totalCategories = 1
+            ),
+            ContentType.SERIES.name to XtreamIndexJobEntity(
+                providerId = 1L,
+                section = ContentType.SERIES.name,
+                state = "QUEUED",
+                totalCategories = 1
+            )
+        )
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(eq(1L), any())).thenAnswer { invocation ->
+            indexJobs[invocation.getArgument<String>(1)]
+        }
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.upsert(any())).thenAnswer { invocation ->
+            val entity = invocation.getArgument<XtreamIndexJobEntity>(0)
+            indexJobs[entity.section] = entity
+            Unit
+        }
+        val movieHydrationByCategory = mutableMapOf<Long, MovieCategoryHydrationEntity>()
+        org.mockito.kotlin.whenever(movieCategoryHydrationDao.get(eq(1L), any())).thenAnswer { invocation ->
+            movieHydrationByCategory[invocation.getArgument<Long>(1)]
+        }
+        org.mockito.kotlin.whenever(movieCategoryHydrationDao.upsert(any())).thenAnswer { invocation ->
+            val entity = invocation.getArgument<MovieCategoryHydrationEntity>(0)
+            movieHydrationByCategory[entity.categoryId] = entity
+            Unit
+        }
+        val seriesHydrationByCategory = mutableMapOf<Long, SeriesCategoryHydrationEntity>()
+        org.mockito.kotlin.whenever(seriesCategoryHydrationDao.get(eq(1L), any())).thenAnswer { invocation ->
+            seriesHydrationByCategory[invocation.getArgument<Long>(1)]
+        }
+        org.mockito.kotlin.whenever(seriesCategoryHydrationDao.upsert(any())).thenAnswer { invocation ->
+            val entity = invocation.getArgument<SeriesCategoryHydrationEntity>(0)
+            seriesHydrationByCategory[entity.categoryId] = entity
+            Unit
+        }
+        org.mockito.kotlin.whenever(movieDao.getByStreamIds(eq(1L), any())).thenReturn(emptyList())
+        org.mockito.kotlin.whenever(seriesDao.getBySeriesIds(eq(1L), any())).thenReturn(emptyList())
+
+        var movieAttempts = 0
+        org.mockito.kotlin.whenever(stalkerApiService.getVodStreamsPage(any(), any(), eq("5"), eq(1))).thenAnswer {
+            movieAttempts += 1
+            if (movieAttempts == 1) {
+                Result.error("temporary movie failure", java.io.IOException("temporary movie failure"))
+            } else {
+                Result.success(
+                    StalkerPagedItems(
+                        items = listOf(
+                            StalkerItemRecord(
+                                id = "100",
+                                name = "Movie 100",
+                                categoryId = "5",
+                                cmd = "ffmpeg http://example.com/100.ts"
+                            )
+                        ),
+                        page = 1,
+                        totalPages = 1,
+                        pageSize = 14
+                    )
+                )
+            }
+        }
+        org.mockito.kotlin.whenever(stalkerApiService.getSeriesPage(any(), any(), eq("9"), eq(1))).thenReturn(
+            Result.success(
+                StalkerPagedItems(
+                    items = listOf(
+                        StalkerItemRecord(
+                            id = "200",
+                            name = "Series 200",
+                            categoryId = "9",
+                            cmd = "ffmpeg http://example.com/200.ts",
+                            isSeries = true
+                        )
+                    ),
+                    page = 1,
+                    totalPages = 1,
+                    pageSize = 14
+                )
+            )
+        )
+
+        val movieResult = manager.processQueuedStalkerIndexJobs(providerId = 1L, maxCategoriesPerSection = 1)
+        val seriesResult = manager.processQueuedStalkerIndexJobs(providerId = 1L, maxCategoriesPerSection = 1)
+
+        if (movieResult is Result.Error) fail(movieResult.exception?.stackTraceToString() ?: movieResult.message)
+        if (seriesResult is Result.Error) fail(seriesResult.exception?.stackTraceToString() ?: seriesResult.message)
+        assertThat(movieAttempts).isEqualTo(2)
+        verify(stalkerApiService).getSeriesPage(any(), any(), eq("9"), eq(1))
+        assertThat(indexJobs[ContentType.MOVIE.name]?.state).isEqualTo("SUCCESS")
+        assertThat(indexJobs[ContentType.SERIES.name]?.state).isEqualTo("SUCCESS")
+    }
+
+    @Test
+    fun `processQueuedStalkerIndexJobs commits first movie category before fetching next category for one connection provider`() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.SKIP,
+            maxConnections = 1
+        )
+        val actionCategoryId = stalkerSyntheticCategoryId(providerEntity.id, ContentType.MOVIE, "5")
+        val dramaCategoryId = stalkerSyntheticCategoryId(providerEntity.id, ContentType.MOVIE, "6")
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        org.mockito.kotlin.whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getVodCategories(any(), any())).thenReturn(
+            Result.success(
+                listOf(
+                    StalkerCategoryRecord(id = "5", name = "Action"),
+                    StalkerCategoryRecord(id = "6", name = "Drama")
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(categoryDao.getByProviderAndTypeSync(1L, ContentType.MOVIE.name)).thenReturn(
+            listOf(
+                CategoryEntity(
+                    categoryId = actionCategoryId,
+                    name = "Action",
+                    type = ContentType.MOVIE,
+                    providerId = 1L
+                ),
+                CategoryEntity(
+                    categoryId = dramaCategoryId,
+                    name = "Drama",
+                    type = ContentType.MOVIE,
+                    providerId = 1L
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.MOVIE.name)).thenReturn(
+            XtreamIndexJobEntity(
+                providerId = 1L,
+                section = ContentType.MOVIE.name,
+                state = "QUEUED",
+                totalCategories = 2
+            )
+        )
+        val hydrationByCategory = mutableMapOf<Long, MovieCategoryHydrationEntity>()
+        org.mockito.kotlin.whenever(movieCategoryHydrationDao.get(eq(1L), any())).thenAnswer { invocation ->
+            hydrationByCategory[invocation.getArgument<Long>(1)]
+        }
+        org.mockito.kotlin.whenever(movieCategoryHydrationDao.upsert(any())).thenAnswer { invocation ->
+            val entity = invocation.getArgument<MovieCategoryHydrationEntity>(0)
+            hydrationByCategory[entity.categoryId] = entity
+            Unit
+        }
+        org.mockito.kotlin.whenever(movieDao.getByStreamIds(eq(1L), any())).thenReturn(emptyList())
+
+        val firstCategoryCommitted = CompletableDeferred<Unit>()
+        org.mockito.kotlin.whenever(movieDao.insertAll(any())).doSuspendableAnswer {
+            firstCategoryCommitted.complete(Unit)
+            Unit
+        }
+        org.mockito.kotlin.whenever(stalkerApiService.getVodStreamsPage(any(), any(), eq("5"), eq(1))).thenReturn(
+            Result.success(
+                StalkerPagedItems(
+                    items = listOf(
+                        StalkerItemRecord(
+                            id = "100",
+                            name = "Movie 100",
+                            categoryId = "5",
+                            cmd = "ffmpeg http://example.com/100.ts"
+                        )
+                    ),
+                    page = 1,
+                    totalPages = 1,
+                    pageSize = 14
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getVodStreamsPage(any(), any(), eq("6"), eq(1))).thenAnswer {
+            assertThat(firstCategoryCommitted.isCompleted).isTrue()
+            Result.success(
+                StalkerPagedItems(
+                    items = listOf(
+                        StalkerItemRecord(
+                            id = "101",
+                            name = "Movie 101",
+                            categoryId = "6",
+                            cmd = "ffmpeg http://example.com/101.ts"
+                        )
+                    ),
+                    page = 1,
+                    totalPages = 1,
+                    pageSize = 14
+                )
+            )
+        }
+
+        val result = manager.processQueuedStalkerIndexJobs(
+            providerId = 1L,
+            section = ContentType.MOVIE,
+            maxCategoriesPerSection = 2
+        )
+
+        if (result is Result.Error) fail(result.exception?.stackTraceToString() ?: result.message)
+        assertThat(result.isSuccess).isTrue()
+        verify(stalkerApiService).getVodStreamsPage(any(), any(), eq("5"), eq(1))
+        verify(stalkerApiService).getVodStreamsPage(any(), any(), eq("6"), eq(1))
+    }
+
+    @Test
+    fun `processQueuedStalkerIndexJobs resumes fresh running Stalker movie job`() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.SKIP,
+            maxConnections = 1
+        )
+        val actionCategoryId = stalkerSyntheticCategoryId(providerEntity.id, ContentType.MOVIE, "5")
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        org.mockito.kotlin.whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getVodCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "5", name = "Action")))
+        )
+        org.mockito.kotlin.whenever(categoryDao.getByProviderAndTypeSync(1L, ContentType.MOVIE.name)).thenReturn(
+            listOf(
+                CategoryEntity(
+                    categoryId = actionCategoryId,
+                    name = "Action",
+                    type = ContentType.MOVIE,
+                    providerId = 1L
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.MOVIE.name)).thenReturn(
+            XtreamIndexJobEntity(
+                providerId = 1L,
+                section = ContentType.MOVIE.name,
+                state = "RUNNING",
+                totalCategories = 1,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+        val hydrationByCategory = mutableMapOf(
+            actionCategoryId to MovieCategoryHydrationEntity(
+                providerId = 1L,
+                categoryId = actionCategoryId,
+                lastHydratedAt = System.currentTimeMillis(),
+                itemCount = 56,
+                lastStatus = "RUNNING",
+                lastLoadedPage = 4,
+                lastAttemptedPage = 5,
+                lastSuccessfulPage = 4,
+                totalPages = 13,
+                isComplete = false,
+                pageSize = 14,
+                retryAfterMs = 0L,
+                failureCount = 0,
+                retryBudgetRemaining = 3
+            )
+        )
+        org.mockito.kotlin.whenever(movieCategoryHydrationDao.get(eq(1L), any())).thenAnswer { invocation ->
+            hydrationByCategory[invocation.getArgument<Long>(1)]
+        }
+        org.mockito.kotlin.whenever(movieCategoryHydrationDao.upsert(any())).thenAnswer { invocation ->
+            val entity = invocation.getArgument<MovieCategoryHydrationEntity>(0)
+            hydrationByCategory[entity.categoryId] = entity
+            Unit
+        }
+        org.mockito.kotlin.whenever(movieDao.getByStreamIds(eq(1L), any())).thenReturn(emptyList())
+        val requestedPages = mutableListOf<Int>()
+        org.mockito.kotlin.whenever(stalkerApiService.getVodStreamsPage(any(), any(), anyOrNull(), any())).thenAnswer { invocation ->
+            val requestedPage = invocation.getArgument<Int>(3)
+            requestedPages += requestedPage
+            Result.success(
+                StalkerPagedItems(
+                    items = listOf(
+                        StalkerItemRecord(
+                            id = "105",
+                            name = "Movie 105",
+                            categoryId = "5",
+                            cmd = "ffmpeg http://example.com/105.ts"
+                        )
+                    ),
+                    page = requestedPage,
+                    totalPages = 13,
+                    pageSize = 14
+                )
+            )
+        }
+
+        val result = manager.processQueuedStalkerIndexJobs(
+            providerId = 1L,
+            section = ContentType.MOVIE,
+            maxCategoriesPerSection = 1
+        )
+
+        if (result is Result.Error) fail(result.exception?.stackTraceToString() ?: result.message)
+        assertThat(result.isSuccess).isTrue()
+        assertThat(requestedPages).contains(5)
     }
 
     @Test
@@ -1638,22 +2013,28 @@ class SyncManagerTest {
                 )
             )
         )
-        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.MOVIE.name)).thenReturn(
-            XtreamIndexJobEntity(
+        val indexJobs = mutableMapOf(
+            ContentType.MOVIE.name to XtreamIndexJobEntity(
                 providerId = 1L,
                 section = ContentType.MOVIE.name,
                 state = "QUEUED",
                 totalCategories = 1
-            )
-        )
-        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.SERIES.name)).thenReturn(
-            XtreamIndexJobEntity(
+            ),
+            ContentType.SERIES.name to XtreamIndexJobEntity(
                 providerId = 1L,
                 section = ContentType.SERIES.name,
                 state = "QUEUED",
                 totalCategories = 1
             )
         )
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(eq(1L), any())).thenAnswer { invocation ->
+            indexJobs[invocation.getArgument<String>(1)]
+        }
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.upsert(any())).thenAnswer { invocation ->
+            val entity = invocation.getArgument<XtreamIndexJobEntity>(0)
+            indexJobs[entity.section] = entity
+            Unit
+        }
         val movieHydrationByCategory = mutableMapOf<Long, MovieCategoryHydrationEntity>()
         org.mockito.kotlin.whenever(movieCategoryHydrationDao.get(eq(1L), any())).thenAnswer { invocation ->
             movieHydrationByCategory[invocation.getArgument<Long>(1)]
@@ -1851,6 +2232,95 @@ class SyncManagerTest {
     }
 
     @Test
+    fun `processQueuedStalkerIndexJobs uses wildcard movie indexing when wildcard category is the only visible category`() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.SKIP,
+            maxConnections = 1
+        )
+        val wildcardCategoryId = stalkerSyntheticCategoryId(providerEntity.id, ContentType.MOVIE, "*")
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        org.mockito.kotlin.whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getVodCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "*", name = "All Movies")))
+        )
+        org.mockito.kotlin.whenever(categoryDao.getByProviderAndTypeSync(1L, ContentType.MOVIE.name)).thenReturn(
+            listOf(
+                CategoryEntity(
+                    categoryId = wildcardCategoryId,
+                    name = "All Movies",
+                    type = ContentType.MOVIE,
+                    providerId = 1L
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.MOVIE.name)).thenReturn(
+            XtreamIndexJobEntity(
+                providerId = 1L,
+                section = ContentType.MOVIE.name,
+                state = "QUEUED",
+                totalCategories = 1
+            )
+        )
+        val movieHydrationByCategory = mutableMapOf<Long, MovieCategoryHydrationEntity>()
+        org.mockito.kotlin.whenever(movieCategoryHydrationDao.get(eq(1L), any())).thenAnswer { invocation ->
+            movieHydrationByCategory[invocation.getArgument<Long>(1)]
+        }
+        org.mockito.kotlin.whenever(movieCategoryHydrationDao.upsert(any())).thenAnswer { invocation ->
+            val entity = invocation.getArgument<MovieCategoryHydrationEntity>(0)
+            movieHydrationByCategory[entity.categoryId] = entity
+            Unit
+        }
+        org.mockito.kotlin.whenever(movieDao.getByStreamIds(eq(1L), any())).thenReturn(emptyList())
+        org.mockito.kotlin.whenever(movieDao.getCount(1L)).thenReturn(flowOf(0), flowOf(1), flowOf(1))
+        org.mockito.kotlin.whenever(xtreamContentIndexDao.pruneStaleLocalContentRows(1L, ContentType.MOVIE.name)).thenReturn(0)
+        org.mockito.kotlin.whenever(stalkerApiService.getVodStreamsPage(any(), any(), eq("*"), eq(1))).thenReturn(
+            Result.success(
+                StalkerPagedItems(
+                    items = listOf(
+                        StalkerItemRecord(
+                            id = "100",
+                            name = "Movie 100",
+                            categoryId = "5",
+                            cmd = "ffmpeg http://example.com/100.ts"
+                        )
+                    ),
+                    page = 1,
+                    totalPages = 1,
+                    pageSize = 14
+                )
+            )
+        )
+
+        val result = manager.processQueuedStalkerIndexJobs(
+            providerId = 1L,
+            section = ContentType.MOVIE,
+            maxCategoriesPerSection = 1
+        )
+
+        if (result is Result.Error) fail(result.exception?.stackTraceToString() ?: result.message)
+        assertThat(result.isSuccess).isTrue()
+        verify(stalkerApiService).getVodStreamsPage(any(), any(), eq("*"), eq(1))
+        verify(movieDao).insertAll(check { movies ->
+            assertThat(movies).hasSize(1)
+            assertThat(movies.first().providerId).isEqualTo(1L)
+            assertThat(movies.first().streamId).isEqualTo(100L)
+        })
+    }
+
+    @Test
     fun `chunkedLookupById splits large id lists below sqlite variable limit`() = runTest {
         val requestedChunks = mutableListOf<List<Long>>()
 
@@ -1936,6 +2406,228 @@ class SyncManagerTest {
         verify(stalkerApiService, org.mockito.kotlin.times(0)).streamEpg(any(), any(), any(), any(), any())
         verify(stalkerApiService, org.mockito.kotlin.times(0)).getVodStreams(any(), any(), anyOrNull())
         verify(stalkerApiService, org.mockito.kotlin.times(0)).getSeries(any(), any(), anyOrNull())
+    }
+
+    @Test
+    fun sync_stalker_persists_wildcard_vod_and_series_categories_when_portal_category_lists_are_empty() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.SKIP
+        )
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        org.mockito.kotlin.whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getLiveCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "10", name = "News")))
+        )
+        stalkerApiService.stubStreamLiveStreams(
+            listOf(
+                StalkerItemRecord(
+                    id = "100",
+                    name = "News",
+                    categoryId = "10",
+                    cmd = "ffmpeg http://example.com/live.ts"
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getVodCategories(any(), any())).thenReturn(Result.success(emptyList()))
+        org.mockito.kotlin.whenever(stalkerApiService.getSeriesCategories(any(), any())).thenReturn(Result.success(emptyList()))
+
+        val result = manager.sync(providerId = 1L, force = false)
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        val categoryStagesCaptor = argumentCaptor<List<com.streamvault.data.local.entity.CategoryImportStageEntity>>()
+        verify(catalogSyncDao, atLeastOnce()).insertCategoryStages(categoryStagesCaptor.capture())
+        val stagedCategories = categoryStagesCaptor.allValues.flatten()
+        assertThat(stagedCategories.any {
+            it.type == ContentType.MOVIE && it.name == "All Movies" &&
+                it.categoryId == stalkerSyntheticCategoryId(1L, ContentType.MOVIE, "*")
+        }).isTrue()
+        assertThat(stagedCategories.any {
+            it.type == ContentType.SERIES && it.name == "All Series" &&
+                it.categoryId == stalkerSyntheticCategoryId(1L, ContentType.SERIES, "*")
+        }).isTrue()
+        val queuedJobCaptor = argumentCaptor<XtreamIndexJobEntity>()
+        verify(xtreamIndexJobDao, atLeastOnce()).upsert(queuedJobCaptor.capture())
+        assertThat(queuedJobCaptor.allValues.any {
+            it.section == ContentType.MOVIE.name && it.state == "QUEUED" && it.totalCategories == 1
+        }).isTrue()
+        assertThat(queuedJobCaptor.allValues.any {
+            it.section == ContentType.SERIES.name && it.state == "QUEUED" && it.totalCategories == 1
+        }).isTrue()
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).getVodStreamsPage(any(), any(), anyOrNull(), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).getSeriesPage(any(), any(), anyOrNull(), any())
+    }
+
+    @Test
+    fun sync_stalker_queues_epg_until_after_background_catalog_indexing() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.UPFRONT
+        )
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        org.mockito.kotlin.whenever(stalkerApiService.authenticate(any())).thenReturn(
+            Result.success(
+                StalkerSession(
+                    loadUrl = "http://example.com/stalker_portal/server/load.php",
+                    portalReferer = "http://example.com/stalker_portal/c/",
+                    token = "token"
+                ) to StalkerProviderProfile(accountName = "Stalker")
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getLiveCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "10", name = "News")))
+        )
+        stalkerApiService.stubStreamLiveStreams(
+            listOf(
+                StalkerItemRecord(
+                    id = "100",
+                    name = "News",
+                    categoryId = "10",
+                    cmd = "ffmpeg http://example.com/live.ts"
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getVodCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "42", name = "Action")))
+        )
+        org.mockito.kotlin.whenever(stalkerApiService.getSeriesCategories(any(), any())).thenReturn(
+            Result.success(listOf(StalkerCategoryRecord(id = "77", name = "Drama")))
+        )
+
+        val result = manager.sync(providerId = 1L, force = false)
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        val queuedJobCaptor = argumentCaptor<XtreamIndexJobEntity>()
+        verify(xtreamIndexJobDao, atLeastOnce()).upsert(queuedJobCaptor.capture())
+        assertThat(queuedJobCaptor.allValues.any { job ->
+            job.providerId == 1L &&
+                job.section == "EPG" &&
+                job.state == "QUEUED"
+        }).isTrue()
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamBulkEpg(any(), any(), any(), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamEpg(any(), any(), any(), any(), any())
+        verify(epgRepo, org.mockito.kotlin.times(0)).refreshEpg(any(), any())
+    }
+
+    @Test
+    fun syncEpg_stalker_defers_while_catalog_index_jobs_are_pending() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.UPFRONT
+        )
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+        val movieCategoryId = stalkerSyntheticCategoryId(providerEntity.id, ContentType.MOVIE, "5")
+
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.MOVIE.name)).thenReturn(
+            XtreamIndexJobEntity(
+                providerId = 1L,
+                section = ContentType.MOVIE.name,
+                state = "RUNNING"
+            )
+        )
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.SERIES.name)).thenReturn(
+            XtreamIndexJobEntity(
+                providerId = 1L,
+                section = ContentType.SERIES.name,
+                state = "QUEUED"
+            )
+        )
+
+        val result = manager.syncEpg(providerId = 1L, force = false)
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        val queuedJobCaptor = argumentCaptor<XtreamIndexJobEntity>()
+        verify(xtreamIndexJobDao, atLeastOnce()).upsert(queuedJobCaptor.capture())
+        assertThat(queuedJobCaptor.allValues.any { job ->
+            job.providerId == 1L &&
+                job.section == "EPG" &&
+                job.state == "QUEUED"
+        }).isTrue()
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamBulkEpg(any(), any(), any(), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamEpg(any(), any(), any(), any(), any())
+        verify(epgRepo, org.mockito.kotlin.times(0)).refreshEpg(any(), any())
+    }
+
+    @Test
+    fun syncEpg_stalker_defers_while_catalog_index_job_is_partial() = runTest {
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            epgSyncMode = ProviderEpgSyncMode.UPFRONT
+        )
+        val manager = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+        val movieCategoryId = stalkerSyntheticCategoryId(providerEntity.id, ContentType.MOVIE, "5")
+
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.MOVIE.name)).thenReturn(
+            XtreamIndexJobEntity(
+                providerId = 1L,
+                section = ContentType.MOVIE.name,
+                state = "PARTIAL"
+            )
+        )
+        org.mockito.kotlin.whenever(xtreamIndexJobDao.get(1L, ContentType.SERIES.name)).thenReturn(
+            XtreamIndexJobEntity(
+                providerId = 1L,
+                section = ContentType.SERIES.name,
+                state = "SUCCESS"
+            )
+        )
+        org.mockito.kotlin.whenever(categoryDao.getByProviderAndTypeSync(1L, ContentType.MOVIE.name)).thenReturn(
+            listOf(
+                CategoryEntity(
+                    categoryId = movieCategoryId,
+                    name = "Action",
+                    type = ContentType.MOVIE,
+                    providerId = 1L
+                )
+            )
+        )
+        org.mockito.kotlin.whenever(movieCategoryHydrationDao.get(1L, movieCategoryId)).thenReturn(
+            MovieCategoryHydrationEntity(
+                providerId = 1L,
+                categoryId = movieCategoryId,
+                lastStatus = "FAILED_RETRYABLE",
+                lastAttemptedPage = 1,
+                retryAfterMs = System.currentTimeMillis() + 60_000L,
+                failureCount = 1,
+                retryBudgetRemaining = 2
+            )
+        )
+
+        val result = manager.syncEpg(providerId = 1L, force = false)
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        val queuedJobCaptor = argumentCaptor<XtreamIndexJobEntity>()
+        verify(xtreamIndexJobDao, atLeastOnce()).upsert(queuedJobCaptor.capture())
+        assertThat(queuedJobCaptor.allValues.any { job ->
+            job.providerId == 1L &&
+                job.section == "EPG" &&
+                job.state == "QUEUED"
+        }).isTrue()
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamBulkEpg(any(), any(), any(), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamEpg(any(), any(), any(), any(), any())
+        verify(epgRepo, org.mockito.kotlin.times(0)).refreshEpg(any(), any())
     }
 
     @Test
@@ -2091,7 +2783,7 @@ class SyncManagerTest {
     }
 
     @Test
-    fun sync_stalker_upfront_epg_without_xmltv_imports_native_portal_guide() = runTest {
+    fun sync_stalker_upfront_epg_queues_native_portal_guide_until_catalog_is_idle() = runTest {
         val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
             serverUrl = "http://example.com",
             username = "",
@@ -2153,20 +2845,21 @@ class SyncManagerTest {
         val result = manager.sync(providerId = 1L, force = true)
 
         assertThat(result).isInstanceOf(Result.Success::class.java)
-        val insertedProgramsCaptor = argumentCaptor<List<com.streamvault.data.local.entity.ProgramEntity>>()
-        verify(programDao).insertAll(insertedProgramsCaptor.capture())
-        assertThat(insertedProgramsCaptor.firstValue).hasSize(1)
-        assertThat(insertedProgramsCaptor.firstValue.first().channelId).isEqualTo("100")
-        assertThat(insertedProgramsCaptor.firstValue.first().providerId).isEqualTo(1L)
-        val metadata = syncMetadataRepo.getMetadata(1L)
-        assertThat(metadata?.epgCount).isEqualTo(1)
+        val queuedJobCaptor = argumentCaptor<XtreamIndexJobEntity>()
+        verify(xtreamIndexJobDao, atLeastOnce()).upsert(queuedJobCaptor.capture())
+        assertThat(queuedJobCaptor.allValues.any { job ->
+            job.providerId == 1L &&
+                job.section == "EPG" &&
+                job.state == "QUEUED"
+        }).isTrue()
         verify(stalkerApiService).streamLiveStreams(any(), any(), any())
         verify(stalkerApiService, org.mockito.kotlin.times(0)).getLiveStreams(any(), any(), eq("10"))
-        verify(stalkerApiService).streamEpg(any(), any(), eq("100"), any(), any())
+        verify(stalkerApiService, org.mockito.kotlin.times(0)).streamEpg(any(), any(), eq("100"), any(), any())
+        verify(programDao, org.mockito.kotlin.times(0)).insertAll(any())
     }
 
     @Test
-    fun sync_stalker_upfront_epg_batches_native_portal_guide_writes() = runTest {
+    fun sync_stalker_upfront_epg_defers_batched_native_portal_guide_until_catalog_is_idle() = runTest {
         val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
             serverUrl = "http://example.com",
             username = "",
@@ -2228,9 +2921,14 @@ class SyncManagerTest {
         val result = manager.sync(providerId = 1L, force = true)
 
         assertThat(result).isInstanceOf(Result.Success::class.java)
-        val insertedProgramsCaptor = argumentCaptor<List<com.streamvault.data.local.entity.ProgramEntity>>()
-        verify(programDao, atLeast(2)).insertAll(insertedProgramsCaptor.capture())
-        assertThat(insertedProgramsCaptor.allValues.flatten()).hasSize(505)
+        val queuedJobCaptor = argumentCaptor<XtreamIndexJobEntity>()
+        verify(xtreamIndexJobDao, atLeastOnce()).upsert(queuedJobCaptor.capture())
+        assertThat(queuedJobCaptor.allValues.any { job ->
+            job.providerId == 1L &&
+                job.section == "EPG" &&
+                job.state == "QUEUED"
+        }).isTrue()
+        verify(programDao, org.mockito.kotlin.times(0)).insertAll(any())
     }
 
     @Test

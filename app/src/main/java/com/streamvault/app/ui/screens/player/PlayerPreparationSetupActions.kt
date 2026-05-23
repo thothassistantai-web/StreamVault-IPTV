@@ -65,6 +65,7 @@ internal fun PlayerViewModel.applyPrepareSessionState(
     val previousCategoryId = currentCategoryId
     val previousCombinedProfileId = currentCombinedProfileId
     val previousCombinedSourceFilterProviderId = currentCombinedSourceFilterProviderId
+    stopActiveStalkerPlaybackFetchDeferral()
     val shouldReloadPlaylist = categoryId != -1L &&
         (
             categoryId != previousCategoryId ||
@@ -115,7 +116,6 @@ internal fun PlayerViewModel.applyPrepareSessionState(
     if (currentContentType != ContentType.SERIES_EPISODE || providerId <= 0 || currentSeriesId == null) {
         clearSeriesEpisodeContext()
     }
-    reconcileStalkerPlaybackFetchDeferral()
     if (currentContentType != ContentType.LIVE) {
         lastRecordedLivePlaybackKey = null
         recentChannelsJob?.cancel()

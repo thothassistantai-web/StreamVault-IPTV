@@ -17,24 +17,32 @@ class StalkerTrafficCoordinatorTest {
     }
 
     @Test
-    fun `deferCatalogFetchMillis stays deferred while playback is active beyond legacy window`() {
-        StalkerTrafficCoordinator.notePlaybackStarted(providerId = 7L, now = 1_000L)
+    fun `deferCatalogFetchMillis stays deferred while playback is active`() {
+        StalkerTrafficCoordinator.notePlaybackStarted(providerId = 7L)
 
-        val deferredAtTwoMinutes = StalkerTrafficCoordinator.deferCatalogFetchMillis(
-            providerId = 7L,
-            now = 121_000L
-        )
+        val deferred = StalkerTrafficCoordinator.deferCatalogFetchMillis(providerId = 7L)
 
-        assertThat(deferredAtTwoMinutes).isGreaterThan(0L)
+        assertThat(deferred).isGreaterThan(0L)
     }
 
     @Test
     fun `deferCatalogFetchMillis clears immediately when playback stops`() {
-        StalkerTrafficCoordinator.notePlaybackActivity(providerId = 7L, now = 1_000L)
-        StalkerTrafficCoordinator.notePlaybackStarted(providerId = 7L, now = 2_000L)
+        StalkerTrafficCoordinator.notePlaybackStarted(providerId = 7L)
+        StalkerTrafficCoordinator.notePlaybackStopped(providerId = 7L)
 
-        StalkerTrafficCoordinator.notePlaybackStopped(7L)
+        val deferred = StalkerTrafficCoordinator.deferCatalogFetchMillis(providerId = 7L)
 
-        assertThat(StalkerTrafficCoordinator.deferCatalogFetchMillis(providerId = 7L, now = 2_001L)).isEqualTo(0L)
+        assertThat(deferred).isEqualTo(0L)
+    }
+
+    @Test
+    fun `deferCatalogFetchMillis tracks nested playback sessions for same provider`() {
+        StalkerTrafficCoordinator.notePlaybackStarted(providerId = 7L)
+        StalkerTrafficCoordinator.notePlaybackStarted(providerId = 7L)
+        StalkerTrafficCoordinator.notePlaybackStopped(providerId = 7L)
+
+        val deferred = StalkerTrafficCoordinator.deferCatalogFetchMillis(providerId = 7L)
+
+        assertThat(deferred).isGreaterThan(0L)
     }
 }

@@ -39,6 +39,7 @@ import com.streamvault.domain.model.VideoFormat
 import com.streamvault.domain.repository.PlaybackCompatibilityRepository
 import com.streamvault.player.audio.PlayerAudioFocusController
 import com.streamvault.player.playback.ActiveDecoderPolicy
+import com.streamvault.player.playback.AutomaticRecoveryAction
 import com.streamvault.player.playback.DefaultDecoderPreferencePolicy
 import com.streamvault.player.playback.DefaultPlaybackCompatibilityProfile
 import com.streamvault.player.playback.AudioVideoOffsetAudioSink
@@ -62,6 +63,7 @@ import com.streamvault.player.playback.buildPlaybackRendererPlan
 import com.streamvault.player.playback.resolveRetryAttemptAfterPlaybackStarted
 import com.streamvault.player.playback.resolveRetryAttemptAfterReady
 import com.streamvault.player.playback.resolveRetrySeekPositionMs
+import com.streamvault.player.playback.shouldAttemptAutomaticRecovery
 import com.streamvault.player.playback.StreamTypeResolver
 import com.streamvault.player.playback.VideoStallDetector
 import com.streamvault.player.stats.PlayerStatsCollector
@@ -1499,6 +1501,23 @@ class Media3PlayerEngine @Inject constructor(
         videoStallRecoveryAttempt++
         if (!videoStallSafeRecoveryPerformed) {
             videoStallSafeRecoveryPerformed = true
+            if (!shouldAttemptAutomaticRecovery(
+                    action = AutomaticRecoveryAction.FULL_REPREPARE,
+                    resolvedStreamType = currentResolvedStreamType,
+                    playbackStarted = playbackStarted
+                )
+            ) {
+                Log.w(
+                    TAG,
+                    "video-stall reprepare suppressed after playback start for provider streamType=$currentResolvedStreamType"
+                )
+                _error.tryEmit(
+                    PlayerError.DecoderError(
+                        "Video playback stalled. Automatic recovery was not attempted to avoid opening another provider connection."
+                    )
+                )
+                return
+            }
             Log.w(TAG, "video-stall safe reprepare attempt=$videoStallRecoveryAttempt")
             prepareInternal(
                 streamInfo = streamInfo,
@@ -1533,6 +1552,18 @@ class Media3PlayerEngine @Inject constructor(
         val mediaId = lastMediaId ?: return false
         val fallbackMode = decoderPreferencePolicy.onDecoderInitFailure(requestedDecoderMode, mediaId) ?: return false
         val fallbackPolicy = resolveActiveDecoderPolicy(policyModeFor(requestedDecoderMode, fallbackMode))
+        if (!shouldAttemptAutomaticRecovery(
+                action = AutomaticRecoveryAction.DECODER_FALLBACK,
+                resolvedStreamType = currentResolvedStreamType,
+                playbackStarted = playbackStarted
+            )
+        ) {
+            Log.w(
+                TAG,
+                "video-stall decoder fallback suppressed after playback start fallback=$fallbackMode streamType=$currentResolvedStreamType mediaId=$mediaId"
+            )
+            return false
+        }
         recoveryDecoderPolicyOverride = fallbackPolicy
         Log.w(
             TAG,
@@ -1697,6 +1728,25 @@ class Media3PlayerEngine @Inject constructor(
         val seekPosition = exoPlayer?.currentPosition
             ?.takeIf { currentResolvedStreamType == ResolvedStreamType.PROGRESSIVE && it > 0L }
 
+        if (!shouldAttemptAutomaticRecovery(
+                action = AutomaticRecoveryAction.FULL_REPREPARE,
+                resolvedStreamType = currentResolvedStreamType,
+                playbackStarted = playbackStarted
+            )
+        ) {
+            Log.e(
+                TAG,
+                "audio-renderer-recover suppressed after playback start source=$source streamType=$currentResolvedStreamType target=${PlaybackLogSanitizer.sanitizeUrl(streamInfo.url)} message=${PlaybackLogSanitizer.sanitizeMessage(error.message)}"
+            )
+            lastSupportErrorMessage = error.message ?: "Audio playback failed for this stream."
+            _error.tryEmit(
+                PlayerError.DecoderError(
+                    error.message ?: "Audio playback failed for this stream."
+                )
+            )
+            return
+        }
+
         Log.w(
             TAG,
             "audio-renderer-recover source=$source target=${PlaybackLogSanitizer.sanitizeUrl(streamInfo.url)} message=${PlaybackLogSanitizer.sanitizeMessage(error.message)}"
@@ -1846,6 +1896,22 @@ class Media3PlayerEngine @Inject constructor(
         if (category == PlaybackErrorCategory.DECODER || category == PlaybackErrorCategory.FORMAT_UNSUPPORTED) {
             val fallbackMode = decoderPreferencePolicy.onDecoderInitFailure(requestedDecoderMode, mediaId)
             if (fallbackMode != null) {
+                if (!shouldAttemptAutomaticRecovery(
+                        action = AutomaticRecoveryAction.DECODER_FALLBACK,
+                        resolvedStreamType = currentResolvedStreamType,
+                        playbackStarted = playbackStarted
+                    )
+                ) {
+                    Log.w(
+                        TAG,
+                        "decoder-preference fallback suppressed after playback start fallback=$fallbackMode streamType=$currentResolvedStreamType mediaId=$mediaId"
+                    )
+                    _retryStatus.value = null
+                    lastSupportErrorMessage = error.message
+                    _error.tryEmit(PlayerError.fromException(error))
+                    _playbackState.value = PlaybackState.ERROR
+                    return
+                }
                 Log.w(
                     TAG,
                     "decoder-preference fallback=$fallbackMode mediaId=$mediaId target=${PlaybackLogSanitizer.sanitizeUrl(streamInfo.url)}"
@@ -1857,6 +1923,22 @@ class Media3PlayerEngine @Inject constructor(
         }
 
         val nextAttempt = retryAttempt + 1
+        if (!shouldAttemptAutomaticRecovery(
+                action = AutomaticRecoveryAction.FULL_REPREPARE,
+                resolvedStreamType = currentResolvedStreamType,
+                playbackStarted = playbackStarted
+            )
+        ) {
+            _retryStatus.value = null
+            Log.e(
+                TAG,
+                "retry suppressed after playback start category=$category streamType=$currentResolvedStreamType target=${PlaybackLogSanitizer.sanitizeUrl(streamInfo.url)} message=${PlaybackLogSanitizer.sanitizeMessage(error.message)}"
+            )
+            lastSupportErrorMessage = error.message
+            _error.tryEmit(PlayerError.fromException(error))
+            _playbackState.value = PlaybackState.ERROR
+            return
+        }
         if (retryPolicy.shouldRetry(error, retryContext, playbackStarted, nextAttempt)) {
             val delayMs = retryPolicy.retryDelayMs(error, nextAttempt)
             val player = exoPlayer
