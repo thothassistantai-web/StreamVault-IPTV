@@ -47,7 +47,6 @@ import okhttp3.Request
 import java.io.FilterInputStream
 import java.io.IOException
 import java.util.concurrent.TimeUnit
-import java.util.zip.GZIPInputStream
 import com.streamvault.data.remote.NetworkTimeoutConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.ConcurrentHashMap
@@ -239,14 +238,12 @@ class EpgSourceRepositoryImpl @Inject constructor(
                             return@withLock Result.error(err)
                         }
                 } else {
-                    // Disable OkHttp's transparent gzip by requesting identity encoding.
-                    // This prevents double-decompression when the URL ends in .gz:
-                    // OkHttp would silently decompress gzip responses, and then
-                    // maybeDecompressGzip() would try again — corrupting the stream.
+                    // Let OkHttp negotiate/decompress standard gzip responses. We still
+                    // inspect the payload bytes later so download URLs that return raw
+                    // gzip data without transparent decompression continue to work.
                     val requestProfile = HttpRequestProfile(ownerTag = "epg-source:$sourceId")
                     val request = Request.Builder()
                         .url(source.url)
-                        .header("Accept-Encoding", "identity")
                         .apply {
                             source.etag?.let { header("If-None-Match", it) }
                             source.lastModifiedHeader?.let { header("If-Modified-Since", it) }
@@ -285,19 +282,20 @@ class EpgSourceRepositoryImpl @Inject constructor(
                     }
 
                     val bodyStream = response.body?.byteStream() ?: run {
+                        response.close()
                         epgSourceDao.updateRefreshError(sourceId, "Empty response")
                         return@withLock Result.error("Empty EPG response")
                     }
                     responseEtag = response.header("ETag")
                     responseLastModified = response.header("Last-Modified")
-                    // Some servers send Content-Encoding: gzip even when identity was requested.
-                    // Since OkHttp no longer decompresses (we set Accept-Encoding manually),
-                    // we must handle it here.
-                    val contentEncoding = response.header("Content-Encoding")
-                    if (contentEncoding?.contains("gzip", ignoreCase = true) == true) {
-                        GZIPInputStream(bodyStream)
-                    } else {
-                        bodyStream
+                    object : FilterInputStream(bodyStream) {
+                        override fun close() {
+                            try {
+                                super.close()
+                            } finally {
+                                response.close()
+                            }
+                        }
                     }
                 }
 

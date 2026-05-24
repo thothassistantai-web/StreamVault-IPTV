@@ -22,6 +22,7 @@ All notable product changes are recorded in this document.
 
 ### Fixed
 
+- Fixed delete provider dialog, not closing after deletion.
 - Fixed many Stalker portals that could browse catalogs but failed at playback because they needed different auth, bootstrap, cookie, endpoint, or temp-link behavior.
 - Fixed incorrect handling of ambiguous Stalker account states such as `status=0`, which could previously be treated too aggressively as expired.
 - Fixed Stalker temp-link and backend-family failures being reported too generically by surfacing clearer empty-link and session-rejection diagnostics, including HTTP `204` cases.
@@ -32,6 +33,7 @@ All notable product changes are recorded in this document.
 - Fixed VOD category browse sort wiring so `Newest` and `Recently Updated` no longer collapse to the same behavior; Movies now separate release-date ordering from provider-added ordering, while Series keeps `Recently Updated` based on `last_modified` and uses release metadata for `Newest` when available across both Xtream and Stalker category views.
 - Fixed top navbar unified search so mixed-case queries match live TV, movies, and series results case-insensitively.
 - Fixed `TextureView` live preview and fullscreen playback turning solid green by correcting the player-view handoff path and stale frame retention during render-surface reuse.
+- Fixed external XMLTV download URLs that return gzip-compressed MyEPG-style files without a `.gz` suffix so they refresh correctly instead of failing with stream reset or parse errors.
 - fixed diagnostics window, size and scrolling capabilities.
 
 ## [1.0.11] - 2026-05-13

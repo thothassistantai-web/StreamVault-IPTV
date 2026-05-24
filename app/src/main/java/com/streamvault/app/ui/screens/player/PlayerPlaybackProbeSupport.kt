@@ -42,16 +42,19 @@ internal fun shouldSkipPlaybackProbe(
     providerType: ProviderType,
     url: String
 ): Boolean {
-    if (providerType != ProviderType.STALKER_PORTAL) {
-        return false
-    }
     val normalizedPath = runCatching {
         URI(url).path?.lowercase(Locale.ROOT).orEmpty()
     }.getOrDefault("")
     val normalizedQuery = runCatching {
         URI(url).query?.lowercase(Locale.ROOT).orEmpty()
     }.getOrDefault("")
-    return normalizedPath.endsWith("/play/live.php") ||
-        normalizedPath.endsWith("/play/movie.php") ||
-        "play_token=" in normalizedQuery
+    return when (providerType) {
+        ProviderType.STALKER_PORTAL -> normalizedPath.endsWith("/play/live.php") ||
+            normalizedPath.endsWith("/play/movie.php") ||
+            "play_token=" in normalizedQuery
+
+        ProviderType.XTREAM_CODES -> normalizedPath.contains("/live/")
+
+        else -> false
+    }
 }

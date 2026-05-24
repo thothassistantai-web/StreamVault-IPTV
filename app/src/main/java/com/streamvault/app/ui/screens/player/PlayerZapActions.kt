@@ -5,6 +5,7 @@ import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.PlaybackHistory
+import com.streamvault.domain.model.ProviderType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.filter
@@ -87,6 +88,21 @@ internal fun releaseOutgoingLiveZapPlayback(
     stopPlayback()
     stopLiveTimeshift()
     clearPreload()
+}
+
+internal fun shouldPreloadAdjacentChannel(
+    streamUrl: String,
+    providerType: ProviderType?,
+    maxConnections: Int,
+    preloadCoolingDown: Boolean
+): Boolean {
+    if (streamUrl.isBlank() || preloadCoolingDown) return false
+    return when (providerType) {
+        ProviderType.M3U -> true
+        ProviderType.XTREAM_CODES,
+        ProviderType.STALKER_PORTAL -> maxConnections >= 2
+        null -> false
+    }
 }
 
 fun PlayerViewModel.playNext() {
@@ -204,6 +220,8 @@ internal fun PlayerViewModel.changeChannel(index: Int, isAutoFallback: Boolean =
         stopLiveTimeshift = playerEngine::stopLiveTimeshift,
         clearPreload = { playerEngine.preload(null) }
     )
+    currentResolvedPlaybackUrl = ""
+    currentResolvedStreamInfo = null
     val channel = channelList[index]
     currentChannelIndex = index
     currentContentId = channel.id
@@ -256,7 +274,22 @@ internal fun PlayerViewModel.preloadAdjacentChannel(currentIndex: Int) {
     if (channelList.size < 2) return
     val nextIndex = (currentIndex + 1) % channelList.size
     val nextChannel = channelList[nextIndex]
+    if (nextChannel.streamUrl.isBlank()) {
+        playerEngine.preload(null)
+        return
+    }
     viewModelScope.launch {
+        val provider = providerRepository.getProvider(nextChannel.providerId)
+        if (!shouldPreloadAdjacentChannel(
+                streamUrl = nextChannel.streamUrl,
+                providerType = provider?.type,
+                maxConnections = provider?.maxConnections ?: 1,
+                preloadCoolingDown = nextChannel.providerId in livePreloadCooldownProviderIds
+            )
+        ) {
+            playerEngine.preload(null)
+            return@launch
+        }
         val streamInfo = resolvePlaybackStreamInfo(
             nextChannel.streamUrl,
             nextChannel.id,

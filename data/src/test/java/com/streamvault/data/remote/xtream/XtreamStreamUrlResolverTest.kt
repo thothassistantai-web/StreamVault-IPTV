@@ -135,6 +135,38 @@ class XtreamStreamUrlResolverTest {
     }
 
     @Test
+    fun resolveWithMetadata_rebuilds_direct_credentialed_live_url_from_provider() {
+        runBlocking {
+        val resolver = XtreamStreamUrlResolver(
+            providerDao = FakeProviderDao(
+                ProviderEntity(
+                    id = 9,
+                    name = "Xtream",
+                    type = ProviderType.XTREAM_CODES,
+                    serverUrl = "https://portal.example.com",
+                    username = "alice",
+                    password = "fresh-secret",
+                    httpUserAgent = "ProviderAgent/2.0"
+                )
+            ),
+            credentialCrypto = credentialCrypto,
+            stalkerApiService = stalkerApiService
+        )
+
+        val resolved = resolver.resolveWithMetadata(
+            url = "https://old-edge.example.com/live/old-user/old-pass/456.m3u8?token=stale",
+            fallbackProviderId = 9,
+            fallbackContentType = ContentType.LIVE
+        )
+
+        assertThat(resolved?.url).isEqualTo("https://portal.example.com/live/alice/fresh-secret/456.m3u8")
+        assertThat(resolved?.expirationTime).isNull()
+        assertThat(resolved?.containerExtension).isEqualTo("m3u8")
+        assertThat(resolved?.userAgent).isEqualTo("ProviderAgent/2.0")
+        }
+    }
+
+    @Test
     fun resolveWithMetadata_ignores_unsupported_direct_source_scheme() {
         runBlocking {
         val resolver = XtreamStreamUrlResolver(

@@ -34,4 +34,24 @@ class PlayerPlaybackProbeSupportTest {
 
         assertThat(skipped).isFalse()
     }
+
+    @Test
+    fun `xtream live playback probe is skipped`() {
+        val skipped = shouldSkipPlaybackProbe(
+            providerType = ProviderType.XTREAM_CODES,
+            url = "http://example.com:8080/live/user/pass/2112.m3u8"
+        )
+
+        assertThat(skipped).isTrue()
+    }
+
+    @Test
+    fun `xtream vod playback probe is not skipped`() {
+        val skipped = shouldSkipPlaybackProbe(
+            providerType = ProviderType.XTREAM_CODES,
+            url = "http://example.com:8080/movie/user/pass/2112.mp4"
+        )
+
+        assertThat(skipped).isFalse()
+    }
 }

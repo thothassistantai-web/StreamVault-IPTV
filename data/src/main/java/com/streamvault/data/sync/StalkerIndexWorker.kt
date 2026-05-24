@@ -99,7 +99,7 @@ class StalkerIndexWorker(
         private const val KEY_SECTION = "section"
         private const val KEY_FORCE = "force"
         private const val INVALID_PROVIDER_ID = -1L
-        private const val CATEGORY_SLICE_SIZE = 12
+        private const val CATEGORY_SLICE_SIZE = 32
         private const val UNIQUE_WORK_PREFIX = "stalker-index-worker-"
 
         fun enqueue(

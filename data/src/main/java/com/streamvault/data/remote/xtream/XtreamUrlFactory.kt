@@ -348,7 +348,7 @@ object XtreamUrlFactory {
             }
     }
 
-    private fun parseCredentialedStreamUrl(url: String, providerId: Long): XtreamStreamToken? {
+    internal fun parseCredentialedStreamUrl(url: String, providerId: Long): XtreamStreamToken? {
         val uri = runCatching { URI(url) }.getOrNull() ?: return null
         val pathSegments = uri.path
             ?.trim('/')
