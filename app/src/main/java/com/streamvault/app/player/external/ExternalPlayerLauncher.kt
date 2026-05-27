@@ -18,7 +18,7 @@ import java.lang.RuntimeException
  *
  * Validation rules:
  * - Blank / empty URLs are rejected (returns `null`).
- * - Only `http` and `https` schemes are accepted (non-whitelisted schemes return `null`).
+ * - Only externally playable schemes are accepted (non-whitelisted schemes return `null`).
  * - Valid URLs produce an [Intent] with:
  *   - action: `Intent.ACTION_VIEW`
  *   - data: the parsed [Uri]
@@ -26,6 +26,22 @@ import java.lang.RuntimeException
  *   - category: `Intent.CATEGORY_BROWSABLE`
  */
 object ExternalPlayerLauncher {
+    private val allowedExternalPlayerSchemes = setOf(
+        "http",
+        "https",
+        "rtsp",
+        "rtmp",
+        "rtsps",
+        "mms",
+        "content",
+        "file",
+    )
+
+    fun isExternalPlayerLaunchUrl(url: String): Boolean {
+        val trimmed = url.trim()
+        if (trimmed.isBlank()) return false
+        return Uri.parse(trimmed).scheme?.lowercase() in allowedExternalPlayerSchemes
+    }
 
     /**
      * Build a view [Intent] for the given URL or return `null` when the URL is
@@ -42,15 +58,13 @@ object ExternalPlayerLauncher {
             return null
         }
 
-        // Only allow http and https schemes
         val parsed = Uri.parse(trimmed)
-        if (parsed.scheme != "http" && parsed.scheme != "https") {
+        if (parsed.scheme?.lowercase() !in allowedExternalPlayerSchemes) {
             return null
         }
 
         return Intent(Intent.ACTION_VIEW).apply {
-            data = parsed
-            type = inferExternalPlayerMimeType(trimmed)
+            setDataAndType(parsed, inferExternalPlayerMimeType(trimmed))
             addCategory(Intent.CATEGORY_BROWSABLE)
         }
     }

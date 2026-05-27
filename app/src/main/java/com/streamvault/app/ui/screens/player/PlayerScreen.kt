@@ -464,19 +464,28 @@ fun PlayerScreen(
     }
 
     // Auto-launch external player once per playback identity when mode is EXTERNAL_PLAYER.
-    // The remembered key (streamUrl + prepareIdentity) prevents repeated launches
-    // during recomposition and ensures a new identity triggers a new attempt.
+    // Wait for the resolved playable URL so logical provider URLs (xtream://, stalker://)
+    // are not handed to external apps before preparation finishes.
     val externalPlaybackMode = playerPreferencesUiState.externalPlaybackMode
+    val externalPlaybackUrl by viewModel.externalPlaybackUrl.collectAsStateWithLifecycle()
     val lastLaunchedExternalKey = rememberSaveable(streamUrl, prepareIdentity) {
         mutableStateOf<String?>(null)
     }
 
-    LaunchedEffect(externalPlaybackMode, streamUrl, prepareIdentity) {
-        if (externalPlaybackMode == ExternalPlaybackMode.EXTERNAL_PLAYER && streamUrl.isNotBlank()) {
+    LaunchedEffect(externalPlaybackMode, prepareIdentity, externalPlaybackUrl) {
+        if (externalPlaybackMode == ExternalPlaybackMode.EXTERNAL_PLAYER) {
+            val launchUrl = externalPlaybackUrl
+            if (launchUrl.isBlank()) return@LaunchedEffect
             val launchKey = prepareIdentity.toString()
             if (lastLaunchedExternalKey.value != launchKey) {
                 lastLaunchedExternalKey.value = launchKey
-                val result = ExternalPlayerLauncher.launch(appContext, streamUrl)
+                if (!ExternalPlayerLauncher.isExternalPlayerLaunchUrl(launchUrl)) {
+                    viewModel.showPlayerNotice(
+                        message = "Cannot launch external player: Invalid or non-whitelisted URL scheme"
+                    )
+                    return@LaunchedEffect
+                }
+                val result = ExternalPlayerLauncher.launch(appContext, launchUrl)
                 when (result) {
                     is ExternalPlayerLaunchResult.Success -> {
                         Log.d("PlayerScreen", "External player launched successfully for: ${result.url}")

@@ -3,6 +3,7 @@ package com.streamvault.app.ui.screens.movies
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streamvault.app.plugins.StreamVaultPluginManager
 import com.streamvault.app.util.isPlaybackComplete
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.ExternalRatings
@@ -30,7 +31,8 @@ class MovieDetailViewModel @Inject constructor(
     private val providerRepository: ProviderRepository,
     private val playbackHistoryRepository: PlaybackHistoryRepository,
     private val externalRatingsRepository: ExternalRatingsRepository,
-    private val favoriteRepository: FavoriteRepository
+    private val favoriteRepository: FavoriteRepository,
+    private val pluginManager: StreamVaultPluginManager
 ) : ViewModel() {
 
     private val movieId: Long = checkNotNull(
@@ -113,6 +115,22 @@ class MovieDetailViewModel @Inject constructor(
                 favoriteRepository.removeFavorite(movie.providerId, movie.id, ContentType.MOVIE)
             }
             _uiState.update { it.copy(movie = movie.copy(isFavorite = newState)) }
+        }
+    }
+
+    suspend fun resolveCopyStreamUrl(): Result<String> {
+        val movie = _uiState.value.movie ?: return Result.error("Could not resolve stream URL")
+        val streamInfo = when (val result = movieRepository.getStreamInfo(movie)) {
+            is Result.Success -> result.data
+            is Result.Error -> return Result.error(result.message, result.exception)
+            Result.Loading -> return Result.error("Could not resolve stream URL")
+        }
+        return when (val prepared = pluginManager.preparePlaybackStreamInfo(streamInfo)) {
+            is Result.Success -> prepared.data.url.trim().takeIf { it.isNotBlank() }
+                ?.let { Result.success(it) }
+                ?: Result.error("Could not resolve stream URL")
+            is Result.Error -> Result.error(prepared.message, prepared.exception)
+            Result.Loading -> Result.error("Could not resolve stream URL")
         }
     }
 

@@ -227,6 +227,8 @@ class PlayerViewModel @Inject constructor(
     val sleepTimerExitEvent: StateFlow<Int> = _sleepTimerExitEvent.asStateFlow()
     private val _playerPreferencesUiState = MutableStateFlow(PlayerPreferencesUiState())
     val playerPreferencesUiState: StateFlow<PlayerPreferencesUiState> = _playerPreferencesUiState.asStateFlow()
+    private val _externalPlaybackUrl = MutableStateFlow("")
+    val externalPlaybackUrl: StateFlow<String> = _externalPlaybackUrl.asStateFlow()
 
     internal var channelInfoHideJob: Job? = null
     internal var liveOverlayHideJob: Job? = null
@@ -251,6 +253,10 @@ class PlayerViewModel @Inject constructor(
     internal var readySideEffectsRequestVersion: Long? = null
     internal var currentArtworkUrl: String? = null
     internal var currentResolvedPlaybackUrl: String = ""
+        set(value) {
+            field = value
+            _externalPlaybackUrl.value = value.trim()
+        }
     internal var currentResolvedStreamInfo: StreamInfo? = null
     internal var pendingCatchUpUrls: List<String> = emptyList()
     internal var channelNumberingMode: ChannelNumberingMode = ChannelNumberingMode.GROUP
@@ -923,6 +929,8 @@ class PlayerViewModel @Inject constructor(
         hasRetriedXtreamAuthRefresh = false
         lastRecordedVariantObservationSignature = null
         readySideEffectsRequestVersion = null
+        currentResolvedPlaybackUrl = ""
+        currentResolvedStreamInfo = null
         playerEngine.setScrubbingMode(false)
         return ++prepareRequestVersion
     }

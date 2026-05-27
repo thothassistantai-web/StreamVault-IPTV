@@ -1338,6 +1338,10 @@
     <string name="series_unwatched_badge">%1$d left to finish</string>
     <string name="series_detail_resume">Resume · Season %1$d Ep %2$d · %3$s</string>
     <string name="series_detail_play_episode">Play · Season %1$d Ep %2$d</string>
+    <string name="stream_url_copy">Copy URL</string>
+    <string name="stream_url_copied">Stream URL copied</string>
+    <string name="stream_url_copy_failed">Could not resolve stream URL</string>
+    <string name="stream_url_clip_label">Stream URL</string>
     <string name="vod_external_ratings_heading">Ratings</string>
     <string name="vod_rating_imdb">IMDb</string>
     <string name="vod_rating_rotten_tomatoes">Rotten Tomatoes</string>

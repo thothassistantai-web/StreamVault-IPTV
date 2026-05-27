@@ -3,6 +3,7 @@ package com.streamvault.app.ui.screens.series
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streamvault.app.plugins.StreamVaultPluginManager
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.Episode
 import com.streamvault.domain.model.ExternalRatings
@@ -34,7 +35,8 @@ class SeriesDetailViewModel @Inject constructor(
     private val providerRepository: ProviderRepository,
     private val playbackHistoryRepository: PlaybackHistoryRepository,
     private val externalRatingsRepository: ExternalRatingsRepository,
-    private val favoriteRepository: FavoriteRepository
+    private val favoriteRepository: FavoriteRepository,
+    private val pluginManager: StreamVaultPluginManager
 ) : ViewModel() {
 
     private val seriesId: Long = checkNotNull(
@@ -126,6 +128,21 @@ class SeriesDetailViewModel @Inject constructor(
                 favoriteRepository.removeFavorite(series.providerId, series.id, ContentType.SERIES)
             }
             _uiState.update { it.copy(series = series.copy(isFavorite = newState)) }
+        }
+    }
+
+    suspend fun resolveCopyStreamUrl(episode: Episode): Result<String> {
+        val streamInfo = when (val result = seriesRepository.getEpisodeStreamInfo(episode)) {
+            is Result.Success -> result.data
+            is Result.Error -> return Result.error(result.message, result.exception)
+            Result.Loading -> return Result.error("Could not resolve stream URL")
+        }
+        return when (val prepared = pluginManager.preparePlaybackStreamInfo(streamInfo)) {
+            is Result.Success -> prepared.data.url.trim().takeIf { it.isNotBlank() }
+                ?.let { Result.success(it) }
+                ?: Result.error("Could not resolve stream URL")
+            is Result.Error -> Result.error(prepared.message, prepared.exception)
+            Result.Loading -> Result.error("Could not resolve stream URL")
         }
     }
 
