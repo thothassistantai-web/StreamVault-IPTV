@@ -2,6 +2,18 @@
 
 All notable product changes are recorded in this document.
 
+## Unreleased
+
+### Changed
+
+- Changed VOD downloads to use a single FIFO provider-stream scheduler with fresh provider URL resolution before each capture attempt.
+- Changed provider playback/download coordination so provider-backed internal or external playback pauses active downloads, deletes partial output, and restarts from zero after playback ends.
+
+### Fixed
+
+- Fixed completed local download playback so `content://`/`file://` files do not consume the provider download lease and do not pause active downloads.
+- Fixed failed download Resume to clear partial output and restart through the scheduler.
+
 ## [1.0.12] - 2026-05-15
 
 ### Added

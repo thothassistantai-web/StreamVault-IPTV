@@ -56,9 +56,9 @@ class DownloadsViewModel @Inject constructor(
      */
     fun playDownload(item: DownloadItem): Intent? {
         val uri = item.outputUri ?: return null
+        downloadManager.onPlaybackStopped()
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = Uri.parse(uri)
-            type = "video/*"
+            setDataAndType(Uri.parse(uri), "video/*")
             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
         val pm = application.packageManager
@@ -76,6 +76,14 @@ class DownloadsViewModel @Inject constructor(
         viewModelScope.launch {
             downloadManager.deleteDownload(item.id)
             val message = application.getString(R.string.downloads_deleted)
+            _uiState.update { it.copy(userMessage = message) }
+        }
+    }
+
+    fun resumeDownload(item: DownloadItem) {
+        viewModelScope.launch {
+            downloadManager.resumeDownload(item.id)
+            val message = application.getString(R.string.downloads_resumed)
             _uiState.update { it.copy(userMessage = message) }
         }
     }
@@ -108,6 +116,12 @@ class DownloadsViewModel @Inject constructor(
      */
     fun onFolderSelected(treeUri: Uri) {
         viewModelScope.launch {
+            runCatching {
+                application.contentResolver.takePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
             val displayName = getDisplayName(treeUri)
             downloadManager.updateStorageConfig(treeUri.toString(), displayName)
         }

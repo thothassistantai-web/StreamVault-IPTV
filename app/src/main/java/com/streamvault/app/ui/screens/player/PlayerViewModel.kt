@@ -352,6 +352,8 @@ class PlayerViewModel @Inject constructor(
     internal var sleepTimerExitEmitted = false
     internal var activeStalkerPlaybackProviderId: Long? = null
     private var downloadPlaybackSlotActive = false
+    private var currentPlaybackUsesDownloadSlot = false
+    private var externalProviderPlaybackHold = false
 
     val castConnectionState: StateFlow<CastConnectionState> = castManager.connectionState
 
@@ -489,12 +491,8 @@ class PlayerViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .collect { isPlaying ->
                     synchronizeStalkerPlaybackFetchDeferral(isPlaying)
-                    if (isPlaying && !downloadPlaybackSlotActive) {
-                        downloadPlaybackSlotActive = true
-                        downloadManager.onPlaybackStarted()
-                    } else if (!isPlaying && downloadPlaybackSlotActive) {
-                        downloadPlaybackSlotActive = false
-                        downloadManager.onPlaybackStopped()
+                    if (!isPlaying && downloadPlaybackSlotActive && isAppInForeground && !externalProviderPlaybackHold) {
+                        releaseDownloadPlaybackSlot()
                     }
                 }
         }
@@ -1038,6 +1036,46 @@ class PlayerViewModel @Inject constructor(
         currentStreamUrl = currentStreamUrl
     )
 
+    private fun setCurrentPlaybackUsesDownloadSlot(usesSlot: Boolean) {
+        currentPlaybackUsesDownloadSlot = usesSlot
+        when {
+            usesSlot && !downloadPlaybackSlotActive -> {
+                downloadPlaybackSlotActive = true
+                downloadManager.onPlaybackStarted()
+            }
+            !usesSlot && downloadPlaybackSlotActive -> {
+                downloadPlaybackSlotActive = false
+                downloadManager.onPlaybackStopped()
+            }
+        }
+    }
+
+    internal fun releaseDownloadPlaybackSlot() {
+        currentPlaybackUsesDownloadSlot = false
+        externalProviderPlaybackHold = false
+        if (downloadPlaybackSlotActive) {
+            downloadPlaybackSlotActive = false
+            downloadManager.onPlaybackStopped()
+        }
+    }
+
+    internal fun holdExternalProviderPlaybackSlot(launchUrl: String): Boolean {
+        val usesSlot = usesProviderDownloadSlot(currentStreamUrl, currentProviderId) ||
+            usesProviderDownloadSlot(launchUrl, currentProviderId)
+        if (!usesSlot) return false
+        externalProviderPlaybackHold = true
+        setCurrentPlaybackUsesDownloadSlot(true)
+        return true
+    }
+
+    private fun usesProviderDownloadSlot(streamUrl: String, providerId: Long): Boolean {
+        if (providerId <= 0L) return false
+        val normalized = streamUrl.trim()
+        if (normalized.isBlank()) return false
+        val scheme = normalized.substringBefore(':', missingDelimiterValue = "").lowercase()
+        return scheme != "content" && scheme != "file"
+    }
+
     internal fun requestEpg(
         providerId: Long,
         epgChannelId: String?,
@@ -1351,6 +1389,7 @@ class PlayerViewModel @Inject constructor(
         episodeId: Long? = null,
         showResumePrompt: Boolean = true
     ) {
+        setCurrentPlaybackUsesDownloadSlot(usesProviderDownloadSlot(streamUrl, providerId))
         val hasArchiveRequest = hasArchivePlaybackIdentity(
             contentType = contentType,
             archiveStartMs = archiveStartMs,

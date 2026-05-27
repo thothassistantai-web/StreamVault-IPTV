@@ -121,6 +121,7 @@ fun DownloadsScreen(
                         onOpenClick = { download ->
                             viewModel.playDownload(download)?.let(context::startActivity)
                         },
+                        onResumeClick = viewModel::resumeDownload,
                         onDeleteClick = viewModel::showDeleteConfirm
                     )
                 }
@@ -196,6 +197,7 @@ private fun DownloadsEmptyState() {
 private fun DownloadsGrid(
     downloads: List<DownloadItem>,
     onOpenClick: (DownloadItem) -> Unit,
+    onResumeClick: (DownloadItem) -> Unit,
     onDeleteClick: (DownloadItem) -> Unit
 ) {
     val columns = if (LocalConfiguration.current.screenWidthDp < 700) {
@@ -215,6 +217,7 @@ private fun DownloadsGrid(
             DownloadCard(
                 download = download,
                 onOpenClick = { onOpenClick(download) },
+                onResumeClick = { onResumeClick(download) },
                 onDeleteClick = { onDeleteClick(download) }
             )
         }
@@ -225,6 +228,7 @@ private fun DownloadsGrid(
 private fun DownloadCard(
     download: DownloadItem,
     onOpenClick: () -> Unit,
+    onResumeClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
     val progress = download.totalBytes?.takeIf { it > 0L }?.let { total ->
@@ -313,6 +317,11 @@ private fun DownloadCard(
                     .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.End
             ) {
+                if (download.status == DownloadStatus.FAILED) {
+                    TextButton(onClick = onResumeClick) {
+                        Text(text = stringResource(R.string.download_resume))
+                    }
+                }
                 TextButton(onClick = onDeleteClick) {
                     Text(text = stringResource(R.string.download_delete))
                 }

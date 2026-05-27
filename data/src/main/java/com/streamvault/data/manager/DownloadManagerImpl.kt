@@ -13,6 +13,9 @@ import androidx.documentfile.provider.DocumentFile
 import com.streamvault.data.local.dao.DownloadDao
 import com.streamvault.data.local.entity.DownloadEntity
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.data.remote.xtream.ResolvedStreamUrl
+import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
+import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DownloadContentType
 import com.streamvault.domain.model.DownloadItem
 import com.streamvault.domain.model.DownloadRequest
@@ -37,6 +40,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -56,15 +60,14 @@ class DownloadManagerImpl @Inject constructor(
     private val downloadDao: DownloadDao,
     private val preferencesRepository: PreferencesRepository,
     private val okHttpClient: OkHttpClient,
+    private val xtreamStreamUrlResolver: XtreamStreamUrlResolver,
     private val applicationScope: CoroutineScope
 ) : DownloadManager {
 
     private val activeJobs = ConcurrentHashMap<String, Job>()
-    private val activeStarts = ConcurrentHashMap<String, Long>()
     private val schedulerMutex = Mutex()
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     @Volatile private var playbackActive = false
-    @Volatile private var parallelSuccessCount = 0
 
     init {
         val request = NetworkRequest.Builder()
@@ -110,7 +113,7 @@ class DownloadManagerImpl @Inject constructor(
                 outputDisplayPath = null
             )
             downloadDao.insert(entity)
-            scheduleExisting(entity.id)
+            startNextQueued()
             entity.toDomain()
         }.fold(
             onSuccess = { Result.success(it) },
@@ -120,7 +123,24 @@ class DownloadManagerImpl @Inject constructor(
 
     override suspend fun resumeDownload(id: String): Result<Unit> {
         return runCatching {
-            scheduleExisting(id, keepPaused = true)
+            downloadDao.getByIdOnce(id)?.let { entity ->
+                if (entity.status != DownloadStatus.COMPLETED && entity.status != DownloadStatus.CANCELLED) {
+                    deleteOutput(entity)
+                    downloadDao.update(
+                        entity.copy(
+                            outputUri = null,
+                            outputDisplayPath = null,
+                            status = DownloadStatus.PENDING,
+                            bytesWritten = 0L,
+                            totalBytes = null,
+                            supportsResume = false,
+                            retryCount = 0,
+                            failureReason = null
+                        )
+                    )
+                }
+            }
+            startNextQueued()
         }.fold(
             onSuccess = { Result.success(Unit) },
             onFailure = { Result.error("Failed to resume download", it) }
@@ -129,7 +149,7 @@ class DownloadManagerImpl @Inject constructor(
 
     override suspend fun cancelDownload(id: String): Result<Unit> {
         return runCatching {
-            activeJobs.remove(id)?.cancel()
+            activeJobs.remove(id)?.cancelAndJoin()
             downloadDao.getByIdOnce(id)?.let { entity ->
                 downloadDao.update(entity.copy(status = DownloadStatus.CANCELLED))
             }
@@ -141,19 +161,20 @@ class DownloadManagerImpl @Inject constructor(
 
     override fun onPlaybackStarted() {
         playbackActive = true
-        applicationScope.launch(Dispatchers.IO) { enforceLimit() }
+        applicationScope.launch(Dispatchers.IO) { runCatching { pauseActiveDownloadsForPlayback() } }
     }
 
     override fun onPlaybackStopped() {
         playbackActive = false
-        applicationScope.launch(Dispatchers.IO) { startNextQueued() }
+        applicationScope.launch(Dispatchers.IO) { runCatching { startNextQueued() } }
     }
 
     override suspend fun deleteDownload(id: String): Result<Unit> {
         return runCatching {
-            activeJobs.remove(id)?.cancel()
+            activeJobs.remove(id)?.cancelAndJoin()
             downloadDao.getByIdOnce(id)?.let { deleteOutput(it) }
             downloadDao.deleteById(id)
+            startNextQueued()
         }.fold(
             onSuccess = { Result.success(Unit) },
             onFailure = { Result.error("Failed to delete download", it) }
@@ -184,7 +205,7 @@ class DownloadManagerImpl @Inject constructor(
             if (activeJobs.containsKey(id)) return
             val entity = downloadDao.getByIdOnce(id) ?: return
             if (entity.status == DownloadStatus.COMPLETED || entity.status == DownloadStatus.CANCELLED) return
-            if (activeStreamCount() >= preferencesRepository.maxConcurrentStreams.first()) {
+            if (playbackActive || activeJobs.isNotEmpty()) {
                 if (!keepPaused && entity.status != DownloadStatus.PAUSED) {
                     downloadDao.update(entity.copy(status = DownloadStatus.PENDING, failureReason = null))
                 }
@@ -195,7 +216,6 @@ class DownloadManagerImpl @Inject constructor(
     }
 
     private fun startDownloadJob(entity: DownloadEntity) {
-        activeStarts[entity.id] = System.currentTimeMillis()
         activeJobs[entity.id] = applicationScope.launch(Dispatchers.IO) {
             captureDownload(entity)
         }
@@ -203,30 +223,22 @@ class DownloadManagerImpl @Inject constructor(
 
     private suspend fun startNextQueued() {
         schedulerMutex.withLock {
-            val maxStreams = preferencesRepository.maxConcurrentStreams.first()
-            while (activeStreamCount() < maxStreams) {
-                val next = downloadDao.getQueuedOnce()
-                    .firstOrNull {
-                        !activeJobs.containsKey(it.id) &&
-                            (it.status == DownloadStatus.PENDING || it.retryCount == 0) &&
-                            it.retryCount < MAX_RETRIES
-                    }
-                    ?: break
-                startDownloadJob(next)
-            }
+            if (playbackActive || activeJobs.isNotEmpty()) return
+            val next = downloadDao.getQueuedOnce()
+                .firstOrNull {
+                    !activeJobs.containsKey(it.id) &&
+                        (it.status == DownloadStatus.PENDING || it.retryCount == 0) &&
+                        it.retryCount < MAX_RETRIES
+                }
+                ?: return
+            startDownloadJob(next)
         }
     }
 
-    private fun activeStreamCount(): Int = activeJobs.size + if (playbackActive) 1 else 0
-
-    private suspend fun enforceLimit() {
-        schedulerMutex.withLock {
-            val maxStreams = preferencesRepository.maxConcurrentStreams.first()
-            while (activeStreamCount() > maxStreams) {
-                val newest = activeStarts.maxByOrNull { it.value }?.key ?: break
-                activeJobs.remove(newest)?.cancel(PausedForSlotCancellation())
-                activeStarts.remove(newest)
-            }
+    private suspend fun pauseActiveDownloadsForPlayback() {
+        activeJobs.values.toList().forEach { job ->
+            job.cancel(PlaybackStartedCancellation())
+            job.join()
         }
     }
 
@@ -239,7 +251,19 @@ class DownloadManagerImpl @Inject constructor(
             val resumeFrom = current.bytesWritten.takeIf {
                 current.supportsResume && it > 0L && hasAppendTarget(current)
             } ?: 0L
-            val requestBuilder = Request.Builder().url(current.streamUrl).get()
+            val resolvedStream = resolveFreshDownloadStream(current)
+            val requestUrl = resolvedStream?.url?.takeIf { it.isNotBlank() } ?: current.streamUrl
+            if (requestUrl != current.streamUrl) {
+                current = current.copy(streamUrl = requestUrl)
+                downloadDao.update(current)
+            }
+            val requestBuilder = Request.Builder().url(requestUrl).get()
+            resolvedStream?.headers.orEmpty().forEach { (name, value) ->
+                requestBuilder.header(name, value)
+            }
+            resolvedStream?.userAgent?.takeIf { it.isNotBlank() }?.let { userAgent ->
+                requestBuilder.header("User-Agent", userAgent)
+            }
             if (resumeFrom > 0L) requestBuilder.header("Range", "bytes=$resumeFrom-")
             okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful) throw HttpDownloadException(response.code)
@@ -315,12 +339,24 @@ class DownloadManagerImpl @Inject constructor(
                         failureReason = null
                     )
                 )
-                maybeUpgradeConcurrency()
             }
         } catch (cancelled: CancellationException) {
             downloadDao.getByIdOnce(initial.id)?.let { entity ->
-                if (cancelled is PausedForSlotCancellation) {
-                    downloadDao.update(current.copy(status = DownloadStatus.PAUSED, failureReason = "Waiting for stream slot"))
+                if (cancelled is PlaybackStartedCancellation) {
+                    deleteOutput(current)
+                    downloadDao.update(
+                        current.copy(
+                            outputUri = null,
+                            outputDisplayPath = null,
+                            status = DownloadStatus.PAUSED,
+                            bytesWritten = 0L,
+                            totalBytes = null,
+                            supportsResume = false,
+                            retryCount = 0,
+                            completedAt = null,
+                            failureReason = "Waiting for playback to stop"
+                        )
+                    )
                 } else {
                     downloadDao.update(entity.copy(status = DownloadStatus.CANCELLED))
                 }
@@ -340,19 +376,12 @@ class DownloadManagerImpl @Inject constructor(
             if (downloadDao.getByIdOnce(initial.id) != null) handleDownloadFailure(current, error)
         } finally {
             activeJobs.remove(initial.id)
-            activeStarts.remove(initial.id)
             startNextQueued()
         }
     }
 
     private suspend fun handleDownloadFailure(entity: DownloadEntity, error: Throwable) {
         val reason = error.message ?: error::class.java.simpleName
-        if (isContention(error)) {
-            downgradeConcurrency()
-            downloadDao.update(entity.copy(status = DownloadStatus.PAUSED, failureReason = reason))
-            enforceLimit()
-            return
-        }
         if (!isTransient(error) || entity.retryCount >= MAX_RETRIES) {
             downloadDao.update(entity.copy(status = DownloadStatus.FAILED, failureReason = reason))
             return
@@ -365,37 +394,13 @@ class DownloadManagerImpl @Inject constructor(
             downloadDao.getByIdOnce(entity.id)
                 ?.takeIf { it.status == DownloadStatus.PAUSED && it.retryCount == retryCount }
                 ?.let { downloadDao.update(it.copy(status = DownloadStatus.PENDING)) }
-            scheduleExisting(entity.id)
+            startNextQueued()
         }
     }
 
     private fun hasAppendTarget(entity: DownloadEntity): Boolean {
         val path = entity.outputDisplayPath
         return !entity.outputUri.isNullOrBlank() || (!path.isNullOrBlank() && File(path).exists())
-    }
-
-    private suspend fun downgradeConcurrency() {
-        val current = preferencesRepository.maxConcurrentStreams.first()
-        preferencesRepository.setMaxConcurrentStreams((current - 1).coerceAtLeast(1))
-        parallelSuccessCount = 0
-    }
-
-    private suspend fun maybeUpgradeConcurrency() {
-        if (activeStreamCount() < 2) return
-        parallelSuccessCount += 1
-        if (parallelSuccessCount >= PARALLEL_SUCCESSES_TO_UPGRADE) {
-            val current = preferencesRepository.maxConcurrentStreams.first()
-            preferencesRepository.setMaxConcurrentStreams((current + 1).coerceAtMost(4))
-            parallelSuccessCount = 0
-        }
-    }
-
-    private fun isContention(error: Throwable): Boolean {
-        val anotherStreamActive = activeStreamCount() > 1
-        if (!anotherStreamActive) return false
-        val httpCode = (error as? HttpDownloadException)?.code
-        if (httpCode == 403 || httpCode == 429) return true
-        return error is SocketException && isNetworkAvailable()
     }
 
     private fun isTransient(error: Throwable): Boolean {
@@ -411,6 +416,25 @@ class DownloadManagerImpl @Inject constructor(
         val network = connectivityManager.activeNetwork ?: return false
         val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    private suspend fun resolveFreshDownloadStream(entity: DownloadEntity): ResolvedStreamUrl? {
+        val logicalUrl = entity.sourceStreamUrl?.takeIf { it.isNotBlank() } ?: entity.streamUrl
+        return runCatching {
+            xtreamStreamUrlResolver.resolveWithMetadata(
+                url = logicalUrl,
+                fallbackProviderId = entity.providerId,
+                fallbackStreamId = entity.sourceStreamId ?: entity.contentId,
+                fallbackContentType = entity.contentType.toPlaybackContentType(),
+                fallbackContainerExtension = entity.containerExtension,
+                preferStableUrl = true
+            )
+        }.getOrNull()
+    }
+
+    private fun DownloadContentType.toPlaybackContentType(): ContentType = when (this) {
+        DownloadContentType.MOVIE -> ContentType.MOVIE
+        DownloadContentType.SERIES_EPISODE -> ContentType.SERIES_EPISODE
     }
 
     private fun backoffMs(retryCount: Int): Long = when (retryCount) {
@@ -474,19 +498,31 @@ class DownloadManagerImpl @Inject constructor(
     }
 
     private fun deleteOutput(entity: DownloadEntity) {
-        val displayPath = entity.outputDisplayPath
-        if (!displayPath.isNullOrBlank()) {
-            runCatching { File(displayPath).delete() }
-        }
+        var deleted = false
+        entity.outputUri
+            ?.takeIf { it.isNotBlank() }
+            ?.let { outputUri ->
+                val uri = Uri.parse(outputUri)
+                deleted = runCatching {
+                    DocumentFile.fromSingleUri(context, uri)?.delete() == true
+                }.getOrDefault(false)
+                if (!deleted) {
+                    deleted = runCatching {
+                        context.contentResolver.delete(uri, null, null) > 0
+                    }.getOrDefault(false)
+                }
+            }
 
-        val outputUri = entity.outputUri ?: return
-        runCatching {
-            context.contentResolver.delete(Uri.parse(outputUri), null, null)
+        val displayPath = entity.outputDisplayPath?.takeIf { it.isNotBlank() } ?: return
+        val file = File(displayPath)
+        if (!deleted && file.isAbsolute) {
+            runCatching { file.delete() }
         }
     }
 
     private fun buildFileName(entity: DownloadEntity, mimeType: String): String {
-        val extension = extensionFromUrl(entity.streamUrl)
+        val extension = entity.containerExtension?.takeIf { it.isNotBlank() }
+            ?: extensionFromUrl(entity.streamUrl)
             ?: MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
             ?: "mp4"
         val prefix = when (entity.contentType) {
@@ -536,12 +572,11 @@ class DownloadManagerImpl @Inject constructor(
         const val DEFAULT_BUFFER_SIZE = 64 * 1024
         const val PROGRESS_UPDATE_BYTES = 512 * 1024
         const val MAX_RETRIES = 5
-        const val PARALLEL_SUCCESSES_TO_UPGRADE = 3
     }
 
     private class HttpDownloadException(val code: Int) : Exception("HTTP $code")
 
     private class RestartFromZeroException(cause: Throwable) : Exception(cause)
 
-    private class PausedForSlotCancellation : CancellationException("Waiting for stream slot")
+    private class PlaybackStartedCancellation : CancellationException("Playback started")
 }

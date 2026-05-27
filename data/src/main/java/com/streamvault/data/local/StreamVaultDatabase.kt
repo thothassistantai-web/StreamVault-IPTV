@@ -50,7 +50,7 @@ import com.streamvault.data.local.entity.*
         XtreamLiveOnboardingStateEntity::class,
         DownloadEntity::class
     ],
-    version = 59,
+    version = 60,
     exportSchema = true   // ← was false; schema JSON now tracked in version control
 )
 @TypeConverters(RoomEnumConverters::class)
@@ -2633,6 +2633,9 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                         content_id INTEGER NOT NULL,
                         content_name TEXT NOT NULL,
                         stream_url TEXT NOT NULL,
+                        source_stream_url TEXT,
+                        source_stream_id INTEGER,
+                        container_extension TEXT,
                         poster_url TEXT,
                         output_uri TEXT,
                         output_display_path TEXT,
@@ -2658,6 +2661,14 @@ abstract class StreamVaultDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE downloads ADD COLUMN supports_resume INTEGER NOT NULL DEFAULT 0")
                 database.execSQL("ALTER TABLE downloads ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_59_60 = object : Migration(59, 60) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE downloads ADD COLUMN source_stream_url TEXT")
+                database.execSQL("ALTER TABLE downloads ADD COLUMN source_stream_id INTEGER")
+                database.execSQL("ALTER TABLE downloads ADD COLUMN container_extension TEXT")
             }
         }
 

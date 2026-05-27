@@ -154,6 +154,9 @@ class MovieDetailViewModel @Inject constructor(
                         contentId = movie.id,
                         contentName = movie.name,
                         streamUrl = resolvedUrl.data,
+                        sourceStreamUrl = movie.streamUrl,
+                        sourceStreamId = movie.streamId.takeIf { it > 0L },
+                        containerExtension = movie.containerExtension,
                         posterUrl = movie.posterUrl
                     )
                     val result = downloadManager.enqueueDownload(request)

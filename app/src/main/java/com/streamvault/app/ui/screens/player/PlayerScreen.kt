@@ -1,18 +1,10 @@
 package com.streamvault.app.ui.screens.player
 
 import android.app.Activity
-import android.app.PendingIntent
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.Build
 import android.util.Log
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +46,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.*
 import com.streamvault.app.device.rememberIsTelevisionDevice
 import com.streamvault.app.ui.theme.*
+import com.streamvault.app.player.external.ExternalPlayerLaunchResult
 import com.streamvault.app.player.external.ExternalPlayerLauncher
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.ExternalPlaybackMode
@@ -115,8 +108,6 @@ import com.streamvault.app.ui.screens.multiview.MultiViewViewModel
 import com.streamvault.app.ui.screens.multiview.MultiViewPlannerDialog
 import com.streamvault.app.navigation.Routes
 
-private const val EXTERNAL_PLAYER_LAUNCH_KEY_EXTRA = "com.streamvault.app.extra.EXTERNAL_PLAYER_LAUNCH_KEY"
-
 
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -164,40 +155,6 @@ fun PlayerScreen(
     }
     val mainActivity = LocalContext.current.findMainActivity()
     val appContext = LocalContext.current
-    val externalPlayerChosenAction = remember(appContext) {
-        "${appContext.packageName}.EXTERNAL_PLAYER_CHOSEN.${System.nanoTime()}"
-    }
-    var pendingExternalLaunchKey by rememberSaveable { mutableStateOf<String?>(null) }
-    var chosenExternalLaunchKey by rememberSaveable { mutableStateOf<String?>(null) }
-    val externalPlayerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val pendingKey = pendingExternalLaunchKey
-        if (result.resultCode == Activity.RESULT_CANCELED && pendingKey != null && chosenExternalLaunchKey != pendingKey) {
-            pendingExternalLaunchKey = null
-            viewModel.playResolvedStreamInternally()
-            viewModel.showPlayerNotice(message = "Playing internally.")
-        }
-    }
-    DisposableEffect(appContext, externalPlayerChosenAction) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                val launchKey = intent?.getStringExtra(EXTERNAL_PLAYER_LAUNCH_KEY_EXTRA) ?: return
-                chosenExternalLaunchKey = launchKey
-                if (pendingExternalLaunchKey == launchKey) {
-                    pendingExternalLaunchKey = null
-                }
-            }
-        }
-        val filter = IntentFilter(externalPlayerChosenAction)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            appContext.registerReceiver(receiver, filter)
-        }
-        onDispose { appContext.unregisterReceiver(receiver) }
-    }
     val notificationPermissionGate = rememberNotificationPermissionGate(
         onNotificationsBlocked = { message -> viewModel.showPlayerNotice(message = message) },
         reminderBlockedMessage = stringResource(R.string.notification_permission_reminder_required),
@@ -516,7 +473,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(externalPlaybackMode, prepareIdentity, externalPlaybackUrl) {
-        if (externalPlaybackMode != ExternalPlaybackMode.INTERNAL_PLAYER) {
+        if (externalPlaybackMode == ExternalPlaybackMode.EXTERNAL_PLAYER) {
             val launchUrl = externalPlaybackUrl
             if (launchUrl.isBlank()) return@LaunchedEffect
             val launchKey = prepareIdentity.toString()
@@ -528,42 +485,33 @@ fun PlayerScreen(
                     )
                     return@LaunchedEffect
                 }
-                val intent = ExternalPlayerLauncher.buildExternalPlayerIntent(launchUrl)
-                if (intent == null) {
-                    viewModel.showPlayerNotice(
-                        message = "Cannot launch external player: Invalid or non-whitelisted URL scheme"
-                    )
-                    return@LaunchedEffect
-                }
-                if (intent.resolveActivity(appContext.packageManager) == null) {
-                    Log.w("PlayerScreen", "External player launch failed - no handler available for: $launchUrl")
-                    viewModel.playResolvedStreamInternally()
-                    viewModel.showPlayerNotice(message = "No external player found. Playing internally.")
-                    return@LaunchedEffect
-                }
-                val chosenCallback = Intent(externalPlayerChosenAction)
-                    .setPackage(appContext.packageName)
-                    .putExtra(EXTERNAL_PLAYER_LAUNCH_KEY_EXTRA, launchKey)
-                val chosenSender = PendingIntent.getBroadcast(
-                    appContext,
-                    launchKey.hashCode(),
-                    chosenCallback,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                ).intentSender
-                val chooser = Intent.createChooser(intent, null).apply {
-                    putExtra(Intent.EXTRA_CHOSEN_COMPONENT_INTENT_SENDER, chosenSender)
-                }
-                pendingExternalLaunchKey = launchKey
-                chosenExternalLaunchKey = null
-                runCatching {
-                    externalPlayerLauncher.launch(chooser)
-                }.onSuccess {
-                    Log.d("PlayerScreen", "External player chooser launched for: $launchUrl")
-                }.onFailure { error ->
-                    pendingExternalLaunchKey = null
-                    Log.w("PlayerScreen", "External player chooser failed: ${error.message}", error)
-                    viewModel.playResolvedStreamInternally()
-                    viewModel.showPlayerNotice(message = "External player failed. Playing internally.")
+                val heldProviderSlot = viewModel.holdExternalProviderPlaybackSlot(launchUrl)
+                val result = ExternalPlayerLauncher.launch(appContext, launchUrl)
+                when (result) {
+                    is ExternalPlayerLaunchResult.Success -> {
+                        Log.d("PlayerScreen", "External player launched successfully for: ${result.url}")
+                    }
+                    is ExternalPlayerLaunchResult.InvalidUrl -> {
+                        if (heldProviderSlot) viewModel.releaseDownloadPlaybackSlot()
+                        Log.w("PlayerScreen", "External player launch failed - invalid URL: ${result.reason}")
+                        viewModel.showPlayerNotice(
+                            message = "Cannot launch external player: ${result.reason}"
+                        )
+                    }
+                    is ExternalPlayerLaunchResult.NoHandler -> {
+                        if (heldProviderSlot) viewModel.releaseDownloadPlaybackSlot()
+                        Log.w("PlayerScreen", "External player launch failed - no handler available for: ${result.url}")
+                        viewModel.showPlayerNotice(
+                            message = "No external player found. Playing internally."
+                        )
+                    }
+                    is ExternalPlayerLaunchResult.Failed -> {
+                        if (heldProviderSlot) viewModel.releaseDownloadPlaybackSlot()
+                        Log.w("PlayerScreen", "External player launch failed: ${result.errorMessage}")
+                        viewModel.showPlayerNotice(
+                            message = "External player failed. Playing internally."
+                        )
+                    }
                 }
             }
         }

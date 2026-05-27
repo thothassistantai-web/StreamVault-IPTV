@@ -84,6 +84,7 @@ fun PlayerViewModel.onAppBackgrounded() {
 fun PlayerViewModel.onAppForegrounded() {
     if (isAppInForeground) return
     isAppInForeground = true
+    releaseDownloadPlaybackSlot()
     if (shouldResumeAfterForeground && !resumePrompt.value.show) {
         playerEngine.play()
     }
@@ -91,6 +92,7 @@ fun PlayerViewModel.onAppForegrounded() {
 }
 
 fun PlayerViewModel.onPlayerScreenDisposed() {
+    releaseDownloadPlaybackSlot()
     if (currentContentType != ContentType.LIVE) {
         viewModelScope.launch {
             persistPlaybackProgress()
