@@ -633,6 +633,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setPlayerLiveTranslationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerLiveTranslationEnabled(enabled)
+        }
+    }
+
+    fun setPlayerLiveTranslationEndpoint(endpoint: String) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerLiveTranslationEndpoint(endpoint)
+        }
+    }
+
     fun setPlayerTimeshiftDepthMinutes(minutes: Int) {
         viewModelScope.launch {
             preferencesRepository.setPlayerTimeshiftDepthMinutes(minutes)

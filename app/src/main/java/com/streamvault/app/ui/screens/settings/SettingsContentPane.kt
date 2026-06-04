@@ -74,6 +74,7 @@ internal fun SettingsContentPane(
                 subtitleSizeLabel = screenLabels.subtitleSizeLabel,
                 subtitleTextColorLabel = screenLabels.subtitleTextColorLabel,
                 subtitleBackgroundLabel = screenLabels.subtitleBackgroundLabel,
+                liveTranslationEndpointLabel = screenLabels.liveTranslationEndpointLabel,
                 wifiQualityLabel = screenLabels.wifiQualityLabel,
                 ethernetQualityLabel = screenLabels.ethernetQualityLabel,
                 lastSpeedTestLabel = screenLabels.lastSpeedTestLabel,
@@ -96,6 +97,7 @@ internal fun SettingsContentPane(
                 onShowSubtitleSizeDialogChange = { dialogState.showSubtitleSizeDialog = it },
                 onShowSubtitleTextColorDialogChange = { dialogState.showSubtitleTextColorDialog = it },
                 onShowSubtitleBackgroundDialogChange = { dialogState.showSubtitleBackgroundDialog = it },
+                onShowLiveTranslationEndpointDialogChange = { dialogState.showLiveTranslationEndpointDialog = it },
                 onShowWifiQualityDialogChange = { dialogState.showWifiQualityDialog = it },
                 onShowEthernetQualityDialogChange = { dialogState.showEthernetQualityDialog = it }
             )

@@ -44,6 +44,7 @@ internal fun LazyListScope.settingsPlaybackSection(
     subtitleSizeLabel: String,
     subtitleTextColorLabel: String,
     subtitleBackgroundLabel: String,
+    liveTranslationEndpointLabel: String,
     wifiQualityLabel: String,
     ethernetQualityLabel: String,
     lastSpeedTestLabel: String,
@@ -66,6 +67,7 @@ internal fun LazyListScope.settingsPlaybackSection(
     onShowSubtitleSizeDialogChange: (Boolean) -> Unit,
     onShowSubtitleTextColorDialogChange: (Boolean) -> Unit,
     onShowSubtitleBackgroundDialogChange: (Boolean) -> Unit,
+    onShowLiveTranslationEndpointDialogChange: (Boolean) -> Unit,
     onShowWifiQualityDialogChange: (Boolean) -> Unit,
     onShowEthernetQualityDialogChange: (Boolean) -> Unit
 ) {
@@ -138,6 +140,34 @@ internal fun LazyListScope.settingsPlaybackSection(
                 Switch(checked = uiState.playerMediaSessionEnabled, onCheckedChange = { viewModel.setPlayerMediaSessionEnabled(it) })
             }
         }
+        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
+        TvClickableSurface(
+            onClick = { viewModel.setPlayerLiveTranslationEnabled(!uiState.playerLiveTranslationEnabled) },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = Primary.copy(alpha = 0.15f)
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.settings_live_translation_enabled), style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                    Text(text = stringResource(R.string.settings_live_translation_enabled_subtitle), style = MaterialTheme.typography.bodySmall, color = OnBackground.copy(alpha = 0.6f))
+                }
+                Switch(checked = uiState.playerLiveTranslationEnabled, onCheckedChange = { viewModel.setPlayerLiveTranslationEnabled(it) })
+            }
+        }
+        ClickableSettingsRow(
+            label = stringResource(R.string.settings_live_translation_endpoint),
+            value = liveTranslationEndpointLabel,
+            onClick = { onShowLiveTranslationEndpointDialogChange(true) }
+        )
         HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
         TvClickableSurface(
             onClick = { viewModel.setPlayerTimeshiftEnabled(!uiState.playerTimeshiftEnabled) },

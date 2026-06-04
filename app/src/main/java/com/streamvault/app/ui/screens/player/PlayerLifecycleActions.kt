@@ -98,6 +98,7 @@ fun PlayerViewModel.onPlayerScreenDisposed() {
         }
     }
     playerEngine.stopLiveTimeshift()
+    stopLiveTranslationSession(clearEnabledState = false)
     stopActiveStalkerPlaybackFetchDeferral()
     clearPlaybackTimers()
 }
@@ -149,6 +150,7 @@ fun PlayerViewModel.handOffPlaybackToMultiView() {
         viewModelScope.launch { persistPlaybackProgress() }
     }
     playerEngine.stopLiveTimeshift()
+    stopLiveTranslationSession(clearEnabledState = false)
     stopActiveStalkerPlaybackFetchDeferral()
     livePreviewHandoffManager.clear(playerEngine)
 }

@@ -56,6 +56,8 @@ internal fun SettingsPreferenceDialogs(
     onShowSubtitleTextColorDialogChange: (Boolean) -> Unit,
     showSubtitleBackgroundDialog: Boolean,
     onShowSubtitleBackgroundDialogChange: (Boolean) -> Unit,
+    showLiveTranslationEndpointDialog: Boolean,
+    onShowLiveTranslationEndpointDialogChange: (Boolean) -> Unit,
     showWifiQualityDialog: Boolean,
     onShowWifiQualityDialogChange: (Boolean) -> Unit,
     showEthernetQualityDialog: Boolean,
@@ -96,7 +98,9 @@ internal fun SettingsPreferenceDialogs(
         showNoticeTimeoutDialog = showNoticeTimeoutDialog,
         onShowNoticeTimeoutDialogChange = onShowNoticeTimeoutDialogChange,
         showDiagnosticsTimeoutDialog = showDiagnosticsTimeoutDialog,
-        onShowDiagnosticsTimeoutDialogChange = onShowDiagnosticsTimeoutDialogChange
+        onShowDiagnosticsTimeoutDialogChange = onShowDiagnosticsTimeoutDialogChange,
+        showLiveTranslationEndpointDialog = showLiveTranslationEndpointDialog,
+        onShowLiveTranslationEndpointDialogChange = onShowLiveTranslationEndpointDialogChange
     )
 
     if (showGuideDefaultCategoryDialog) {

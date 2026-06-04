@@ -1,0 +1,4 @@
+.hf-cache/
+.venv/
+__pycache__/
+*.pyc
