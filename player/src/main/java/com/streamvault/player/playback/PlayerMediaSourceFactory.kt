@@ -1,3 +1,5 @@
+@file:androidx.media3.common.util.UnstableApi
+
 package com.streamvault.player.playback
 
 import android.net.Uri
@@ -9,6 +11,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.TsExtractor
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -23,6 +26,26 @@ import com.streamvault.domain.model.VodHttpProtocolMode
 import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.StreamType
 import java.util.UUID
+
+/** Explicit CEA-608 and CEA-708 closed caption formats for MPEG-TS streams. */
+private val TS_SUBTITLE_FORMATS: List<Format> = listOf(
+    Format.Builder().setSampleMimeType(MimeTypes.APPLICATION_CEA608).build(),
+    Format.Builder()
+        .setSampleMimeType(MimeTypes.APPLICATION_CEA708)
+        .setCodecs("cea-708")
+        .setAccessibilityChannel(1)
+        .build()
+)
+
+internal fun liveMpegTsExtractorsFactory(): DefaultExtractorsFactory =
+    DefaultExtractorsFactory()
+        .setTsExtractorMode(TsExtractor.MODE_HLS)
+        .setTsExtractorFlags(
+            DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+                or DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
+                or DefaultTsPayloadReaderFactory.FLAG_IGNORE_SPLICE_INFO_STREAM
+        )
+        .setTsSubtitleFormats(TS_SUBTITLE_FORMATS)
 
 @UnstableApi
 class PlayerMediaSourceFactory(
@@ -65,13 +88,7 @@ class PlayerMediaSourceFactory(
 
             resolvedStreamType == ResolvedStreamType.MPEG_TS_LIVE -> ProgressiveMediaSource.Factory(
                 dataSourceFactory,
-                DefaultExtractorsFactory()
-                    .setTsExtractorFlags(
-                        DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
-                            or DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES
-                            or DefaultTsPayloadReaderFactory.FLAG_IGNORE_SPLICE_INFO_STREAM
-                    )
-                    .setTsSubtitleFormats(TS_SUBTITLE_FORMATS)
+                liveMpegTsExtractorsFactory()
             )
                 .setLoadErrorHandlingPolicy(retryPolicy)
                 .createMediaSource(mediaItem)
@@ -139,15 +156,5 @@ class PlayerMediaSourceFactory(
 
     companion object {
         private const val TAG = "PlayerMediaSourceFactory"
-
-        /** Explicit CEA-608 and CEA-708 closed caption formats for MPEG-TS streams. */
-        private val TS_SUBTITLE_FORMATS: List<Format> = listOf(
-            Format.Builder().setSampleMimeType(MimeTypes.APPLICATION_CEA608).build(),
-            Format.Builder()
-                .setSampleMimeType(MimeTypes.APPLICATION_CEA708)
-                .setCodecs("cea-708")
-                .setAccessibilityChannel(1)
-                .build()
-        )
     }
 }

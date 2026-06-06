@@ -66,6 +66,8 @@
 # for a broad keep here. Only explicitly keep classes loaded via reflection that the
 # AAR rules don't cover (e.g., extension renderers resolved at runtime).
 -keep class androidx.media3.exoplayer.DefaultRenderersFactory { *; }
+-keep class androidx.media3.decoder.ffmpeg.** { *; }
+-dontwarn androidx.media3.decoder.ffmpeg.**
 -dontwarn androidx.media3.**
 
 # ── Coroutines ──────────────────────────────────────────────

@@ -119,6 +119,8 @@ class PreferencesRepository @Inject constructor(
         val IS_INCOGNITO_MODE = booleanPreferencesKey("is_incognito_mode")
         val PLAYER_MUTED = booleanPreferencesKey("player_muted")
         val PLAYER_MEDIA_SESSION_ENABLED = booleanPreferencesKey("player_media_session_enabled")
+        val PLAYER_FAST_RETRY_ON_TRANSIENT_FAILURES =
+            booleanPreferencesKey("player_fast_retry_on_transient_failures")
         val PLAYER_DECODER_MODE = stringPreferencesKey("player_decoder_mode")
         val PLAYER_VOD_HTTP_PROTOCOL_MODE = stringPreferencesKey("player_vod_http_protocol_mode")
         val LEGACY_PLAYER_MOVIE_HTTP_PROTOCOL_MODE = stringPreferencesKey("player_movie_http_protocol_mode")
@@ -270,6 +272,10 @@ class PreferencesRepository @Inject constructor(
 
     val playerMediaSessionEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.PLAYER_MEDIA_SESSION_ENABLED] ?: true
+    }
+
+    val playerFastRetryOnTransientFailures: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PLAYER_FAST_RETRY_ON_TRANSIENT_FAILURES] ?: false
     }
 
     val playerDecoderMode: Flow<DecoderMode> = context.dataStore.data.map { preferences ->
@@ -816,6 +822,12 @@ class PreferencesRepository @Inject constructor(
     suspend fun setPlayerMediaSessionEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PLAYER_MEDIA_SESSION_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setPlayerFastRetryOnTransientFailures(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYER_FAST_RETRY_ON_TRANSIENT_FAILURES] = enabled
         }
     }
 

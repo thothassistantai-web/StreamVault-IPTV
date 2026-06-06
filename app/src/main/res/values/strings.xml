@@ -406,6 +406,8 @@
     <string name="settings_multiview_center_two_slot_layout_subtitle">When one or two multiview slots are active, center them on screen instead of using the default 2x2 grid.</string>
     <string name="settings_media_session">System Media Session</string>
     <string name="settings_media_session_subtitle">Expose playback to Android system media controls. Disable this if playback crashes on a specific device when opening the player.</string>
+    <string name="settings_fast_retry_on_transient_failures" translatable="false">Fast retry on transient failures</string>
+    <string name="settings_fast_retry_on_transient_failures_subtitle" translatable="false">Use 500 ms retries for live playback failures instead of exponential backoff.</string>
     <string name="settings_live_timeshift">Enable Local Live Rewind</string>
     <string name="settings_live_timeshift_subtitle">Keep a temporary local buffer for pausing and rewinding live TV even when the provider has no catch-up support.</string>
     <string name="settings_live_timeshift_depth">Local Live Rewind Depth</string>

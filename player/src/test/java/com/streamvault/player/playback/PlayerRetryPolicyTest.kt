@@ -1,9 +1,13 @@
 package com.streamvault.player.playback
 
+import android.os.Bundle
+import androidx.media3.common.C
 import androidx.media3.common.ParserException
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.source.BehindLiveWindowException
 import com.google.common.truth.Truth.assertThat
 import java.io.IOException
+import java.net.SocketTimeoutException
 import javax.net.ssl.SSLHandshakeException
 import org.junit.Test
 
@@ -20,17 +24,25 @@ class PlayerRetryPolicyTest {
 
     private val policy = PlayerRetryPolicy(liveContext) { false }
     private val progressivePolicy = PlayerRetryPolicy(progressiveContext) { true }
+    private val fastRetryPolicy = PlayerRetryPolicy(
+        streamContext = liveContext,
+        playbackStarted = { true },
+        fastRetryOnTransientFailures = { true }
+    )
 
     @Test
-    fun `500 before first frame retries 3 times with expected backoff`() {
+    fun `live server errors retry 10 times with bounded backoff`() {
         val error = IOException("HTTP 500")
         assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 1)).isTrue()
         assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 2)).isTrue()
         assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 3)).isTrue()
-        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 4)).isFalse()
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 10)).isTrue()
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 11)).isFalse()
+        assertThat(policy.maxAttempts(error, playbackStarted = false)).isEqualTo(10)
         assertThat(policy.retryDelayMs(error, 1)).isEqualTo(1000L)
         assertThat(policy.retryDelayMs(error, 2)).isEqualTo(2500L)
         assertThat(policy.retryDelayMs(error, 3)).isEqualTo(5000L)
+        assertThat(policy.retryDelayMs(error, 10)).isEqualTo(5000L)
     }
 
     @Test
@@ -49,9 +61,48 @@ class PlayerRetryPolicyTest {
     }
 
     @Test
+    fun `auth failure after playback start stays terminal`() {
+        val error = IOException("HTTP 403")
+
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 1)).isFalse()
+        assertThat(policy.maxAttempts(error, playbackStarted = true)).isEqualTo(0)
+        assertThat(policy.retryReason(error)).isEqualTo("terminal-auth")
+    }
+
+    @Test
     fun `ssl error never retries`() {
         assertThat(policy.shouldRetry(SSLHandshakeException("bad cert"), liveContext, playbackStarted = false, attempt = 1))
             .isFalse()
+    }
+
+    @Test
+    fun `ssl failure after playback start stays terminal`() {
+        val error = SSLHandshakeException("certificate verify failed")
+
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 1)).isFalse()
+        assertThat(policy.maxAttempts(error, playbackStarted = true)).isEqualTo(0)
+        assertThat(policy.retryReason(error)).isEqualTo("terminal-tls")
+    }
+
+    @Test
+    fun `cleartext failure after playback start stays terminal`() {
+        val error = IOException("cleartext traffic not permitted")
+
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 1)).isFalse()
+        assertThat(policy.maxAttempts(error, playbackStarted = true)).isEqualTo(0)
+        assertThat(policy.retryReason(error)).isEqualTo("terminal-cleartext")
+    }
+
+    @Test
+    fun `drm failure after playback start stays terminal`() {
+        val error = TestPlaybackException(
+            "drm license failed",
+            PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED
+        )
+
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 1)).isFalse()
+        assertThat(policy.maxAttempts(error, playbackStarted = true)).isEqualTo(0)
+        assertThat(policy.retryReason(error)).isEqualTo("terminal-drm")
     }
 
     @Test
@@ -59,13 +110,23 @@ class PlayerRetryPolicyTest {
         val error = BehindLiveWindowException()
         assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 1)).isTrue()
         assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 2)).isFalse()
-        assertThat(policy.retryDelayMs(error, 1)).isEqualTo(500L)
+        assertThat(policy.retryDelayMs(error, 1)).isEqualTo(1000L)
+        assertThat(policy.retryReason(error)).isEqualTo("refresh-live-window")
+    }
+
+    @Test
+    fun `fast transient retry mode uses 500 ms for live refresh failures`() {
+        val error = BehindLiveWindowException()
+
+        assertThat(fastRetryPolicy.retryDelayMs(error, 1)).isEqualTo(500L)
+        assertThat(fastRetryPolicy.retryDelayMs(error, 2)).isEqualTo(500L)
     }
 
     @Test
     fun `decoder init failure does not go through network retry policy`() {
         val error = IllegalStateException("decoder init failed")
         assertThat(policy.shouldRetry(error, liveContext, playbackStarted = false, attempt = 1)).isFalse()
+        assertThat(policy.retryReason(error)).isEqualTo("terminal-decoder")
     }
 
     @Test
@@ -90,16 +151,68 @@ class PlayerRetryPolicyTest {
         assertThat(progressivePolicy.shouldRetry(error, progressiveContext, playbackStarted = true, attempt = 3)).isTrue()
         assertThat(progressivePolicy.shouldRetry(error, progressiveContext, playbackStarted = true, attempt = 4)).isFalse()
         assertThat(progressivePolicy.maxAttempts(error, playbackStarted = true)).isEqualTo(3)
+        assertThat(progressivePolicy.retryReason(error)).isEqualTo("server-retryable")
     }
 
     @Test
-    fun `malformed live segment after playback start retries as transient source failure`() {
+    fun `network errors keep transient retry reason`() {
+        val error = SocketTimeoutException("timed out")
+
+        assertThat(policy.retryReason(error)).isEqualTo("transient-network")
+    }
+
+    @Test
+    fun `live loadable retry count uses 10 attempt ceiling`() {
+        assertThat(policy.getMinimumLoadableRetryCount(C.DATA_TYPE_MANIFEST)).isEqualTo(10)
+        assertThat(policy.getMinimumLoadableRetryCount(C.DATA_TYPE_MEDIA)).isEqualTo(10)
+    }
+
+    @Test
+    fun `live network timeouts retry 10 times`() {
+        val error = SocketTimeoutException("timed out")
+
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 10)).isTrue()
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 11)).isFalse()
+        assertThat(policy.maxAttempts(error, playbackStarted = true)).isEqualTo(10)
+    }
+
+    @Test
+    fun `progressive network timeouts after playback start retry 10 times`() {
+        val error = SocketTimeoutException("timed out")
+
+        assertThat(progressivePolicy.shouldRetry(error, progressiveContext, playbackStarted = true, attempt = 10))
+            .isTrue()
+        assertThat(progressivePolicy.shouldRetry(error, progressiveContext, playbackStarted = true, attempt = 11))
+            .isFalse()
+        assertThat(progressivePolicy.maxAttempts(error, playbackStarted = true)).isEqualTo(10)
+    }
+
+    @Test
+    fun `malformed hls refresh after playback start retries before app recovery`() {
         val error = ParserException.createForMalformedContainer("bad live segment", null)
         assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 1)).isTrue()
-        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 2)).isTrue()
-        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 3)).isTrue()
-        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 4)).isFalse()
-        assertThat(policy.maxAttempts(error, playbackStarted = true)).isEqualTo(3)
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 12)).isTrue()
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 13)).isFalse()
+        assertThat(policy.maxAttempts(error, playbackStarted = true)).isEqualTo(12)
+        assertThat(policy.retryReason(error)).isEqualTo("malformed-live-hls-refresh")
+        assertThat(policy.retryDelayMs(error, 1)).isEqualTo(1000L)
+        assertThat(policy.retryDelayMs(error, 2)).isEqualTo(2500L)
+        assertThat(policy.retryDelayMs(error, 3)).isEqualTo(5000L)
+    }
+
+    @Test
+    fun `fast transient retry mode uses 500 ms for live hls refresh failures`() {
+        val error = ParserException.createForMalformedContainer("bad live segment", null)
+
+        assertThat(fastRetryPolicy.retryDelayMs(error, 1)).isEqualTo(500L)
+        assertThat(fastRetryPolicy.retryDelayMs(error, 2)).isEqualTo(500L)
+        assertThat(fastRetryPolicy.retryDelayMs(error, 3)).isEqualTo(500L)
+    }
+
+    @Test
+    fun `fast transient retry mode uses 500 ms for live network and server failures`() {
+        assertThat(fastRetryPolicy.retryDelayMs(SocketTimeoutException("timed out"), 1)).isEqualTo(500L)
+        assertThat(fastRetryPolicy.retryDelayMs(IOException("HTTP 503"), 2)).isEqualTo(500L)
     }
 
     @Test
@@ -107,4 +220,20 @@ class PlayerRetryPolicyTest {
         val error = ParserException.createForMalformedContainer("bad movie segment", null)
         assertThat(progressivePolicy.shouldRetry(error, progressiveContext, playbackStarted = true, attempt = 1)).isFalse()
     }
+
+    @Test
+    fun `unknown live runtime error after playback start retries before surfacing`() {
+        val error = RuntimeException("Unexpected runtime error")
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 1)).isTrue()
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 2)).isTrue()
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 3)).isTrue()
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 10)).isTrue()
+        assertThat(policy.shouldRetry(error, liveContext, playbackStarted = true, attempt = 11)).isFalse()
+        assertThat(policy.maxAttempts(error, playbackStarted = true)).isEqualTo(10)
+    }
+
+    private class TestPlaybackException(
+        message: String,
+        errorCode: Int
+    ) : PlaybackException(message, null, errorCode, Bundle.EMPTY, 0L)
 }

@@ -42,6 +42,7 @@ internal data class SettingsPreferenceSnapshot(
     val appTimeFormat: AppTimeFormat,
     val preferredAudioLanguage: String,
     val playerMediaSessionEnabled: Boolean,
+    val playerFastRetryOnTransientFailures: Boolean,
     val playerDecoderMode: DecoderMode,
     val playerAudioOutputPreference: AudioOutputPreference,
     val playerCompatibilityMemoryEnabled: Boolean,

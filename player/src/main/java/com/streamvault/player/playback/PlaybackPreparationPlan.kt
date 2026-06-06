@@ -12,6 +12,7 @@ internal data class PlaybackPreparationPlan(
 internal fun buildPlaybackPreparationPlan(
     streamInfo: StreamInfo,
     preload: Boolean,
+    fastRetryOnTransientFailures: () -> Boolean = { false },
     playbackStarted: () -> Boolean
 ): PlaybackPreparationPlan {
     val resolvedStreamType = StreamTypeResolver.resolve(streamInfo)
@@ -21,6 +22,10 @@ internal fun buildPlaybackPreparationPlan(
         resolvedStreamType = resolvedStreamType,
         timeoutProfile = timeoutProfile,
         retryContext = retryContext,
-        retryPolicy = PlayerRetryPolicy(retryContext) { playbackStarted() }
+        retryPolicy = PlayerRetryPolicy(
+            streamContext = retryContext,
+            fastRetryOnTransientFailures = fastRetryOnTransientFailures,
+            playbackStarted = playbackStarted
+        )
     )
 }

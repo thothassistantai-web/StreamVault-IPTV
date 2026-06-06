@@ -67,13 +67,26 @@ internal fun PlayerViewModel.showRetryNotice(status: com.streamvault.player.Play
         currentResolvedPlaybackUrl = currentResolvedPlaybackUrl,
         currentStreamUrl = currentStreamUrl
     )
-    val message = "Retrying $formatLabel ${status.attempt}/${status.maxAttempts} in ${status.delayMs / 1000}s..."
+    val message = buildRetryNoticeMessage(formatLabel, status)
     showPlayerNotice(
         message = message,
         recoveryType = PlayerRecoveryType.NETWORK,
         durationMs = maxOf(playerNoticeTimeoutMs, status.delayMs + 1500L),
         isRetryNotice = true
     )
+}
+
+internal fun buildRetryNoticeMessage(
+    formatLabel: String,
+    status: com.streamvault.player.PlayerRetryStatus
+): String {
+    val retryLabel = "Retrying $formatLabel ${status.attempt}/${status.maxAttempts}"
+    val delaySeconds = status.delayMs / 1_000L
+    return if (delaySeconds >= 1L) {
+        "$retryLabel in ${delaySeconds}s..."
+    } else {
+        "$retryLabel..."
+    }
 }
 
 fun PlayerViewModel.restartCurrentProgram() {

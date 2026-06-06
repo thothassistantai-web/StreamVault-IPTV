@@ -7,7 +7,7 @@ Current product scope:
 - Audio fallback only
 - Media3 version: `1.9.2`
 - Supported ABIs: `arm64-v8a`, `armeabi-v7a`
-- Enabled decoders: `ac3`, `eac3`, `dca`, `mp2`, `truehd`
+- Enabled decoders: `ac3`, `eac3`, `dca`, `mp2`, `mp3`, `truehd`
 - License target: LGPL-compatible build only
 
 Important product notes:

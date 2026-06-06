@@ -275,6 +275,9 @@ class MultiViewViewModel @Inject constructor(
                         localEngine.setAudioVideoOffsetMs(
                             if (avSyncEnabled) effectiveAudioVideoOffsetForChannel(channel.id) else 0
                         )
+                        localEngine.setFastRetryOnTransientFailures(
+                            preferencesRepository.playerFastRetryOnTransientFailures.first()
+                        )
                         val streamInfo = when (val result = channelRepository.getStreamInfo(channel)) {
                             is Result.Success -> result.data
                             is Result.Error -> throw IllegalStateException(result.message)

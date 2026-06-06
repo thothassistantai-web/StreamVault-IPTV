@@ -263,6 +263,7 @@ class PlayerViewModel @Inject constructor(
     internal var currentResolvedStreamInfo: StreamInfo? = null
     internal var adoptedHandoffSource: com.streamvault.app.player.PreviewHandoffSource? = null
     internal var pendingCatchUpUrls: List<String> = emptyList()
+    internal var livePlaybackReadyForCurrentSession: Boolean = false
     internal var channelNumberingMode: ChannelNumberingMode = ChannelNumberingMode.GROUP
         set(value) {
             field = value
@@ -415,7 +416,7 @@ class PlayerViewModel @Inject constructor(
             playerEngine.stopLiveTimeshift()
             return
         }
-        if (currentStreamClassLabel == "Catch-up") {
+        if (!shouldStartLiveTimeshiftForStreamClass(currentStreamClassLabel)) {
             playerEngine.stopLiveTimeshift()
             return
         }
@@ -471,6 +472,7 @@ class PlayerViewModel @Inject constructor(
                     zapBufferWatchdogJob?.cancel()
                     dismissRecoveredNoticeIfPresent()
                     if (currentContentType == ContentType.LIVE) {
+                        livePlaybackReadyForCurrentSession = true
                         recordActiveLivePlayback()
                         currentChannelFlow.value?.sanitizedForPlayer()?.let { channel ->
                             if (channel.errorCount > 0) {
@@ -575,6 +577,11 @@ class PlayerViewModel @Inject constructor(
             preferencesRepository.playerMediaSessionEnabled
                 .combine(activePlayerEngineFlow) { enabled, engine -> engine to enabled }
                 .collect { (engine, enabled) -> engine.setMediaSessionEnabled(enabled) }
+        }
+        viewModelScope.launch {
+            preferencesRepository.playerFastRetryOnTransientFailures
+                .combine(activePlayerEngineFlow) { enabled, engine -> engine to enabled }
+                .collect { (engine, enabled) -> engine.setFastRetryOnTransientFailures(enabled) }
         }
         viewModelScope.launch {
             currentChannelFlow
@@ -741,6 +748,12 @@ class PlayerViewModel @Inject constructor(
             currentResolvedPlaybackUrl = currentResolvedPlaybackUrl,
             currentStreamUrl = currentStreamUrl
         )
+        android.util.Log.i(
+            "PlayerVM",
+            "handle-playback-error type=${error::class.java.simpleName} contentType=$currentContentType " +
+                "hasChannel=${currentChannelFlow.value != null} requestVersion=$requestVersion " +
+                "active=${isActivePlaybackSession(requestVersion, playbackUrl)}"
+        )
         recoveryJob?.cancel()
         if (error is PlayerError.DecoderError && !hasRetriedWithSoftwareDecoder) {
             if (!isActivePlaybackSession(requestVersion, playbackUrl)) return
@@ -783,6 +796,11 @@ class PlayerViewModel @Inject constructor(
 
             val recoveryType = classifyPlaybackError(error)
             val channel = currentChannelFlow.value?.sanitizedForPlayer()
+            android.util.Log.i(
+                "PlayerVM",
+                "recovery-dispatch type=$recoveryType live=${currentContentType == ContentType.LIVE} " +
+                    "hasChannel=${channel != null}"
+            )
 
             if (recoveryType == PlayerRecoveryType.DRM) {
                 if (!isActivePlaybackSession(requestVersion, playbackUrl)) return@launch
@@ -853,7 +871,11 @@ class PlayerViewModel @Inject constructor(
             val switched = when (recoveryType) {
                 PlayerRecoveryType.NETWORK,
                 PlayerRecoveryType.SOURCE,
-                PlayerRecoveryType.BUFFER_TIMEOUT -> tryAlternateStreamInternal(channel)
+                PlayerRecoveryType.BUFFER_TIMEOUT -> tryAlternateStreamInternal(
+                    channel = channel,
+                    preferXtreamTsFallback = recoveryType == PlayerRecoveryType.SOURCE,
+                    allowXtreamTsFallback = !livePlaybackReadyForCurrentSession
+                )
                 else -> false
             }
 
@@ -868,6 +890,10 @@ class PlayerViewModel @Inject constructor(
                 )
                 return@launch
             }
+            android.util.Log.w(
+                "PlayerVM",
+                "recovery-no-switch type=$recoveryType hasLastChannel=${hasLastChannel()}"
+            )
 
             if (fallbackToPreviousChannel("Recovery path exhausted for ${recoveryType.name.lowercase()}")) {
                 appendRecoveryAction("Returned to last channel")
@@ -955,6 +981,7 @@ class PlayerViewModel @Inject constructor(
         thumbnailPreloadJob?.cancel()
         hasRetriedXtreamAuthRefresh = false
         lastRecordedVariantObservationSignature = null
+        livePlaybackReadyForCurrentSession = false
         readySideEffectsRequestVersion = null
         currentResolvedPlaybackUrl = ""
         currentResolvedStreamInfo = null
@@ -1144,6 +1171,7 @@ class PlayerViewModel @Inject constructor(
         )
         playerEngine.setSurfaceMode(preferencesRepository.playerSurfaceMode.first())
         playerEngine.setVodHttpProtocolMode(preferencesRepository.playerVodHttpProtocolMode.first())
+        playerEngine.setFastRetryOnTransientFailures(preferencesRepository.playerFastRetryOnTransientFailures.first())
         playerEngine.setAudioVideoOffsetMs(_audioVideoOffsetUiState.value.effectiveOffsetMs)
     }
 
@@ -1193,11 +1221,9 @@ class PlayerViewModel @Inject constructor(
                     )
                 )
                 if (shouldRenewAdoptedPreview) {
-                    // Re-prime when the preview has not produced video yet. This keeps
-                    // the previous audio-only/stale-surface recovery path without
-                    // rebuffering a preview that is already rendering after the
-                    // PlayerView handoff switches targets in Media3's recommended order.
-                    playerEngine.renewStreamUrl(session.streamInfo)
+                    // Re-prime adopted preview only when it has not produced video yet.
+                    // Use the updated prepare-at-live-edge behavior from the PR 64 tail.
+                    playerEngine.prepare(session.streamInfo)
                 }
                 playerEngine.play()
                 startTokenRenewalMonitoring(session.streamInfo.expirationTime)
@@ -1232,6 +1258,7 @@ class PlayerViewModel @Inject constructor(
         readySideEffectsRequestVersion = requestVersion
         playerEngine.prepare(preparedStreamInfo)
         startTokenRenewalMonitoring(preparedStreamInfo.expirationTime)
+        maybeStartLiveTimeshift(preparedStreamInfo)
         return true
     }
 
@@ -1519,8 +1546,6 @@ class PlayerViewModel @Inject constructor(
                         }
                     }
                 }
-
-                maybeStartLiveTimeshift(streamInfo)
             }
         }
         

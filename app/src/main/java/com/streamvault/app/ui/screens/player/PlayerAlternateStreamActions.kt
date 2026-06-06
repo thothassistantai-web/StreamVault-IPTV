@@ -3,7 +3,6 @@ package com.streamvault.app.ui.screens.player
 import androidx.lifecycle.viewModelScope
 import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.ContentType
-import com.streamvault.domain.model.LiveChannelVariant
 import kotlinx.coroutines.launch
 
 fun PlayerViewModel.hasAlternateStream(): Boolean {
@@ -12,13 +11,15 @@ fun PlayerViewModel.hasAlternateStream(): Boolean {
     }
     if (currentContentType != ContentType.LIVE) return false
     val channel = currentChannelFlow.value?.sanitizedForPlayer() ?: return false
-    return nextLiveVariant(channel) != null ||
-        selectNextAlternateUrl(
-            candidateUrls = channel.alternativeStreams,
-            currentStreamUrl = currentStreamUrl,
-            triedAlternativeStreams = triedAlternativeStreams,
-            failedStreamsThisSession = failedStreamsThisSession
-        ) != null
+    return selectNextLiveRecoveryCandidate(
+        channel = channel,
+        currentVariantId = channel.selectedVariantId.takeIf { it > 0 } ?: channel.id,
+        currentStreamUrl = currentStreamUrl,
+        currentResolvedPlaybackUrl = currentResolvedPlaybackUrl,
+        triedAlternativeStreams = triedAlternativeStreams,
+        failedStreamsThisSession = failedStreamsThisSession,
+        preferXtreamTsFallback = false
+    ) != null
 }
 
 fun PlayerViewModel.tryAlternateStream(): Boolean {
@@ -30,9 +31,40 @@ fun PlayerViewModel.tryAlternateStream(): Boolean {
     return tryAlternateStreamInternal(channel)
 }
 
-internal fun PlayerViewModel.tryAlternateStreamInternal(channel: Channel): Boolean {
-    nextLiveVariant(channel)?.let { nextVariant ->
-        val updatedChannel = channel.withSelectedVariant(nextVariant.rawChannelId)?.sanitizedForPlayer() ?: return@let
+internal fun PlayerViewModel.tryAlternateStreamInternal(
+    channel: Channel,
+    preferXtreamTsFallback: Boolean = false,
+    allowXtreamTsFallback: Boolean = true
+): Boolean {
+    val candidate = selectNextLiveRecoveryCandidate(
+        channel = channel,
+        currentVariantId = channel.selectedVariantId.takeIf { it > 0 } ?: channel.id,
+        currentStreamUrl = currentStreamUrl,
+        currentResolvedPlaybackUrl = currentResolvedPlaybackUrl,
+        triedAlternativeStreams = triedAlternativeStreams,
+        failedStreamsThisSession = failedStreamsThisSession,
+        preferXtreamTsFallback = preferXtreamTsFallback,
+        allowXtreamTsFallback = allowXtreamTsFallback
+    ) ?: run {
+        android.util.Log.w(
+            "PlayerVM",
+            "live-recovery no-candidate preferTsFallback=$preferXtreamTsFallback " +
+                "allowTsFallback=$allowXtreamTsFallback " +
+                "hasResolvedUrl=${currentResolvedPlaybackUrl.isNotBlank()} " +
+                "alternates=${channel.alternativeStreams.size} variants=${channel.variants.size}"
+        )
+        return false
+    }
+    android.util.Log.i(
+        "PlayerVM",
+        "live-recovery selected=${candidate.kind} preferTsFallback=$preferXtreamTsFallback " +
+            "allowTsFallback=$allowXtreamTsFallback"
+    )
+
+    if (candidate.kind == LiveRecoveryCandidateKind.VARIANT) {
+        val nextVariant = candidate.variant ?: return false
+        val updatedChannel = channel.withSelectedVariant(nextVariant.rawChannelId)?.sanitizedForPlayer()
+            ?: return false
         val requestVersion = beginPlaybackSession()
         triedAlternativeStreams.add(nextVariant.streamUrl)
         currentContentId = updatedChannel.id
@@ -81,17 +113,17 @@ internal fun PlayerViewModel.tryAlternateStreamInternal(channel: Channel): Boole
         return true
     }
 
-    val nextStream = selectNextAlternateUrl(
-        candidateUrls = channel.alternativeStreams,
-        currentStreamUrl = currentStreamUrl,
-        triedAlternativeStreams = triedAlternativeStreams,
-        failedStreamsThisSession = failedStreamsThisSession
-    ) ?: return false
-
     val requestVersion = beginPlaybackSession()
+    val nextStream = candidate.url
     triedAlternativeStreams.add(nextStream)
     currentStreamUrl = nextStream
-    updateStreamClass("Alternate")
+    updateStreamClass(
+        when (candidate.kind) {
+            LiveRecoveryCandidateKind.XTREAM_TS_FALLBACK -> "MPEG-TS fallback"
+            LiveRecoveryCandidateKind.ALTERNATE -> "Alternate"
+            LiveRecoveryCandidateKind.VARIANT -> "Variant"
+        }
+    )
     viewModelScope.launch {
         val streamInfo = resolvePlaybackStreamInfo(nextStream, channel.id, channel.providerId, ContentType.LIVE)
             ?: return@launch
@@ -100,16 +132,6 @@ internal fun PlayerViewModel.tryAlternateStreamInternal(channel: Channel): Boole
         playerEngine.play()
     }
     return true
-}
-
-private fun PlayerViewModel.nextLiveVariant(channel: Channel): LiveChannelVariant? {
-    return selectNextLiveVariant(
-        variants = channel.variants,
-        currentVariantId = channel.selectedVariantId.takeIf { it > 0 } ?: channel.id,
-        currentStreamUrl = currentStreamUrl,
-        triedAlternativeStreams = triedAlternativeStreams,
-        failedStreamsThisSession = failedStreamsThisSession
-    )
 }
 
 internal fun PlayerViewModel.isCatchUpPlayback(): Boolean = isCatchUpPlayback.value

@@ -1059,6 +1059,9 @@ class HomeViewModel @Inject constructor(
                     engine.stop()
                     engine.setDecoderMode(preferencesRepository.playerDecoderMode.first())
                     engine.setSurfaceMode(preferencesRepository.playerSurfaceMode.first())
+                    engine.setFastRetryOnTransientFailures(
+                        preferencesRepository.playerFastRetryOnTransientFailures.first()
+                    )
                     engine.prepare(preparedStreamInfo)
                     engine.setVolume(1f)
                     engine.play()

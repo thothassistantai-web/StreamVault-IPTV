@@ -28,6 +28,18 @@ internal data class PlayerPlaybackStreamResolution(
     val resolutionFailureMessage: String? = null
 )
 
+internal fun shouldUseStoredLiveStreamInfo(
+    logicalUrl: String,
+    storedStreamUrl: String
+): Boolean {
+    val requestedUrl = logicalUrl.trim()
+    val storedUrl = storedStreamUrl.trim()
+    return requestedUrl.isBlank() || requestedUrl == storedUrl
+}
+
+internal fun shouldStartLiveTimeshiftForStreamClass(streamClassLabel: String): Boolean =
+    streamClassLabel != "Catch-up" && streamClassLabel != "MPEG-TS fallback"
+
 internal fun buildSeriesEpisodeResolution(
     series: Series,
     episodeId: Long,
@@ -46,52 +58,55 @@ internal fun buildSeriesEpisodeResolution(
             currentArtworkUrl
         },
         resolvedTitle = if (resolvedEpisode != null && currentContentType == ContentType.SERIES_EPISODE) {
-            buildEpisodePlaybackTitle(resolvedEpisode)
-        } else {
-            null
-        },
-        resolvedSeasonNumber = resolvedEpisode?.seasonNumber ?: seasonNumber,
         resolvedEpisodeNumber = resolvedEpisode?.episodeNumber ?: episodeNumber
-    )
+                        val streamInfoResult = channelRepository.getStreamInfo(channel)
+                        if (streamInfoResult.isSuccess) {
+                            streamInfoResult.getOrNull()?.let { resolved ->
+                                return PlayerPlaybackStreamResolution(
+                                    streamInfo = resolved.copy(title = resolved.title ?: currentTitle)
+                                )
+                            }
+                        } else {
+                            // Propagate the underlying error so the caller can show it to the user.
+                            (streamInfoResult as? Result.Error)?.message?.let { errorMsg ->
+                                return PlayerPlaybackStreamResolution(
+                                    streamInfo = null,
+                                    resolutionFailureMessage = errorMsg
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            ContentType.MOVIE -> {
+                movieRepository.getMovie(internalContentId)?.let { movie ->
+                    fallbackStreamId = movie.streamId.takeIf { it > 0L }
+                    fallbackContainerExtension = movie.containerExtension
+                    val streamInfoResult = movieRepository.getStreamInfo(movie)
+                    if (streamInfoResult.isSuccess) {
+                        streamInfoResult.getOrNull()?.let { resolved ->
 }
 
 internal suspend fun resolvePlayerPlaybackStreamInfo(
     logicalUrl: String,
-    internalContentId: Long,
     providerId: Long,
-    contentType: ContentType,
     currentTitle: String,
     currentSeries: Series?,
     currentEpisode: Episode?,
     channelRepository: ChannelRepository,
     movieRepository: MovieRepository,
     seriesRepository: SeriesRepository,
-    xtreamStreamUrlResolver: XtreamStreamUrlResolver
 ): PlayerPlaybackStreamResolution {
     var fallbackStreamId: Long? = null
     var fallbackContainerExtension: String? = null
-
-    if (providerId > 0L && internalContentId > 0L) {
-        when (contentType) {
-            ContentType.LIVE -> {
-                channelRepository.getChannel(internalContentId)?.let { channel ->
-                    fallbackStreamId = channel.streamId.takeIf { it > 0L }
-                        ?: channel.epgChannelId?.toLongOrNull()
-                    val streamInfoResult = channelRepository.getStreamInfo(channel)
-                    if (streamInfoResult.isSuccess) {
-                        streamInfoResult.getOrNull()?.let { resolved ->
-                            return PlayerPlaybackStreamResolution(
-                                streamInfo = resolved.copy(title = resolved.title ?: currentTitle)
-                            )
-                        }
-                    } else {
-                        // Propagate the underlying error so the caller can show it to the user
-                        (streamInfoResult as? Result.Error)?.message?.let { errorMsg ->
                             return PlayerPlaybackStreamResolution(
                                 streamInfo = null,
                                 resolutionFailureMessage = errorMsg
                             )
                         }
+=======
+>>>>>>> pr-64-current
                     }
                 }
             }

@@ -61,6 +61,7 @@ data class SettingsUiState(
     val appTimeFormat: AppTimeFormat = AppTimeFormat.SYSTEM,
     val preferredAudioLanguage: String = "auto",
     val playerMediaSessionEnabled: Boolean = true,
+    val playerFastRetryOnTransientFailures: Boolean = false,
     val playerDecoderMode: DecoderMode = DecoderMode.AUTO,
     val playerAudioOutputPreference: AudioOutputPreference = AudioOutputPreference.AUTO,
     val playerCompatibilityMemoryEnabled: Boolean = true,
