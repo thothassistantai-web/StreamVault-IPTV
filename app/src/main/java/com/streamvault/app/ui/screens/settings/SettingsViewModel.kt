@@ -39,6 +39,7 @@ import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
+import com.streamvault.domain.model.ExternalPlaybackMode
 import com.streamvault.domain.model.ActiveLiveSource
 import com.streamvault.domain.model.CombinedM3uProfile
 import com.streamvault.domain.model.GroupedChannelLabelMode
@@ -600,6 +601,12 @@ class SettingsViewModel @Inject constructor(
     fun setDefaultPlaybackSpeed(speed: Float) {
         viewModelScope.launch {
             preferencesRepository.setPlayerPlaybackSpeed(speed)
+        }
+    }
+
+    fun setExternalPlaybackMode(mode: ExternalPlaybackMode) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerExternalPlaybackMode(mode)
         }
     }
 

@@ -5,6 +5,7 @@ import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.ChannelQualityOption
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.Episode
+import com.streamvault.domain.model.ExternalPlaybackMode
 import com.streamvault.domain.model.Season
 import com.streamvault.domain.model.Series
 import com.streamvault.domain.model.DecoderMode
@@ -37,6 +38,10 @@ data class SeekPreviewState(
     val artworkUrl: String? = null,
     val title: String = "",
     val isLoading: Boolean = false
+)
+
+data class PlayerPreferencesUiState(
+    val externalPlaybackMode: ExternalPlaybackMode = ExternalPlaybackMode.INTERNAL_PLAYER
 )
 
 data class PlayerDiagnosticsUiState(

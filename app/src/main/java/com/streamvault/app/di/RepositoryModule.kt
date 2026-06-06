@@ -2,6 +2,7 @@ package com.streamvault.app.di
 
 import com.streamvault.data.local.DatabaseTransactionRunner
 import com.streamvault.data.local.RoomDatabaseTransactionRunner
+import com.streamvault.data.manager.DownloadManagerImpl
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.data.security.AndroidKeystoreCredentialCrypto
 import com.streamvault.data.security.CredentialCrypto
@@ -80,6 +81,9 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindRecordingManager(impl: com.streamvault.data.manager.RecordingManagerImpl): com.streamvault.domain.manager.RecordingManager
+
+    @Binds @Singleton
+    abstract fun bindDownloadManager(impl: DownloadManagerImpl): DownloadManager
 
     @Binds @Singleton
     abstract fun bindProgramReminderManager(impl: com.streamvault.data.manager.ProgramReminderManagerImpl): com.streamvault.domain.manager.ProgramReminderManager

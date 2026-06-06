@@ -41,6 +41,7 @@ build_output_*.txt
 domain/bin/
 
 # Tooling and crash logs
+.pi/
 .kotlin/
 hs_err_pid*.log
 gradle_build.log
@@ -64,3 +65,20 @@ tmp/gha-artifact-inspect/
 .tmp-inspect/
 translations/
 releases/*.apk
+
+# AI tooling
+.claude/
+.opencode/
+
+# Dev handoff notes
+docs/*-handoff.md
+docs/*-plan.md
+docs/*-baseline.md
+
+# Smoke scripts
+tools/smoke_*.ps1
+
+# Build/test logs
+final_narrow_*.log
+gradle_*_test*.log
+gradle_*_rerun.log

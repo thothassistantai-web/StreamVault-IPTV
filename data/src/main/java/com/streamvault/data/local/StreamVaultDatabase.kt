@@ -47,9 +47,10 @@ import com.streamvault.data.local.entity.*
         PlaybackCompatibilityRecordEntity::class,
         XtreamContentIndexEntity::class,
         XtreamIndexJobEntity::class,
-        XtreamLiveOnboardingStateEntity::class
+        XtreamLiveOnboardingStateEntity::class,
+        DownloadEntity::class
     ],
-    version = 57,
+    version = 60,
     exportSchema = true   // ← was false; schema JSON now tracked in version control
 )
 @TypeConverters(RoomEnumConverters::class)
@@ -87,6 +88,7 @@ abstract class StreamVaultDatabase : RoomDatabase() {
     abstract fun xtreamContentIndexDao(): XtreamContentIndexDao
     abstract fun xtreamIndexJobDao(): XtreamIndexJobDao
     abstract fun xtreamLiveOnboardingDao(): XtreamLiveOnboardingDao
+    abstract fun downloadDao(): DownloadDao
 
     companion object {
         /**
@@ -2614,6 +2616,59 @@ abstract class StreamVaultDatabase : RoomDatabase() {
                     "ALTER TABLE providers ADD COLUMN stalker_playback_backend_hint TEXT NOT NULL DEFAULT 'AUTO'"
                 )
                 validateForeignKeys(database, "providers")
+            }
+        }
+
+        /**
+         * Migration 57 → 58: add downloads table for tracking in-app download operations.
+         */
+        val MIGRATION_57_58 = object : Migration(57, 58) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS downloads (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        provider_id INTEGER NOT NULL,
+                        content_type TEXT NOT NULL,
+                        content_id INTEGER NOT NULL,
+                        content_name TEXT NOT NULL,
+                        stream_url TEXT NOT NULL,
+                        source_stream_url TEXT,
+                        source_stream_id INTEGER,
+                        container_extension TEXT,
+                        poster_url TEXT,
+                        output_uri TEXT,
+                        output_display_path TEXT,
+                        status TEXT NOT NULL DEFAULT 'PENDING',
+                        bytes_written INTEGER NOT NULL DEFAULT 0,
+                        total_bytes INTEGER,
+                        created_at INTEGER NOT NULL,
+                        completed_at INTEGER,
+                        failure_reason TEXT,
+                        series_id INTEGER,
+                        season_number INTEGER,
+                        episode_number INTEGER
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_downloads_status ON downloads(status)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_downloads_provider_id ON downloads(provider_id)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_downloads_content_type_content_id ON downloads(content_type, content_id)")
+            }
+        }
+
+        val MIGRATION_58_59 = object : Migration(58, 59) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE downloads ADD COLUMN supports_resume INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE downloads ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_59_60 = object : Migration(59, 60) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE downloads ADD COLUMN source_stream_url TEXT")
+                database.execSQL("ALTER TABLE downloads ADD COLUMN source_stream_id INTEGER")
+                database.execSQL("ALTER TABLE downloads ADD COLUMN container_extension TEXT")
             }
         }
 

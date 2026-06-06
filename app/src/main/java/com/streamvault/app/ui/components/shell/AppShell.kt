@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -837,6 +838,7 @@ private fun buildDestinationItems(): List<DestinationItem> = listOf(
     DestinationItem(Routes.LIVE_TV, R.string.nav_live_tv, Icons.Default.PlayArrow),
     DestinationItem(Routes.MOVIES, R.string.nav_movies, Icons.Default.Star),
     DestinationItem(Routes.SERIES, R.string.nav_series, Icons.Default.Menu),
+    DestinationItem(Routes.DOWNLOADS, R.string.nav_downloads, Icons.Default.Download),
     DestinationItem(Routes.EPG, R.string.nav_epg, Icons.Default.Info),
     DestinationItem(Routes.SEARCH, R.string.search_title, Icons.Default.Search),
     DestinationItem(Routes.PLUGINS, R.string.nav_plugins, PluginBlocksIcon),

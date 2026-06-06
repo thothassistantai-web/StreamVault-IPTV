@@ -125,6 +125,7 @@ class PreferencesRepository @Inject constructor(
         val PLAYER_COMPATIBILITY_MEMORY_ENABLED = booleanPreferencesKey("player_compatibility_memory_enabled")
         val PLAYER_SURFACE_MODE = stringPreferencesKey("player_surface_mode")
         val PLAYER_PLAYBACK_SPEED = stringPreferencesKey("player_playback_speed")
+        val PLAYER_EXTERNAL_PLAYBACK_MODE = stringPreferencesKey("player_external_playback_mode")
         val PLAYER_AUDIO_VIDEO_SYNC_ENABLED = booleanPreferencesKey("player_av_sync_enabled")
         val PLAYER_AUDIO_VIDEO_OFFSET_MS = intPreferencesKey("player_av_offset_ms")
         val PREFERRED_AUDIO_LANGUAGE = stringPreferencesKey("preferred_audio_language")
@@ -159,6 +160,8 @@ class PreferencesRepository @Inject constructor(
         val RECORDING_WIFI_ONLY = booleanPreferencesKey("recording_wifi_only")
         val RECORDING_PADDING_BEFORE_MINUTES = intPreferencesKey("recording_padding_before_minutes")
         val RECORDING_PADDING_AFTER_MINUTES = intPreferencesKey("recording_padding_after_minutes")
+        val DOWNLOAD_TREE_URI = stringPreferencesKey("download_tree_uri")
+        val MAX_CONCURRENT_STREAMS = intPreferencesKey("max_concurrent_streams")
         val LAST_APP_UPDATE_CHECK_TIMESTAMP = longPreferencesKey("last_app_update_check_timestamp")
         val APP_UPDATE_DOWNLOAD_ID = longPreferencesKey("app_update_download_id")
         val APP_UPDATE_DOWNLOAD_VERSION_NAME = stringPreferencesKey("app_update_download_version_name")
@@ -304,6 +307,12 @@ class PreferencesRepository @Inject constructor(
             ?.toFloatOrNull()
             ?.coerceIn(0.5f, 2f)
             ?: 1f
+    }
+
+    val playerExternalPlaybackMode: Flow<com.streamvault.domain.model.ExternalPlaybackMode> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PLAYER_EXTERNAL_PLAYBACK_MODE]
+            ?.let { saved -> com.streamvault.domain.model.ExternalPlaybackMode.fromStorageValue(saved) }
+            ?: com.streamvault.domain.model.ExternalPlaybackMode.INTERNAL_PLAYER
     }
 
     val playerAudioVideoOffsetMs: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -597,6 +606,16 @@ class PreferencesRepository @Inject constructor(
         (preferences[PreferencesKeys.RECORDING_PADDING_AFTER_MINUTES] ?: 0).coerceIn(0, 30)
     }
 
+    val downloadTreeUri: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.DOWNLOAD_TREE_URI]
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    val maxConcurrentStreams: Flow<Int> = context.dataStore.data.map { preferences ->
+        (preferences[PreferencesKeys.MAX_CONCURRENT_STREAMS] ?: 2).coerceIn(1, 4)
+    }
+
     suspend fun setZapAutoRevert(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.ZAP_AUTO_REVERT] = enabled
@@ -618,6 +637,23 @@ class PreferencesRepository @Inject constructor(
     suspend fun setRecordingPaddingAfterMinutes(minutes: Int) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.RECORDING_PADDING_AFTER_MINUTES] = minutes.coerceIn(0, 30)
+        }
+    }
+
+    suspend fun setDownloadTreeUri(uri: String?) {
+        context.dataStore.edit { preferences ->
+            val normalized = uri?.trim()?.takeIf { it.isNotBlank() }
+            if (normalized == null) {
+                preferences.remove(PreferencesKeys.DOWNLOAD_TREE_URI)
+            } else {
+                preferences[PreferencesKeys.DOWNLOAD_TREE_URI] = normalized
+            }
+        }
+    }
+
+    suspend fun setMaxConcurrentStreams(count: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.MAX_CONCURRENT_STREAMS] = count.coerceIn(1, 4)
         }
     }
 
@@ -816,6 +852,12 @@ class PreferencesRepository @Inject constructor(
     suspend fun setPlayerPlaybackSpeed(speed: Float) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PLAYER_PLAYBACK_SPEED] = speed.coerceIn(0.5f, 2f).toString()
+        }
+    }
+
+    suspend fun setPlayerExternalPlaybackMode(mode: com.streamvault.domain.model.ExternalPlaybackMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYER_EXTERNAL_PLAYBACK_MODE] = mode.storageValue
         }
     }
 

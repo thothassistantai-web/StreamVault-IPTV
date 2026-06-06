@@ -7,7 +7,6 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import com.streamvault.app.BuildConfig
 import com.streamvault.data.local.StreamVaultDatabase
 import com.streamvault.data.local.dao.*
-import com.streamvault.data.local.dao.ChannelPreferenceDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -95,7 +94,10 @@ object DatabaseModule {
                 StreamVaultDatabase.MIGRATION_53_54,
                 StreamVaultDatabase.MIGRATION_54_55,
                 StreamVaultDatabase.MIGRATION_55_56,
-                StreamVaultDatabase.MIGRATION_56_57
+                StreamVaultDatabase.MIGRATION_56_57,
+                StreamVaultDatabase.MIGRATION_57_58,
+                StreamVaultDatabase.MIGRATION_58_59,
+                StreamVaultDatabase.MIGRATION_59_60
             )
             // NOTE: fallbackToDestructiveMigration() intentionally removed.
             // All future schema changes MUST add a corresponding Migration in StreamVaultDatabase.
@@ -134,4 +136,5 @@ object DatabaseModule {
     @Provides fun provideXtreamContentIndexDao(db: StreamVaultDatabase): XtreamContentIndexDao = db.xtreamContentIndexDao()
     @Provides fun provideXtreamIndexJobDao(db: StreamVaultDatabase): XtreamIndexJobDao = db.xtreamIndexJobDao()
     @Provides fun provideXtreamLiveOnboardingDao(db: StreamVaultDatabase): XtreamLiveOnboardingDao = db.xtreamLiveOnboardingDao()
+    @Provides fun provideDownloadDao(db: StreamVaultDatabase): DownloadDao = db.downloadDao()
 }

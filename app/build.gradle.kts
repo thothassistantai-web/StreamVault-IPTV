@@ -92,6 +92,8 @@ android {
 
     buildTypes {
         debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
             buildConfigField("String", "XTREAM_DEV_SERVER", "\"${localProp("xtream.dev.server")}\"")
             buildConfigField("String", "XTREAM_DEV_USERNAME", "\"${localProp("xtream.dev.username")}\"")
             buildConfigField("String", "XTREAM_DEV_PASSWORD", "\"${localProp("xtream.dev.password")}\"")
@@ -233,6 +235,7 @@ dependencies {
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.robolectric)
 
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

@@ -34,6 +34,7 @@ junit = "4.13.2"
 truth = "1.4.4"
 kxml2 = "2.3.0"
 mockito-kotlin = "5.4.0"
+robolectric = "4.15.1"
 androidx-test-ext-junit = "1.2.1"
 espresso = "3.6.1"
 androidx-test-runner = "1.6.2"
@@ -119,6 +120,7 @@ truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 kxml2 = { group = "net.sf.kxml", name = "kxml2", version.ref = "kxml2" }
 mockito-kotlin = { group = "org.mockito.kotlin", name = "mockito-kotlin", version.ref = "mockito-kotlin" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-test-ext-junit" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidx-test-runner" }
 espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }

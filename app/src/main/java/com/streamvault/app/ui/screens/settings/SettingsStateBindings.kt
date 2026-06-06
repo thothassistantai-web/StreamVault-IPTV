@@ -10,6 +10,7 @@ import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.AudioOutputPreference
 import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.DecoderMode
+import com.streamvault.domain.model.ExternalPlaybackMode
 import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
@@ -46,6 +47,7 @@ internal fun observeSettingsPreferenceSnapshot(
             playerSurfaceMode = com.streamvault.domain.model.PlayerSurfaceMode.AUTO,
             playerVodHttpProtocolMode = VodHttpProtocolMode.COMPATIBILITY_HTTP1,
             playerPlaybackSpeed = 1f,
+            playerExternalPlaybackMode = ExternalPlaybackMode.INTERNAL_PLAYER,
             playerAudioVideoSyncEnabled = false,
             playerAudioVideoOffsetMs = 0,
             centerTwoSlotMultiviewLayout = false,
@@ -117,6 +119,8 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(playerVodHttpProtocolMode = protocolMode)
     }.combine(preferencesRepository.playerPlaybackSpeed) { snapshot, playerPlaybackSpeed ->
         snapshot.copy(playerPlaybackSpeed = playerPlaybackSpeed)
+    }.combine(preferencesRepository.playerExternalPlaybackMode) { snapshot, externalMode ->
+        snapshot.copy(playerExternalPlaybackMode = externalMode)
     }.combine(preferencesRepository.playerAudioVideoSyncEnabled) { snapshot, enabled ->
         snapshot.copy(playerAudioVideoSyncEnabled = enabled)
     }.combine(preferencesRepository.playerAudioVideoOffsetMs) { snapshot, playerAudioVideoOffsetMs ->

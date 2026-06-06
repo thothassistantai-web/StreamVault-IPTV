@@ -30,6 +30,7 @@ internal fun LazyListScope.settingsPlaybackSection(
     timeshiftDepthLabel: String,
     decoderModeLabel: String,
     audioOutputPreferenceLabel: String,
+    externalPlaybackModeLabel: String,
     surfaceModeLabel: String,
     vodHttpProtocolLabel: String,
     playbackSpeedLabel: String,
@@ -52,6 +53,7 @@ internal fun LazyListScope.settingsPlaybackSection(
     onShowTimeshiftDepthDialogChange: (Boolean) -> Unit,
     onShowDecoderModeDialogChange: (Boolean) -> Unit,
     onShowAudioOutputPreferenceDialogChange: (Boolean) -> Unit,
+    onShowExternalPlaybackModeDialogChange: (Boolean) -> Unit,
     onShowSurfaceModeDialogChange: (Boolean) -> Unit,
     onShowVodHttpProtocolDialogChange: (Boolean) -> Unit,
     onShowPlaybackSpeedDialogChange: (Boolean) -> Unit,
@@ -209,6 +211,11 @@ internal fun LazyListScope.settingsPlaybackSection(
             label = stringResource(R.string.settings_audio_output_mode),
             value = audioOutputPreferenceLabel,
             onClick = { onShowAudioOutputPreferenceDialogChange(true) }
+        )
+        ClickableSettingsRow(
+            label = stringResource(R.string.settings_external_playback),
+            value = externalPlaybackModeLabel,
+            onClick = { onShowExternalPlaybackModeDialogChange(true) }
         )
         TvClickableSurface(
             onClick = {

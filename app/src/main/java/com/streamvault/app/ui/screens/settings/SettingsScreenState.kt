@@ -39,7 +39,8 @@ internal data class SettingsScreenLabels(
     val lastSpeedTestSummary: String,
     val speedTestRecommendationLabel: String,
     val protectionSummary: String,
-    val guideDefaultCategoryLabel: String
+    val guideDefaultCategoryLabel: String,
+    val externalPlaybackModeLabel: String
 )
 
 @Composable
@@ -148,6 +149,9 @@ internal fun rememberSettingsScreenLabels(
             ?.name
             ?: context.getString(R.string.settings_guide_default_category_fallback)
     }
+    val externalPlaybackModeLabel = remember(uiState.playerExternalPlaybackMode, context) {
+        formatExternalPlaybackModeLabel(uiState.playerExternalPlaybackMode, context)
+    }
 
     return SettingsScreenLabels(
         buildVerificationLabel = buildVerificationLabel,
@@ -176,7 +180,8 @@ internal fun rememberSettingsScreenLabels(
         lastSpeedTestSummary = lastSpeedTestSummary,
         speedTestRecommendationLabel = speedTestRecommendationLabel,
         protectionSummary = protectionSummary,
-        guideDefaultCategoryLabel = guideDefaultCategoryLabel
+        guideDefaultCategoryLabel = guideDefaultCategoryLabel,
+        externalPlaybackModeLabel = externalPlaybackModeLabel
     )
 }
 
@@ -224,4 +229,13 @@ internal fun formatVodHttpProtocolModeLabel(
 ): String = when (mode) {
     VodHttpProtocolMode.COMPATIBILITY_HTTP1 -> context.getString(R.string.settings_vod_http_protocol_compatibility)
     VodHttpProtocolMode.AUTO -> context.getString(R.string.settings_vod_http_protocol_auto)
+}
+
+private fun formatExternalPlaybackModeLabel(
+    mode: com.streamvault.domain.model.ExternalPlaybackMode,
+    context: Context
+): String = when (mode) {
+    com.streamvault.domain.model.ExternalPlaybackMode.INTERNAL_PLAYER -> context.getString(R.string.settings_external_playback_mode_internal)
+    com.streamvault.domain.model.ExternalPlaybackMode.ASK_EVERY_TIME -> context.getString(R.string.settings_external_playback_mode_external)
+    com.streamvault.domain.model.ExternalPlaybackMode.EXTERNAL_PLAYER -> context.getString(R.string.settings_external_playback_mode_external)
 }

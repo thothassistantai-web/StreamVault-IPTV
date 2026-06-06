@@ -31,6 +31,7 @@ import com.streamvault.app.ui.screens.provider.ProviderSetupScreen
 import com.streamvault.app.ui.screens.series.SeriesScreen
 import com.streamvault.app.ui.screens.settings.SettingsScreen
 import com.streamvault.app.ui.screens.welcome.WelcomeScreen
+import com.streamvault.app.ui.screens.downloads.DownloadsScreen
 import com.streamvault.app.MainActivity
 import java.io.Serializable
 import kotlin.coroutines.resume
@@ -69,6 +70,7 @@ object Routes {
     const val LIVE_TV_DESTINATION = "live_tv?categoryId={categoryId}"
     const val MOVIES = "movies"
     const val SERIES = "series"
+    const val DOWNLOADS = "downloads"
     const val EPG = "epg"
     const val EPG_DESTINATION = "epg?categoryId={categoryId}&anchorTime={anchorTime}&favoritesOnly={favoritesOnly}"
     const val SETTINGS = "settings"
@@ -495,6 +497,13 @@ fun AppNavigation(mainActivity: MainActivity) {
                 },
                 onNavigate = { route -> tabNavigate(route) },
                 currentRoute = Routes.SERIES
+            )
+        }
+
+        composable(Routes.DOWNLOADS) {
+            DownloadsScreen(
+                onNavigate = { route -> tabNavigate(route) },
+                currentRoute = Routes.DOWNLOADS
             )
         }
 

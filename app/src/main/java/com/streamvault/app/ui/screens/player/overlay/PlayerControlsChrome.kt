@@ -150,6 +150,8 @@ fun PlayerControlsOverlay(
     onSeekToLiveEdge: () -> Unit = {},
     onSeekToPosition: (Long) -> Unit = {},
     onSetScrubbingMode: (Boolean) -> Unit = {},
+    showExternalPlayerAction: Boolean = false,
+    onOpenExternalPlayer: () -> Unit = {},
     seekPreview: SeekPreviewState = SeekPreviewState(),
     onSeekPreviewPositionChanged: (Long?) -> Unit = {},
     clockLabelOverride: String? = null,
@@ -241,7 +243,9 @@ fun PlayerControlsOverlay(
                 onSeekToPosition = onSeekToPosition,
                 onSetScrubbingMode = onSetScrubbingMode,
                 seekPreview = seekPreview,
-                onSeekPreviewPositionChanged = onSeekPreviewPositionChanged
+                onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
+                showExternalPlayerAction = showExternalPlayerAction,
+                onOpenExternalPlayer = onOpenExternalPlayer
             )
         }
     }
@@ -571,6 +575,8 @@ private fun PlayerBottomBar(
     onSetScrubbingMode: (Boolean) -> Unit,
     seekPreview: SeekPreviewState,
     onSeekPreviewPositionChanged: (Long?) -> Unit,
+    showExternalPlayerAction: Boolean,
+    onOpenExternalPlayer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isVod = contentType != "LIVE" || isCatchUpPlayback
@@ -660,7 +666,9 @@ private fun PlayerBottomBar(
                         onSeekForward = onSeekForward,
                         onSeekToLiveEdge = onSeekToLiveEdge,
                         onSeekToPosition = onSeekToPosition,
-                        onSetScrubbingMode = onSetScrubbingMode
+                        onSetScrubbingMode = onSetScrubbingMode,
+                        showExternalPlayerAction = showExternalPlayerAction,
+                        onOpenExternalPlayer = onOpenExternalPlayer
                     )
                 } else {
                     PlayerVodInfo(
@@ -700,7 +708,9 @@ private fun PlayerBottomBar(
                         onSeekBackward = onSeekBackward,
                         onSeekForward = onSeekForward,
                         seekPreview = seekPreview,
-                        onSeekPreviewPositionChanged = onSeekPreviewPositionChanged
+                        onSeekPreviewPositionChanged = onSeekPreviewPositionChanged,
+                        showExternalPlayerAction = showExternalPlayerAction,
+                        onOpenExternalPlayer = onOpenExternalPlayer
                     )
                 }
             }
@@ -751,7 +761,9 @@ private fun PlayerLiveInfo(
     onSeekForward: () -> Unit,
     onSeekToLiveEdge: () -> Unit,
     onSeekToPosition: (Long) -> Unit,
-    onSetScrubbingMode: (Boolean) -> Unit
+    onSetScrubbingMode: (Boolean) -> Unit,
+    showExternalPlayerAction: Boolean,
+    onOpenExternalPlayer: () -> Unit
 ) {
     val showTimeshiftControls = timeshiftUiState.available && !isCastConnected
     val appTimeFormat = LocalAppTimeFormat.current
@@ -791,6 +803,9 @@ private fun PlayerLiveInfo(
             onOpenIdleStandbyTimer
         ))
         add(PlayerActionSpec(stringResource(R.string.player_picture_in_picture), onEnterPictureInPicture))
+        if (showExternalPlayerAction) {
+            add(PlayerActionSpec(stringResource(R.string.player_open_in_external_player), onOpenExternalPlayer))
+        }
         if (currentProgram?.hasArchive == true) {
             add(PlayerActionSpec(stringResource(R.string.player_restart), onRestartProgram))
             add(PlayerActionSpec(stringResource(R.string.player_archive), onOpenArchive))
@@ -990,7 +1005,9 @@ private fun PlayerVodInfo(
     onSeekBackward: () -> Unit,
     onSeekForward: () -> Unit,
     seekPreview: SeekPreviewState,
-    onSeekPreviewPositionChanged: (Long?) -> Unit
+    onSeekPreviewPositionChanged: (Long?) -> Unit,
+    showExternalPlayerAction: Boolean,
+    onOpenExternalPlayer: () -> Unit
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val isTelevisionDevice = rememberIsTelevisionDevice()
@@ -1041,6 +1058,9 @@ private fun PlayerVodInfo(
         }
         if (showEpisodesAction) {
             add(PlayerActionSpec(stringResource(R.string.player_episodes), onOpenEpisodes))
+        }
+        if (showExternalPlayerAction) {
+            add(PlayerActionSpec(stringResource(R.string.player_open_in_external_player), onOpenExternalPlayer))
         }
         if (audioTrackCount > 0) {
             add(PlayerActionSpec(stringResource(R.string.player_audio), onOpenAudioTracks))

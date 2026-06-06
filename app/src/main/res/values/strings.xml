@@ -355,6 +355,10 @@
     <string name="settings_category_type_series_description">Sort and hide provider series categories without affecting Favorites, Continue Watching, or custom shelves.</string>
     <string name="settings_playback">Playback</string>
     <string name="settings_playback_subtitle">Tune decoder and buffering behavior for smoother playback.</string>
+    <string name="settings_external_playback">Default playback app</string>
+    <string name="settings_external_playback_subtitle">Choose which app opens streams when you play a channel or title.</string>
+    <string name="settings_external_playback_mode_internal">Internal player</string>
+    <string name="settings_external_playback_mode_external">External player</string>
     <string name="settings_browsing">Browsing</string>
     <string name="settings_live_tv_channel_mode">Live TV Channel Mode</string>
     <string name="settings_live_tv_channel_mode_subtitle">Choose how the Live TV browser should present channels and whether it should preview before playback.</string>
@@ -991,6 +995,10 @@
     <string name="player_error_decoder">Unable to play this format — try changing decoder mode in Settings</string>
     <string name="player_error_drm">DRM license or device security requirements prevented playback</string>
     <string name="player_error_unknown">Unknown playback error</string>
+    <string name="player_open_in_external_player">Open in external player</string>
+    <string name="player_no_external_player">No external player installed</string>
+    <string name="player_unsafe_stream_url">This stream cannot be opened in an external player</string>
+    <string name="player_external_launch_failed">External player failed to start</string>
     <string name="player_retry">Retry</string>
     <string name="player_last_channel_action">Last Channel</string>
     <string name="player_try_alternate_stream">Try another path</string>
@@ -1332,6 +1340,10 @@
     <string name="series_unwatched_badge">%1$d left to finish</string>
     <string name="series_detail_resume">Resume · Season %1$d Ep %2$d · %3$s</string>
     <string name="series_detail_play_episode">Play · Season %1$d Ep %2$d</string>
+    <string name="stream_url_copy">Copy URL</string>
+    <string name="stream_url_copied">Stream URL copied</string>
+    <string name="stream_url_copy_failed">Could not resolve stream URL</string>
+    <string name="stream_url_clip_label">Stream URL</string>
     <string name="vod_external_ratings_heading">Ratings</string>
     <string name="vod_rating_imdb">IMDb</string>
     <string name="vod_rating_rotten_tomatoes">Rotten Tomatoes</string>
@@ -1552,4 +1564,40 @@
     <string name="settings_drive_last_pull">Pulled: %1$s</string>
     <string name="settings_drive_never_synced">Never synced yet</string>
     <string name="setup_import_from_drive">Import from Drive</string>
+
+    <!-- Download feature -->
+    <string name="download_button_label">Download</string>
+    <string name="download_started">Download started</string>
+    <string name="download_failed">Download failed: %1$s</string>
+    <string name="download_completed">Download completed</string>
+    <string name="download_cancelled">Download cancelled</string>
+    <string name="download_notification_channel">Downloads</string>
+    <string name="download_notification_channel_description">Shows download progress and completion</string>
+    <string name="download_in_progress">Downloading %s</string>
+    <string name="download_progress">%1$s / %2$s</string>
+    <string name="nav_downloads">Downloads</string>
+    <string name="downloads_empty">No downloads yet</string>
+    <string name="downloads_loading">Loading downloads...</string>
+    <string name="downloads_empty_title">No downloads yet</string>
+    <string name="downloads_empty_hint">Download movies or episodes from detail screens and they will appear here.</string>
+    <string name="downloads_no_thumb">No poster</string>
+    <string name="downloads_status_completed">Completed</string>
+    <string name="downloads_status_downloading">Downloading</string>
+    <string name="downloads_status_failed">Failed</string>
+    <string name="downloads_status_pending">Pending</string>
+    <string name="downloads_status_paused">Paused</string>
+    <string name="downloads_status_cancelled">Cancelled</string>
+    <string name="downloads_item_title">Untitled download</string>
+    <string name="downloads_delete_confirm_title">Delete download</string>
+    <string name="downloads_delete_confirm_msg">Delete %1$s from downloads?</string>
+    <string name="downloads_delete_confirm_delete">Delete</string>
+    <string name="downloads_delete_confirm">Delete this download?</string>
+    <string name="downloads_deleted">Download deleted</string>
+    <string name="download_folder_change">Change download folder</string>
+    <string name="download_folder_default">Default downloads folder</string>
+    <string name="download_play_local">Play</string>
+    <string name="download_resume">Resume</string>
+    <string name="download_delete">Delete</string>
+    <string name="downloads_resumed">Download resumed</string>
+    <string name="download_error_no_url">Could not resolve stream URL for download</string>
 </resources>

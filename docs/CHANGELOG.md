@@ -2,6 +2,28 @@
 
 All notable product changes are recorded in this document.
 
+## [1.0.13] - 2026-06-06
+
+### Added
+
+- Added offline VOD download management with a Downloads screen, foreground service, grouped episode downloads, pause/resume/restart controls, and local playback for completed files.
+- Added external playback mode and chooser handling so users can hand streams off to external player apps more reliably.
+- Added a stream format selector to the player so users can switch formats when decoder recovery needs an alternate stream variant.
+
+### Changed
+
+- Changed VOD downloads to use a single FIFO provider-stream scheduler with fresh provider URL resolution before each capture attempt.
+- Changed provider playback/download coordination so provider-backed internal or external playback pauses active downloads, deletes partial output, and restarts from zero after playback ends.
+
+### Fixed
+
+- Fixed player stream-info failures to preserve and surface the underlying error message instead of dropping it.
+- Fixed decoder error recovery to retry against alternate stream formats when available.
+- Fixed XMLTV parsing for ISO timestamps that include timezone offsets.
+- Fixed completed local download playback so `content://`/`file://` files do not consume the provider download lease and do not pause active downloads.
+- Fixed failed download Resume to clear partial output and restart through the scheduler.
+- Fixed provider playback interruptions leaving downloads stuck in `DOWNLOADING` by cancelling the active OkHttp call and resetting the partial row to zero-byte `PAUSED` state.
+
 ## [1.0.12] - 2026-05-15
 
 ### Added

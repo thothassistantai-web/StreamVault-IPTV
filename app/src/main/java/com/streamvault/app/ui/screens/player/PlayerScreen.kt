@@ -1,6 +1,7 @@
 package com.streamvault.app.ui.screens.player
 
 import android.app.Activity
+import android.util.Log
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -45,7 +46,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.*
 import com.streamvault.app.device.rememberIsTelevisionDevice
 import com.streamvault.app.ui.theme.*
+import com.streamvault.app.player.external.ExternalPlayerLaunchResult
+import com.streamvault.app.player.external.ExternalPlayerLauncher
 import com.streamvault.domain.model.DecoderMode
+import com.streamvault.domain.model.ExternalPlaybackMode
 import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.VideoFormat
 import com.streamvault.domain.model.Program
@@ -151,6 +155,7 @@ fun PlayerScreen(
         400.dp
     }
     val mainActivity = LocalContext.current.findMainActivity()
+    val appContext = LocalContext.current
     val notificationPermissionGate = rememberNotificationPermissionGate(
         onNotificationsBlocked = { message -> viewModel.showPlayerNotice(message = message) },
         reminderBlockedMessage = stringResource(R.string.notification_permission_reminder_required),
@@ -205,6 +210,7 @@ fun PlayerScreen(
     val showDiagnostics by viewModel.showDiagnostics.collectAsStateWithLifecycle()
     val playerDiagnostics by viewModel.playerDiagnostics.collectAsStateWithLifecycle()
     val playerNotice by viewModel.playerNotice.collectAsStateWithLifecycle()
+    val playerPreferencesUiState by viewModel.playerPreferencesUiState.collectAsStateWithLifecycle()
     val currentChannelRecording by viewModel.currentChannelRecording.collectAsStateWithLifecycle()
     val isMuted by viewModel.isMuted.collectAsStateWithLifecycle()
     val mediaTitle by viewModel.mediaTitle.collectAsStateWithLifecycle()
@@ -457,6 +463,60 @@ fun PlayerScreen(
             seasonNumber = seasonNumber,
             episodeNumber = episodeNumber
         )
+    }
+
+    // Auto-launch external player once per playback identity when mode is EXTERNAL_PLAYER.
+    // Wait for the resolved playable URL so logical provider URLs (xtream://, stalker://)
+    // are not handed to external apps before preparation finishes.
+    val externalPlaybackMode = playerPreferencesUiState.externalPlaybackMode
+    val externalPlaybackUrl by viewModel.externalPlaybackUrl.collectAsStateWithLifecycle()
+    val lastLaunchedExternalKey = rememberSaveable(streamUrl, prepareIdentity) {
+        mutableStateOf<String?>(null)
+    }
+
+    LaunchedEffect(externalPlaybackMode, prepareIdentity, externalPlaybackUrl) {
+        if (externalPlaybackMode == ExternalPlaybackMode.EXTERNAL_PLAYER) {
+            val launchUrl = externalPlaybackUrl
+            if (launchUrl.isBlank()) return@LaunchedEffect
+            val launchKey = prepareIdentity.toString()
+            if (lastLaunchedExternalKey.value != launchKey) {
+                lastLaunchedExternalKey.value = launchKey
+                if (!ExternalPlayerLauncher.isExternalPlayerLaunchUrl(launchUrl)) {
+                    viewModel.showPlayerNotice(
+                        message = "Cannot launch external player: Invalid or non-whitelisted URL scheme"
+                    )
+                    return@LaunchedEffect
+                }
+                val heldProviderSlot = viewModel.holdExternalProviderPlaybackSlot(launchUrl)
+                val result = ExternalPlayerLauncher.launch(appContext, launchUrl)
+                when (result) {
+                    is ExternalPlayerLaunchResult.Success -> {
+                        Log.d("PlayerScreen", "External player launched successfully for: ${result.url}")
+                    }
+                    is ExternalPlayerLaunchResult.InvalidUrl -> {
+                        if (heldProviderSlot) viewModel.releaseDownloadPlaybackSlot()
+                        Log.w("PlayerScreen", "External player launch failed - invalid URL: ${result.reason}")
+                        viewModel.showPlayerNotice(
+                            message = "Cannot launch external player: ${result.reason}"
+                        )
+                    }
+                    is ExternalPlayerLaunchResult.NoHandler -> {
+                        if (heldProviderSlot) viewModel.releaseDownloadPlaybackSlot()
+                        Log.w("PlayerScreen", "External player launch failed - no handler available for: ${result.url}")
+                        viewModel.showPlayerNotice(
+                            message = "No external player found. Playing internally."
+                        )
+                    }
+                    is ExternalPlayerLaunchResult.Failed -> {
+                        if (heldProviderSlot) viewModel.releaseDownloadPlaybackSlot()
+                        Log.w("PlayerScreen", "External player launch failed: ${result.errorMessage}")
+                        viewModel.showPlayerNotice(
+                            message = "External player failed. Playing internally."
+                        )
+                    }
+                }
+            }
+        }
     }
 
     LaunchedEffect(showControls) {

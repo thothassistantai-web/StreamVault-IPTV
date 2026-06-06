@@ -8,6 +8,7 @@ import com.streamvault.app.ui.model.VodViewMode
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.AudioOutputPreference
 import com.streamvault.domain.model.Category
+import com.streamvault.domain.model.ExternalPlaybackMode
 import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.GroupedChannelLabelMode
@@ -47,6 +48,7 @@ internal data class SettingsPreferenceSnapshot(
     val playerSurfaceMode: PlayerSurfaceMode,
     val playerVodHttpProtocolMode: VodHttpProtocolMode,
     val playerPlaybackSpeed: Float,
+    val playerExternalPlaybackMode: ExternalPlaybackMode,
     val playerAudioVideoSyncEnabled: Boolean,
     val playerAudioVideoOffsetMs: Int,
     val centerTwoSlotMultiviewLayout: Boolean,
