@@ -9,6 +9,8 @@ All notable product changes are recorded in this document.
 - Added offline VOD download management with a Downloads screen, foreground service, grouped episode downloads, pause/resume/restart controls, and local playback for completed files.
 - Added external playback mode and chooser handling so users can hand streams off to external player apps more reliably.
 - Added a stream format selector to the player so users can switch formats when decoder recovery needs an alternate stream variant.
+- Added a default landing screen setting so startup can open Home, Live TV, Movies, Series, Guide, Downloads, Plugins, or Settings instead of always opening Home.
+- Added configurable colored remote button support for Android TV remotes, with global defaults plus playback and live-browse overrides for actions such as guide, channel info, favorites, category pinning, and split screen.
 
 ### Changed
 
@@ -17,9 +19,13 @@ All notable product changes are recorded in this document.
 
 ### Fixed
 
+- Fixed provider delete confirmation staying open when a follow-up TV integration refresh failed after the provider had already been deleted.
+- Fixed the bundled FFmpeg Media3 artifact so MPEG Layer II audio (`audio/mpeg-L2`) maps to the bundled `mp2` decoder and release builds pass FFmpeg verification again.
+- Fixed a broken player content-resolution merge that could leave the app failing to compile.
 - Fixed player stream-info failures to preserve and surface the underlying error message instead of dropping it.
 - Fixed decoder error recovery to retry against alternate stream formats when available.
 - Fixed XMLTV parsing for ISO timestamps that include timezone offsets.
+- Fixed EPG repository test setup so reactive time-shift lookups are stubbed correctly during build verification.
 - Fixed completed local download playback so `content://`/`file://` files do not consume the provider download lease and do not pause active downloads.
 - Fixed failed download Resume to clear partial output and restart through the scheduler.
 - Fixed provider playback interruptions leaving downloads stuck in `DOWNLOADING` by cancelling the active OkHttp call and resetting the partial row to zero-byte `PAUSED` state.

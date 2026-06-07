@@ -33,6 +33,7 @@ import com.streamvault.app.ui.screens.settings.SettingsScreen
 import com.streamvault.app.ui.screens.welcome.WelcomeScreen
 import com.streamvault.app.ui.screens.downloads.DownloadsScreen
 import com.streamvault.app.MainActivity
+import com.streamvault.domain.model.AppLandingDestination
 import java.io.Serializable
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -259,11 +260,26 @@ private fun NavHostController.navigateToExternalPlayer(request: PlayerNavigation
     return true
 }
 
+internal fun AppLandingDestination.toAppRoute(): String = when (this) {
+    AppLandingDestination.HOME -> Routes.HOME
+    AppLandingDestination.LIVE_TV -> Routes.LIVE_TV
+    AppLandingDestination.MOVIES -> Routes.MOVIES
+    AppLandingDestination.SERIES -> Routes.SERIES
+    AppLandingDestination.GUIDE -> Routes.EPG
+    AppLandingDestination.DOWNLOADS -> Routes.DOWNLOADS
+    AppLandingDestination.PLUGINS -> Routes.PLUGINS
+    AppLandingDestination.SETTINGS -> Routes.SETTINGS
+}
+
 @Composable
 fun AppNavigation(mainActivity: MainActivity) {
     val navController = rememberNavController()
     val currentBackStackEntry = navController.currentBackStackEntryAsState().value
     val externalNavigationRequest = mainActivity.externalNavigationRequestFlow.collectAsStateWithLifecycle().value
+    val appLandingDestination = mainActivity.preferencesRepository.appLandingDestination
+        .collectAsStateWithLifecycle(initialValue = AppLandingDestination.HOME)
+        .value
+    val landingRoute = appLandingDestination.toAppRoute()
 
     LaunchedEffect(externalNavigationRequest, currentBackStackEntry) {
         val entry = currentBackStackEntry ?: return@LaunchedEffect
@@ -327,7 +343,7 @@ fun AppNavigation(mainActivity: MainActivity) {
         composable(Routes.WELCOME) {
             WelcomeScreen(
                 onNavigateToHome = dropUnlessResumed {
-                    navController.navigate(Routes.HOME) {
+                    navController.navigate(landingRoute) {
                         popUpTo(Routes.WELCOME) { inclusive = true }
                     }
                 },
@@ -354,7 +370,7 @@ fun AppNavigation(mainActivity: MainActivity) {
                 initialImportUri = importUri,
                 onBack = { navController.popBackStack() },
                 onProviderAdded = dropUnlessResumed {
-                    navController.navigate(Routes.HOME) {
+                    navController.navigate(landingRoute) {
                         popUpTo(Routes.PROVIDER_SETUP) { inclusive = true }
                     }
                 }

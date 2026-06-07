@@ -36,6 +36,7 @@ import com.streamvault.domain.usecase.ScheduleRecording
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Provider as InjectProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -90,6 +91,7 @@ class EpgViewModelTest {
         whenever(preferencesRepository.showAllChannelsCategory).thenReturn(flowOf(true))
         whenever(combinedM3uRepository.getActiveLiveSource()).thenReturn(flowOf(null))
         whenever(preferencesRepository.guideDefaultCategoryId).thenReturn(flowOf(null))
+        whenever(livePreviewHandoffManager.reverseSessionFlow).thenReturn(MutableStateFlow(null))
         runBlocking {
             whenever(epgRepository.getResolvedProgramsForChannels(any(), any(), any(), any())).thenReturn(emptyMap())
             whenever(epgRepository.getProgramsForChannelsSnapshot(any(), any(), any(), any())).thenReturn(emptyMap())

@@ -1442,5 +1442,33 @@
     <string name="settings_drive_last_pull">Pulled: %1$s</string>
     <string name="settings_drive_never_synced">Never synced yet</string>
     <string name="setup_import_from_drive">Import from Drive</string>
+    <string name="settings_remote_shortcuts_title">Colored Remote Buttons</string>
+    <string name="settings_remote_shortcuts_subtitle">Works on remotes that send the Android red, green, yellow, and blue color key codes.</string>
+    <string name="settings_remote_button_red">Red button</string>
+    <string name="settings_remote_button_green">Green button</string>
+    <string name="settings_remote_button_yellow">Yellow button</string>
+    <string name="settings_remote_button_blue">Blue button</string>
+    <string name="settings_remote_profile_global">Global defaults</string>
+    <string name="settings_remote_profile_playback">Playback overrides</string>
+    <string name="settings_remote_profile_browse">Browse overrides</string>
+    <string name="settings_remote_action_none">No action</string>
+    <string name="settings_remote_action_open_guide">Open guide</string>
+    <string name="settings_remote_action_open_player_controls">Open player controls</string>
+    <string name="settings_remote_action_open_channel_info">Open channel info</string>
+    <string name="settings_remote_action_last_channel">Last channel</string>
+    <string name="settings_remote_action_next_channel">Next channel</string>
+    <string name="settings_remote_action_previous_channel">Previous channel</string>
+    <string name="settings_remote_action_open_channel_list">Open channel list</string>
+    <string name="settings_remote_action_open_category_list">Open category list</string>
+    <string name="settings_remote_action_add_to_split_screen">Add to split screen</string>
+    <string name="settings_remote_action_toggle_favorite">Add or remove favorite</string>
+    <string name="settings_remote_action_play_channel">Play channel</string>
+    <string name="settings_remote_action_pin_category">Pin or unpin category</string>
+    <string name="settings_remote_action_toggle_category_lock">Lock or unlock category</string>
+    <string name="settings_remote_action_hide_category">Hide category</string>
+    <string name="settings_remote_selection_profile_default">Profile default: %1$s</string>
+    <string name="settings_remote_selection_global_default">Use global default: %1$s</string>
+    <string name="settings_remote_dialog_title">%1$s action</string>
+    <string name="settings_remote_dialog_subtitle">Choose what this colored button should do in %1$s.</string>
 </resources>
 

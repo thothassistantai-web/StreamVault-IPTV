@@ -1,6 +1,7 @@
 package com.streamvault.app.navigation
 
 import com.google.common.truth.Truth.assertThat
+import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Episode
 import com.streamvault.domain.model.Movie
@@ -121,6 +122,18 @@ class RoutesTest {
         assertThat(route).isEqualTo(
             "epg?categoryId=21&anchorTime=1700000000000&favoritesOnly=true"
         )
+    }
+
+    @Test
+    fun `app landing destinations map to routes`() {
+        assertThat(AppLandingDestination.HOME.toAppRoute()).isEqualTo(Routes.HOME)
+        assertThat(AppLandingDestination.LIVE_TV.toAppRoute()).isEqualTo(Routes.LIVE_TV)
+        assertThat(AppLandingDestination.MOVIES.toAppRoute()).isEqualTo(Routes.MOVIES)
+        assertThat(AppLandingDestination.SERIES.toAppRoute()).isEqualTo(Routes.SERIES)
+        assertThat(AppLandingDestination.GUIDE.toAppRoute()).isEqualTo(Routes.EPG)
+        assertThat(AppLandingDestination.DOWNLOADS.toAppRoute()).isEqualTo(Routes.DOWNLOADS)
+        assertThat(AppLandingDestination.PLUGINS.toAppRoute()).isEqualTo(Routes.PLUGINS)
+        assertThat(AppLandingDestination.SETTINGS.toAppRoute()).isEqualTo(Routes.SETTINGS)
     }
 
     @Test

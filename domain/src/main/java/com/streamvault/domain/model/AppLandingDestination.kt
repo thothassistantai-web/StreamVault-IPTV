@@ -1,0 +1,17 @@
+package com.streamvault.domain.model
+
+enum class AppLandingDestination(val storageValue: String) {
+    HOME("home"),
+    LIVE_TV("live_tv"),
+    MOVIES("movies"),
+    SERIES("series"),
+    GUIDE("guide"),
+    DOWNLOADS("downloads"),
+    PLUGINS("plugins"),
+    SETTINGS("settings");
+
+    companion object {
+        fun fromStorage(value: String?): AppLandingDestination =
+            entries.firstOrNull { it.storageValue.equals(value, ignoreCase = true) } ?: HOME
+    }
+}

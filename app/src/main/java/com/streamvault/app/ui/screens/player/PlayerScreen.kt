@@ -108,6 +108,10 @@ import com.streamvault.app.ui.screens.player.overlay.NextEpisodeCountdownOverlay
 import com.streamvault.app.ui.screens.multiview.MultiViewViewModel
 import com.streamvault.app.ui.screens.multiview.MultiViewPlannerDialog
 import com.streamvault.app.navigation.Routes
+import com.streamvault.app.ui.remote.PlayerRemoteShortcutHandler
+import com.streamvault.app.ui.remote.dispatchPlayerRemoteShortcut
+import com.streamvault.app.ui.remote.remoteColorButtonForKeyCode
+import com.streamvault.domain.model.RemoteShortcutProfile
 
 
 
@@ -177,6 +181,7 @@ fun PlayerScreen(
     val nextProgram by viewModel.nextProgram.collectAsStateWithLifecycle()
     val programHistory by viewModel.programHistory.collectAsStateWithLifecycle()
     val currentChannel by viewModel.currentChannel.collectAsStateWithLifecycle()
+    val remoteShortcutPreferences by viewModel.remoteShortcutPreferences.collectAsStateWithLifecycle()
     val currentSeries by viewModel.currentSeries.collectAsStateWithLifecycle()
     val currentEpisode by viewModel.currentEpisode.collectAsStateWithLifecycle()
     val autoPlayCountdown by viewModel.autoPlayCountdown.collectAsStateWithLifecycle()
@@ -763,6 +768,33 @@ fun PlayerScreen(
                         }
                     }
                     when (event.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_PROG_RED,
+                        KeyEvent.KEYCODE_PROG_GREEN,
+                        KeyEvent.KEYCODE_PROG_YELLOW,
+                        KeyEvent.KEYCODE_PROG_BLUE -> {
+                            val button = remoteColorButtonForKeyCode(event.nativeKeyEvent.keyCode)
+                                ?: return@onKeyEvent false
+                            val action = remoteShortcutPreferences.resolvedAction(RemoteShortcutProfile.PLAYBACK, button)
+                            dispatchPlayerRemoteShortcut(
+                                action = action,
+                                handler = PlayerRemoteShortcutHandler(
+                                    isLiveContent = contentType == "LIVE",
+                                    isCatchUpPlayback = isCatchUpPlayback,
+                                    onOpenGuide = { viewModel.openEpgOverlay() },
+                                    onOpenPlayerControls = { viewModel.toggleControls() },
+                                    onOpenChannelInfo = {
+                                        if (showChannelInfoOverlay) viewModel.closeChannelInfoOverlay()
+                                        else viewModel.openChannelInfoOverlay()
+                                    },
+                                    onOpenChannelList = { viewModel.openChannelListOverlay() },
+                                    onOpenCategoryList = { viewModel.openCategoryListOverlay() },
+                                    onLastChannel = { viewModel.zapToLastChannel() },
+                                    onNextChannel = { viewModel.playNext() },
+                                    onPreviousChannel = { viewModel.playPrevious() },
+                                    onAddToSplitScreen = { showSplitDialog = true }
+                                )
+                            )
+                        }
                         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                             if (showChannelListOverlay || showEpgOverlay || showChannelInfoOverlay || showDiagnostics) {
                                 viewModel.onLiveOverlayInteraction()

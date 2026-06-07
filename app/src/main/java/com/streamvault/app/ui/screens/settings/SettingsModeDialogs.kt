@@ -25,6 +25,9 @@ import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
+import com.streamvault.domain.model.RemoteColorButton
+import com.streamvault.domain.model.RemoteShortcutProfile
+import com.streamvault.domain.model.RemoteShortcutSelection
 
 @Composable
 internal fun VodViewModeDialog(
@@ -266,6 +269,59 @@ internal fun LiveVariantPreferenceModeDialog(
                                 text = stringResource(mode.descriptionResId()),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OnSurfaceDim
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        footer = {
+            PremiumDialogFooterButton(
+                label = stringResource(R.string.settings_cancel),
+                onClick = onDismiss
+            )
+        }
+    )
+}
+
+@Composable
+internal fun RemoteShortcutSelectionDialog(
+    target: RemoteShortcutDialogTarget,
+    selectedSelection: RemoteShortcutSelection,
+    onDismiss: () -> Unit,
+    onSelection: (RemoteShortcutSelection) -> Unit
+) {
+    PremiumDialog(
+        title = stringResource(R.string.settings_remote_dialog_title, stringResource(target.button.labelResId())),
+        subtitle = stringResource(R.string.settings_remote_dialog_subtitle, stringResource(target.profile.labelResId())),
+        onDismissRequest = onDismiss,
+        widthFraction = 0.56f,
+        content = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                remoteShortcutSelectionOptions(target.profile).forEach { selection ->
+                    val isSelected = selection == selectedSelection.normalizedForProfile(target.profile)
+                    TvClickableSurface(
+                        onClick = { onSelection(selection) },
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = if (isSelected) Primary.copy(alpha = 0.18f) else SurfaceElevated,
+                            focusedContainerColor = Primary.copy(alpha = 0.28f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = formatRemoteShortcutSelectionLabel(
+                                    selection = selection,
+                                    profile = target.profile,
+                                    button = target.button,
+                                    context = androidx.compose.ui.platform.LocalContext.current
+                                ),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = if (isSelected) Primary else OnBackground
                             )
                         }
                     }

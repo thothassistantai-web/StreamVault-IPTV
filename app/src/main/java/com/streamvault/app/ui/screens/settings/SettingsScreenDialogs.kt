@@ -138,6 +138,8 @@ internal fun SettingsScreenDialogs(
         uiState = uiState,
         viewModel = viewModel,
         context = context,
+        showLandingScreenDialog = dialogState.showLandingScreenDialog,
+        onShowLandingScreenDialogChange = { dialogState.showLandingScreenDialog = it },
         showGuideDefaultCategoryDialog = dialogState.showGuideDefaultCategoryDialog,
         onShowGuideDefaultCategoryDialogChange = { dialogState.showGuideDefaultCategoryDialog = it },
         showPlaybackSpeedDialog = dialogState.showPlaybackSpeedDialog,
@@ -185,7 +187,9 @@ internal fun SettingsScreenDialogs(
         showLanguageDialog = dialogState.showLanguageDialog,
         onShowLanguageDialogChange = { dialogState.showLanguageDialog = it },
         categorySortDialogType = dialogState.categorySortDialogType,
-        onCategorySortDialogTypeChange = { dialogState.categorySortDialogType = it }
+        onCategorySortDialogTypeChange = { dialogState.categorySortDialogType = it },
+        selectedRemoteShortcutTargetKey = dialogState.selectedRemoteShortcutTargetKey,
+        onSelectedRemoteShortcutTargetKeyChange = { dialogState.selectedRemoteShortcutTargetKey = it }
     )
 
     SettingsProtectionDialogs(

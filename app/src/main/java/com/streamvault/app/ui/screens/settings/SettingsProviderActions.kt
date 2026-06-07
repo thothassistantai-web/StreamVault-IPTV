@@ -433,11 +433,11 @@ internal class SettingsProviderActions(
             uiState.update { it.copy(isDeletingProvider = true) }
             when (val result = providerRepository.deleteProvider(providerId)) {
                 is Result.Success -> {
-                    watchNextManager.refreshWatchNext()
-                    launcherRecommendationsManager.refreshRecommendations(force = true)
-                    tvInputChannelSyncManager.refreshTvInputCatalog()
                     uiState.update { it.copy(isDeletingProvider = false, userMessage = "Provider deleted") }
                     onSuccess()
+                    runCatching { watchNextManager.refreshWatchNext() }
+                    runCatching { launcherRecommendationsManager.refreshRecommendations(force = true) }
+                    runCatching { tvInputChannelSyncManager.refreshTvInputCatalog() }
                 }
                 is Result.Error -> uiState.update { it.copy(isDeletingProvider = false, userMessage = "Could not delete provider: ${result.message}") }
                 Result.Loading -> Unit

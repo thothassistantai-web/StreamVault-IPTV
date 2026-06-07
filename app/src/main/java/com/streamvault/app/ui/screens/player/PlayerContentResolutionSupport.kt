@@ -1,7 +1,7 @@
 package com.streamvault.app.ui.screens.player
 
-import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.data.remote.stalker.StalkerPlaybackResolutionException
+import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.data.security.CredentialDecryptionException
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.Episode
@@ -58,55 +58,55 @@ internal fun buildSeriesEpisodeResolution(
             currentArtworkUrl
         },
         resolvedTitle = if (resolvedEpisode != null && currentContentType == ContentType.SERIES_EPISODE) {
+            buildEpisodePlaybackTitle(resolvedEpisode)
+        } else {
+            null
+        },
+        resolvedSeasonNumber = resolvedEpisode?.seasonNumber ?: seasonNumber,
         resolvedEpisodeNumber = resolvedEpisode?.episodeNumber ?: episodeNumber
-                        val streamInfoResult = channelRepository.getStreamInfo(channel)
-                        if (streamInfoResult.isSuccess) {
-                            streamInfoResult.getOrNull()?.let { resolved ->
-                                return PlayerPlaybackStreamResolution(
-                                    streamInfo = resolved.copy(title = resolved.title ?: currentTitle)
-                                )
-                            }
-                        } else {
-                            // Propagate the underlying error so the caller can show it to the user.
-                            (streamInfoResult as? Result.Error)?.message?.let { errorMsg ->
-                                return PlayerPlaybackStreamResolution(
-                                    streamInfo = null,
-                                    resolutionFailureMessage = errorMsg
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            ContentType.MOVIE -> {
-                movieRepository.getMovie(internalContentId)?.let { movie ->
-                    fallbackStreamId = movie.streamId.takeIf { it > 0L }
-                    fallbackContainerExtension = movie.containerExtension
-                    val streamInfoResult = movieRepository.getStreamInfo(movie)
-                    if (streamInfoResult.isSuccess) {
-                        streamInfoResult.getOrNull()?.let { resolved ->
+    )
 }
 
 internal suspend fun resolvePlayerPlaybackStreamInfo(
     logicalUrl: String,
+    internalContentId: Long,
     providerId: Long,
+    contentType: ContentType,
     currentTitle: String,
     currentSeries: Series?,
     currentEpisode: Episode?,
     channelRepository: ChannelRepository,
     movieRepository: MovieRepository,
     seriesRepository: SeriesRepository,
+    xtreamStreamUrlResolver: XtreamStreamUrlResolver
 ): PlayerPlaybackStreamResolution {
     var fallbackStreamId: Long? = null
     var fallbackContainerExtension: String? = null
+
+    if (providerId > 0L && internalContentId > 0L) {
+        when (contentType) {
+            ContentType.LIVE -> {
+                channelRepository.getChannel(internalContentId)?.let { channel ->
+                    fallbackStreamId = channel.streamId.takeIf { it > 0L }
+                        ?: channel.epgChannelId?.toLongOrNull()
+                    val streamInfoResult = if (shouldUseStoredLiveStreamInfo(logicalUrl, channel.streamUrl)) {
+                        channelRepository.getStreamInfo(channel)
+                    } else {
+                        Result.success(null)
+                    }
+                    if (streamInfoResult.isSuccess) {
+                        streamInfoResult.getOrNull()?.let { resolved ->
+                            return PlayerPlaybackStreamResolution(
+                                streamInfo = resolved.copy(title = resolved.title ?: currentTitle)
+                            )
+                        }
+                    } else {
+                        (streamInfoResult as? Result.Error)?.message?.let { errorMsg ->
                             return PlayerPlaybackStreamResolution(
                                 streamInfo = null,
                                 resolutionFailureMessage = errorMsg
                             )
                         }
-=======
->>>>>>> pr-64-current
                     }
                 }
             }
@@ -196,7 +196,8 @@ internal suspend fun resolvePlayerPlaybackStreamInfo(
     } catch (e: StalkerPlaybackResolutionException) {
         return PlayerPlaybackStreamResolution(
             streamInfo = null,
-            resolutionFailureMessage = e.message ?: "We couldn't resolve a playable Stalker stream for this item."
+            resolutionFailureMessage = e.message
+                ?: "We couldn't resolve a playable Stalker stream for this item."
         )
     }
 

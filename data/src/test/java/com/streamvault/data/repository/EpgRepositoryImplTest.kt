@@ -67,6 +67,7 @@ class EpgRepositoryImplTest {
         runBlocking {
             whenever(providerDao.getById(any())).thenReturn(null)
             whenever(preferencesRepository.getEpgTimeShiftMinutes(any())).thenReturn(0)
+            whenever(preferencesRepository.epgTimeShiftMinutes(any())).thenReturn(flowOf(0))
         }
     }
 

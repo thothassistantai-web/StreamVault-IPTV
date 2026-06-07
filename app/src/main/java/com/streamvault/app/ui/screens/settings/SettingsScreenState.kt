@@ -8,6 +8,7 @@ import com.streamvault.app.MainActivity
 import com.streamvault.app.R
 import com.streamvault.app.ui.time.createDateTimeFormat
 import com.streamvault.app.util.OfficialBuildStatus
+import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.AudioOutputPreference
 import com.streamvault.domain.model.VodHttpProtocolMode
@@ -15,6 +16,7 @@ import com.streamvault.domain.model.VodHttpProtocolMode
 internal data class SettingsScreenLabels(
     val buildVerificationLabel: String,
     val appLanguageLabel: String,
+    val appLandingDestinationLabel: String,
     val timeFormatLabel: String,
     val preferredAudioLanguageLabel: String,
     val playbackSpeedLabel: String,
@@ -54,6 +56,9 @@ internal fun rememberSettingsScreenLabels(
     }
     val appLanguageLabel = remember(uiState.appLanguage, context) {
         displayLanguageLabel(uiState.appLanguage, context.getString(R.string.settings_system_default))
+    }
+    val appLandingDestinationLabel = remember(uiState.appLandingDestination, context) {
+        formatAppLandingDestinationLabel(uiState.appLandingDestination, context)
     }
     val timeFormatLabel = remember(uiState.appTimeFormat, context) {
         formatAppTimeFormatLabel(uiState.appTimeFormat, context)
@@ -156,6 +161,7 @@ internal fun rememberSettingsScreenLabels(
     return SettingsScreenLabels(
         buildVerificationLabel = buildVerificationLabel,
         appLanguageLabel = appLanguageLabel,
+        appLandingDestinationLabel = appLandingDestinationLabel,
         timeFormatLabel = timeFormatLabel,
         preferredAudioLanguageLabel = preferredAudioLanguageLabel,
         playbackSpeedLabel = playbackSpeedLabel,
@@ -193,6 +199,22 @@ internal fun Context.findMainActivity(): MainActivity? {
     }
     return null
 }
+
+private fun formatAppLandingDestinationLabel(
+    destination: AppLandingDestination,
+    context: Context
+): String = context.getString(
+    when (destination) {
+        AppLandingDestination.HOME -> R.string.nav_home
+        AppLandingDestination.LIVE_TV -> R.string.nav_live_tv
+        AppLandingDestination.MOVIES -> R.string.nav_movies
+        AppLandingDestination.SERIES -> R.string.nav_series
+        AppLandingDestination.GUIDE -> R.string.nav_epg
+        AppLandingDestination.DOWNLOADS -> R.string.nav_downloads
+        AppLandingDestination.PLUGINS -> R.string.nav_plugins
+        AppLandingDestination.SETTINGS -> R.string.nav_settings
+    }
+)
 
 private fun formatOfficialBuildStatusLabel(
     status: OfficialBuildStatus,

@@ -70,7 +70,9 @@ class PlayerRetryPolicy(
             PlaybackErrorCategory.LIVE_WINDOW -> true
             PlaybackErrorCategory.NETWORK,
             PlaybackErrorCategory.HTTP_SERVER,
+            PlaybackErrorCategory.EMPTY_RESPONSE,
             PlaybackErrorCategory.UNKNOWN -> streamContext.isLive
+            PlaybackErrorCategory.PROVIDER_LIMIT -> false
             PlaybackErrorCategory.SOURCE_MALFORMED -> streamContext.resolvedStreamType == ResolvedStreamType.HLS
             PlaybackErrorCategory.HTTP_AUTH,
             PlaybackErrorCategory.SSL,

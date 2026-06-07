@@ -6,16 +6,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import com.streamvault.app.R
 import com.streamvault.domain.model.AppTimeFormat
+import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.PlayerSurfaceMode
+import com.streamvault.domain.model.RemoteShortcutSelection
 
 @Composable
 internal fun SettingsPreferenceDialogs(
     uiState: SettingsUiState,
     viewModel: SettingsViewModel,
     context: Context,
+    showLandingScreenDialog: Boolean,
+    onShowLandingScreenDialogChange: (Boolean) -> Unit,
     showGuideDefaultCategoryDialog: Boolean,
     onShowGuideDefaultCategoryDialogChange: (Boolean) -> Unit,
     showPlaybackSpeedDialog: Boolean,
@@ -63,7 +67,9 @@ internal fun SettingsPreferenceDialogs(
     showLanguageDialog: Boolean,
     onShowLanguageDialogChange: (Boolean) -> Unit,
     categorySortDialogType: String?,
-    onCategorySortDialogTypeChange: (String?) -> Unit
+    onCategorySortDialogTypeChange: (String?) -> Unit,
+    selectedRemoteShortcutTargetKey: String?,
+    onSelectedRemoteShortcutTargetKeyChange: (String?) -> Unit
 ) {
     SettingsPlayerPreferenceDialogs(
         uiState = uiState,
@@ -99,6 +105,25 @@ internal fun SettingsPreferenceDialogs(
         onShowDiagnosticsTimeoutDialogChange = onShowDiagnosticsTimeoutDialogChange
     )
 
+    if (showLandingScreenDialog) {
+        PremiumSelectionDialog(
+            title = stringResource(R.string.settings_select_default_landing_screen),
+            onDismiss = { onShowLandingScreenDialogChange(false) }
+        ) {
+            AppLandingDestination.entries.forEachIndexed { index, destination ->
+                LevelOption(
+                    level = index,
+                    text = stringResource(destination.labelResId()),
+                    currentLevel = if (uiState.appLandingDestination == destination) index else -1,
+                    onSelect = {
+                        viewModel.setAppLandingDestination(destination)
+                        onShowLandingScreenDialogChange(false)
+                    }
+                )
+            }
+        }
+    }
+
     if (showGuideDefaultCategoryDialog) {
         PremiumSelectionDialog(
             title = stringResource(R.string.settings_select_guide_default_category),
@@ -124,6 +149,28 @@ internal fun SettingsPreferenceDialogs(
             onDismiss = { onShowLiveTvFiltersDialogChange(false) },
             onAddFilter = viewModel::addLiveTvCategoryFilter,
             onRemoveFilter = viewModel::removeLiveTvCategoryFilter
+        )
+    }
+
+    val remoteShortcutTarget = remember(selectedRemoteShortcutTargetKey) {
+        RemoteShortcutDialogTarget.fromStorageKey(selectedRemoteShortcutTargetKey)
+    }
+    if (remoteShortcutTarget != null) {
+        RemoteShortcutSelectionDialog(
+            target = remoteShortcutTarget,
+            selectedSelection = uiState.remoteShortcutPreferences.selection(
+                remoteShortcutTarget.profile,
+                remoteShortcutTarget.button
+            ),
+            onDismiss = { onSelectedRemoteShortcutTargetKeyChange(null) },
+            onSelection = { selection: RemoteShortcutSelection ->
+                viewModel.setRemoteShortcutSelection(
+                    profile = remoteShortcutTarget.profile,
+                    button = remoteShortcutTarget.button,
+                    selection = selection
+                )
+                onSelectedRemoteShortcutTargetKeyChange(null)
+            }
         )
     }
 
@@ -267,4 +314,15 @@ internal fun SettingsPreferenceDialogs(
             )
         }
     }
+}
+
+private fun AppLandingDestination.labelResId(): Int = when (this) {
+    AppLandingDestination.HOME -> R.string.nav_home
+    AppLandingDestination.LIVE_TV -> R.string.nav_live_tv
+    AppLandingDestination.MOVIES -> R.string.nav_movies
+    AppLandingDestination.SERIES -> R.string.nav_series
+    AppLandingDestination.GUIDE -> R.string.nav_epg
+    AppLandingDestination.DOWNLOADS -> R.string.nav_downloads
+    AppLandingDestination.PLUGINS -> R.string.nav_plugins
+    AppLandingDestination.SETTINGS -> R.string.nav_settings
 }

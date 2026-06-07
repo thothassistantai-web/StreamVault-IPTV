@@ -82,6 +82,7 @@ class BackupManagerImpl @Inject constructor(
                 put("parentalPinHash", parentalPinBackup?.hash ?: "")
                 put("parentalPinSalt", parentalPinBackup?.saltBase64 ?: "")
                 put("appLanguage", preferencesRepository.appLanguage.first())
+                put("appLandingDestination", preferencesRepository.appLandingDestination.first().storageValue)
                 put("liveTvCategoryFilters", preferencesRepository.liveTvCategoryFilters.first().joinToString("\n"))
                 put("liveTvQuickFilterVisibility", preferencesRepository.liveTvQuickFilterVisibility.first() ?: "always")
                 put("playerMediaSessionEnabled", preferencesRepository.playerMediaSessionEnabled.first().toString())
@@ -508,6 +509,11 @@ class BackupManagerImpl @Inject constructor(
             ).takeIf { it.hash.isNotBlank() && it.saltBase64.isNotBlank() }
         )
         prefs["appLanguage"]?.takeIf { it.isNotBlank() }?.let { preferencesRepository.setAppLanguage(it) }
+        prefs["appLandingDestination"]?.takeIf { it.isNotBlank() }?.let { savedDestination ->
+            preferencesRepository.setAppLandingDestination(
+                com.streamvault.domain.model.AppLandingDestination.fromStorage(savedDestination)
+            )
+        }
         prefs["liveTvCategoryFilters"]?.let { preferencesRepository.setLiveTvCategoryFilters(it.split('\n')) }
         prefs["liveTvQuickFilterVisibility"]?.takeIf { it.isNotBlank() }
             ?.let { preferencesRepository.setLiveTvQuickFilterVisibility(it) }

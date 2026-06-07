@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -88,6 +89,25 @@ class SettingsProviderActionsTest {
         verify(watchNextManager).refreshWatchNext()
         verify(launcherRecommendationsManager).refreshRecommendations(force = true)
         verify(tvInputChannelSyncManager).refreshTvInputCatalog()
+        assertThat(uiState.value.userMessage).isEqualTo("Provider deleted")
+    }
+
+    @Test
+    fun deleteProvider_stillCompletesSuccessWhenFollowUpRefreshFails() = runTest(StandardTestDispatcher()) {
+        whenever(providerRepository.deleteProvider(7L)).thenReturn(Result.success(Unit))
+        doThrow(IllegalStateException("refresh boom")).whenever(launcherRecommendationsManager)
+            .refreshRecommendations(force = true)
+        var onSuccessCalled = false
+
+        actions.deleteProvider(this, 7L, onSuccess = { onSuccessCalled = true })
+        advanceUntilIdle()
+
+        verify(providerRepository).deleteProvider(7L)
+        verify(watchNextManager).refreshWatchNext()
+        verify(launcherRecommendationsManager).refreshRecommendations(force = true)
+        verify(tvInputChannelSyncManager).refreshTvInputCatalog()
+        assertThat(onSuccessCalled).isTrue()
+        assertThat(uiState.value.isDeletingProvider).isFalse()
         assertThat(uiState.value.userMessage).isEqualTo("Provider deleted")
     }
 }

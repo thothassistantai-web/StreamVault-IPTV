@@ -15,6 +15,11 @@ import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
 import com.streamvault.domain.model.PlayerSurfaceMode
+import com.streamvault.domain.model.RemoteColorButton
+import com.streamvault.domain.model.RemoteShortcutAction
+import com.streamvault.domain.model.RemoteShortcutProfile
+import com.streamvault.domain.model.RemoteShortcutSelection
+import com.streamvault.domain.model.RemoteShortcutSelectionMode
 import java.text.DateFormat
 import java.util.Locale
 
@@ -318,4 +323,59 @@ internal fun LiveVariantPreferenceMode.descriptionResId(): Int = when (this) {
     LiveVariantPreferenceMode.OBSERVED_ONLY -> R.string.settings_live_variant_preference_observed_only_desc
     LiveVariantPreferenceMode.BALANCED -> R.string.settings_live_variant_preference_balanced_desc
     LiveVariantPreferenceMode.STABILITY_FIRST -> R.string.settings_live_variant_preference_stability_first_desc
+}
+
+internal fun RemoteColorButton.labelResId(): Int = when (this) {
+    RemoteColorButton.RED -> R.string.settings_remote_button_red
+    RemoteColorButton.GREEN -> R.string.settings_remote_button_green
+    RemoteColorButton.YELLOW -> R.string.settings_remote_button_yellow
+    RemoteColorButton.BLUE -> R.string.settings_remote_button_blue
+}
+
+internal fun RemoteShortcutAction.labelResId(): Int = when (this) {
+    RemoteShortcutAction.NONE -> R.string.settings_remote_action_none
+    RemoteShortcutAction.OPEN_GUIDE -> R.string.settings_remote_action_open_guide
+    RemoteShortcutAction.OPEN_PLAYER_CONTROLS -> R.string.settings_remote_action_open_player_controls
+    RemoteShortcutAction.OPEN_CHANNEL_INFO -> R.string.settings_remote_action_open_channel_info
+    RemoteShortcutAction.LAST_CHANNEL -> R.string.settings_remote_action_last_channel
+    RemoteShortcutAction.NEXT_CHANNEL -> R.string.settings_remote_action_next_channel
+    RemoteShortcutAction.PREVIOUS_CHANNEL -> R.string.settings_remote_action_previous_channel
+    RemoteShortcutAction.OPEN_CHANNEL_LIST -> R.string.settings_remote_action_open_channel_list
+    RemoteShortcutAction.OPEN_CATEGORY_LIST -> R.string.settings_remote_action_open_category_list
+    RemoteShortcutAction.ADD_TO_SPLIT_SCREEN -> R.string.settings_remote_action_add_to_split_screen
+    RemoteShortcutAction.TOGGLE_FAVORITE -> R.string.settings_remote_action_toggle_favorite
+    RemoteShortcutAction.PLAY_CHANNEL -> R.string.settings_remote_action_play_channel
+    RemoteShortcutAction.PIN_CATEGORY -> R.string.settings_remote_action_pin_category
+    RemoteShortcutAction.TOGGLE_CATEGORY_LOCK -> R.string.settings_remote_action_toggle_category_lock
+    RemoteShortcutAction.HIDE_CATEGORY -> R.string.settings_remote_action_hide_category
+}
+
+internal fun RemoteShortcutProfile.labelResId(): Int = when (this) {
+    RemoteShortcutProfile.GLOBAL -> R.string.settings_remote_profile_global
+    RemoteShortcutProfile.PLAYBACK -> R.string.settings_remote_profile_playback
+    RemoteShortcutProfile.BROWSE -> R.string.settings_remote_profile_browse
+}
+
+internal fun formatRemoteShortcutSelectionLabel(
+    selection: RemoteShortcutSelection,
+    profile: RemoteShortcutProfile,
+    button: RemoteColorButton,
+    context: android.content.Context
+): String {
+    val resolvedLabel = context.getString(selection.resolve(profile, button).labelResId())
+    return when (selection.mode) {
+        RemoteShortcutSelectionMode.PROFILE_DEFAULT -> if (profile == RemoteShortcutProfile.GLOBAL) {
+            resolvedLabel
+        } else {
+            context.getString(
+                R.string.settings_remote_selection_profile_default,
+                resolvedLabel
+            )
+        }
+        RemoteShortcutSelectionMode.GLOBAL_DEFAULT -> context.getString(
+            R.string.settings_remote_selection_global_default,
+            resolvedLabel
+        )
+        RemoteShortcutSelectionMode.ACTION -> resolvedLabel
+    }
 }

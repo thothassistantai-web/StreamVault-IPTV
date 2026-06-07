@@ -23,12 +23,17 @@ import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.ActiveLiveSource
+import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveChannelObservedQuality
 import com.streamvault.domain.model.LiveVariantPreferenceMode
 import com.streamvault.domain.model.VodHttpProtocolMode
 import com.streamvault.domain.model.PlayerSurfaceMode
+import com.streamvault.domain.model.RemoteColorButton
+import com.streamvault.domain.model.RemoteShortcutPreferences
+import com.streamvault.domain.model.RemoteShortcutProfile
+import com.streamvault.domain.model.RemoteShortcutSelection
 import com.streamvault.domain.model.SearchHistoryScope
 import com.streamvault.domain.manager.ParentalPinVerifier
 import com.streamvault.domain.manager.ParentalControlSessionState
@@ -89,6 +94,7 @@ class PreferencesRepository @Inject constructor(
         val PARENTAL_PIN_SALT = stringPreferencesKey("parental_pin_salt")
         val DEFAULT_CATEGORY_ID = longPreferencesKey("default_category_id")
         val APP_LANGUAGE = stringPreferencesKey("app_language")
+        val APP_LANDING_DESTINATION = stringPreferencesKey("app_landing_destination")
         val APP_TIME_FORMAT = stringPreferencesKey("app_time_format")
         val LIVE_TV_CHANNEL_MODE = stringPreferencesKey("live_tv_channel_mode")
         val SHOW_LIVE_SOURCE_SWITCHER = booleanPreferencesKey("show_live_source_switcher")
@@ -1193,9 +1199,41 @@ class PreferencesRepository @Inject constructor(
         preferences[PreferencesKeys.APP_LANGUAGE] ?: "system"
     }
 
+    val remoteShortcutPreferences: Flow<RemoteShortcutPreferences> = context.dataStore.data.map { preferences ->
+        decodeRemoteShortcutPreferences { profile, button ->
+            preferences[stringPreferencesKey(remoteShortcutKey(profile, button))]
+        }
+    }
+
     suspend fun setAppLanguage(language: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.APP_LANGUAGE] = language
+        }
+    }
+
+    suspend fun setRemoteShortcutSelection(
+        profile: RemoteShortcutProfile,
+        button: RemoteColorButton,
+        selection: RemoteShortcutSelection
+    ) {
+        val key = stringPreferencesKey(remoteShortcutKey(profile, button))
+        context.dataStore.edit { preferences ->
+            val encoded = encodeRemoteShortcutSelection(profile, selection)
+            if (encoded.isNullOrBlank()) {
+                preferences.remove(key)
+            } else {
+                preferences[key] = encoded
+            }
+        }
+    }
+
+    val appLandingDestination: Flow<AppLandingDestination> = context.dataStore.data.map { preferences ->
+        AppLandingDestination.fromStorage(preferences[PreferencesKeys.APP_LANDING_DESTINATION])
+    }
+
+    suspend fun setAppLandingDestination(destination: AppLandingDestination) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_LANDING_DESTINATION] = destination.storageValue
         }
     }
 
@@ -1785,6 +1823,9 @@ class PreferencesRepository @Inject constructor(
 
     private fun pinnedCategoriesKey(providerId: Long, type: ContentType): String =
         "pinned_categories_${providerId}_${type.name}"
+
+    private fun remoteShortcutKey(profile: RemoteShortcutProfile, button: RemoteColorButton): String =
+        "remote_shortcut_${profile.storageValue}_${button.storageValue}"
 
     private fun liveVariantSelectionKey(providerId: Long, logicalGroupId: String): String =
         "${providerId}|${logicalGroupId.trim()}"
