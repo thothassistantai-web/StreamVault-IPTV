@@ -26,6 +26,8 @@ import com.streamvault.app.ui.theme.Primary
 import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.LiveChannelGroupingMode
+import com.streamvault.domain.model.RemoteColorButton
+import com.streamvault.domain.model.RemoteShortcutProfile
 
 internal fun LazyListScope.settingsBrowsingSection(
     uiState: SettingsUiState,
@@ -47,7 +49,8 @@ internal fun LazyListScope.settingsBrowsingSection(
     onShowTimeFormatDialogChange: (Boolean) -> Unit,
     onShowVodViewModeDialogChange: (Boolean) -> Unit,
     onCategorySortDialogTypeChange: (String?) -> Unit,
-    onShowLanguageDialogChange: (Boolean) -> Unit
+    onShowLanguageDialogChange: (Boolean) -> Unit,
+    onRemoteShortcutDialogTargetChange: (RemoteShortcutDialogTarget?) -> Unit
 ) {
     item {
         ClickableSettingsRow(
@@ -221,6 +224,82 @@ internal fun LazyListScope.settingsBrowsingSection(
                 Text(text = stringResource(R.string.settings_app_language), style = MaterialTheme.typography.bodyMedium, color = OnSurface)
                 Text(text = appLanguageLabel, style = MaterialTheme.typography.bodyMedium, color = Primary)
             }
+        }
+    }
+    item {
+        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
+        Text(
+            text = stringResource(R.string.settings_remote_shortcuts_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = OnSurface,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+        )
+        Text(
+            text = stringResource(R.string.settings_remote_shortcuts_subtitle),
+            style = MaterialTheme.typography.bodySmall,
+            color = OnBackground.copy(alpha = 0.6f),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+        )
+        Text(
+            text = stringResource(R.string.settings_remote_profile_global),
+            style = MaterialTheme.typography.labelLarge,
+            color = Primary,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+    remoteShortcutRows(
+        profile = RemoteShortcutProfile.GLOBAL,
+        uiState = uiState,
+        context = context,
+        onRemoteShortcutDialogTargetChange = onRemoteShortcutDialogTargetChange
+    )
+    item {
+        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
+        Text(
+            text = stringResource(R.string.settings_remote_profile_playback),
+            style = MaterialTheme.typography.labelLarge,
+            color = Primary,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+    remoteShortcutRows(
+        profile = RemoteShortcutProfile.PLAYBACK,
+        uiState = uiState,
+        context = context,
+        onRemoteShortcutDialogTargetChange = onRemoteShortcutDialogTargetChange
+    )
+    item {
+        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
+        Text(
+            text = stringResource(R.string.settings_remote_profile_browse),
+            style = MaterialTheme.typography.labelLarge,
+            color = Primary,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+    remoteShortcutRows(
+        profile = RemoteShortcutProfile.BROWSE,
+        uiState = uiState,
+        context = context,
+        onRemoteShortcutDialogTargetChange = onRemoteShortcutDialogTargetChange
+    )
+}
+
+private fun LazyListScope.remoteShortcutRows(
+    profile: RemoteShortcutProfile,
+    uiState: SettingsUiState,
+    context: android.content.Context,
+    onRemoteShortcutDialogTargetChange: (RemoteShortcutDialogTarget?) -> Unit
+) {
+    RemoteColorButton.entries.forEach { button ->
+        item {
+            val selection = uiState.remoteShortcutPreferences.selection(profile, button)
+            ClickableSettingsRow(
+                label = stringResource(button.labelResId()),
+                value = formatRemoteShortcutSelectionLabel(selection, profile, button, context),
+                onClick = { onRemoteShortcutDialogTargetChange(RemoteShortcutDialogTarget(profile, button)) },
+                indent = if (profile == RemoteShortcutProfile.GLOBAL) 0.dp else 16.dp
+            )
         }
     }
 }

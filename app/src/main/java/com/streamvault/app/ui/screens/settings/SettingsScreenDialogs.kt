@@ -187,7 +187,9 @@ internal fun SettingsScreenDialogs(
         showLanguageDialog = dialogState.showLanguageDialog,
         onShowLanguageDialogChange = { dialogState.showLanguageDialog = it },
         categorySortDialogType = dialogState.categorySortDialogType,
-        onCategorySortDialogTypeChange = { dialogState.categorySortDialogType = it }
+        onCategorySortDialogTypeChange = { dialogState.categorySortDialogType = it },
+        selectedRemoteShortcutTargetKey = dialogState.selectedRemoteShortcutTargetKey,
+        onSelectedRemoteShortcutTargetKeyChange = { dialogState.selectedRemoteShortcutTargetKey = it }
     )
 
     SettingsProtectionDialogs(

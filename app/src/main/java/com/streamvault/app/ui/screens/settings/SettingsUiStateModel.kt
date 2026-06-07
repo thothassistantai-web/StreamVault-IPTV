@@ -29,6 +29,7 @@ import com.streamvault.domain.model.PlayerSurfaceMode
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.RecordingItem
 import com.streamvault.domain.model.RecordingStorageState
+import com.streamvault.domain.model.RemoteShortcutPreferences
 
 data class CrashReportUiModel(
     val timestamp: String = "",
@@ -116,6 +117,7 @@ data class SettingsUiState(
     val showLiveSourceSwitcher: Boolean = false,
     val showAllChannelsCategory: Boolean = true,
     val showRecentChannelsCategory: Boolean = true,
+    val remoteShortcutPreferences: RemoteShortcutPreferences = RemoteShortcutPreferences(),
     val liveTvCategoryFilters: List<String> = emptyList(),
     val liveTvQuickFilterVisibilityMode: LiveTvQuickFilterVisibilityMode = LiveTvQuickFilterVisibilityMode.ALWAYS_VISIBLE,
     val liveChannelNumberingMode: ChannelNumberingMode = ChannelNumberingMode.GROUP,

@@ -122,7 +122,10 @@ internal fun SettingsContentPane(
         onShowTimeFormatDialogChange = { dialogState.showTimeFormatDialog = it },
                 onShowVodViewModeDialogChange = { dialogState.showVodViewModeDialog = it },
                 onCategorySortDialogTypeChange = { dialogState.categorySortDialogType = it },
-                onShowLanguageDialogChange = { dialogState.showLanguageDialog = it }
+                onShowLanguageDialogChange = { dialogState.showLanguageDialog = it },
+                onRemoteShortcutDialogTargetChange = {
+                    dialogState.selectedRemoteShortcutTargetKey = it?.storageKey()
+                }
             )
         } else if (dialogState.selectedCategory == 3) {
             settingsPrivacySection(

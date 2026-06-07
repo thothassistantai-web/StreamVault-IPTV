@@ -52,6 +52,9 @@ import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.RecordingItem
 import com.streamvault.domain.model.RecordingStorageConfig
 import com.streamvault.domain.model.RecordingStorageState
+import com.streamvault.domain.model.RemoteColorButton
+import com.streamvault.domain.model.RemoteShortcutProfile
+import com.streamvault.domain.model.RemoteShortcutSelection
 import com.streamvault.domain.model.EpgResolutionSummary
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.VirtualCategoryIds
@@ -448,6 +451,16 @@ class SettingsViewModel @Inject constructor(
     fun setShowRecentChannelsCategory(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setShowRecentChannelsCategory(enabled)
+        }
+    }
+
+    fun setRemoteShortcutSelection(
+        profile: RemoteShortcutProfile,
+        button: RemoteColorButton,
+        selection: RemoteShortcutSelection
+    ) {
+        viewModelScope.launch {
+            preferencesRepository.setRemoteShortcutSelection(profile, button, selection)
         }
     }
 

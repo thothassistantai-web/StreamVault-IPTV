@@ -100,6 +100,8 @@ class HomeViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+    val remoteShortcutPreferences = preferencesRepository.remoteShortcutPreferences
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), com.streamvault.domain.model.RemoteShortcutPreferences())
 
     private val _localChannels = MutableStateFlow<List<Channel>>(emptyList())
     private val _channelBrowseLimit = MutableStateFlow(CHANNEL_PAGE_SIZE)

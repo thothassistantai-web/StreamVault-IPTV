@@ -57,6 +57,7 @@ internal class SettingsScreenDialogState(
     private val showRecordingConcurrencyDialogState: MutableState<Boolean>,
     private val showRecordingPaddingDialogState: MutableState<Boolean>,
     private val showRecordingBrowserDialogState: MutableState<Boolean>,
+    private val selectedRemoteShortcutTargetKeyState: MutableState<String?>,
     private val selectedRecordingIdState: MutableState<String?>,
     private val categorySortDialogTypeState: MutableState<String?>,
     private val selectedCategoryState: MutableState<Int>,
@@ -113,6 +114,7 @@ internal class SettingsScreenDialogState(
     var showRecordingConcurrencyDialog by showRecordingConcurrencyDialogState
     var showRecordingPaddingDialog by showRecordingPaddingDialogState
     var showRecordingBrowserDialog by showRecordingBrowserDialogState
+    var selectedRemoteShortcutTargetKey by selectedRemoteShortcutTargetKeyState
     var selectedRecordingId by selectedRecordingIdState
     var categorySortDialogType by categorySortDialogTypeState
     var selectedCategory by selectedCategoryState
@@ -245,6 +247,7 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
     val showRecordingConcurrencyDialogState = rememberSaveable { mutableStateOf(false) }
     val showRecordingPaddingDialogState = rememberSaveable { mutableStateOf(false) }
     val showRecordingBrowserDialogState = rememberSaveable { mutableStateOf(false) }
+    val selectedRemoteShortcutTargetKeyState = rememberSaveable { mutableStateOf<String?>(null) }
     val selectedRecordingIdState = rememberSaveable { mutableStateOf<String?>(null) }
     val categorySortDialogTypeState = rememberSaveable { mutableStateOf<String?>(null) }
     val selectedCategoryState = rememberSaveable { mutableStateOf(0) }
@@ -302,6 +305,7 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
         showRecordingConcurrencyDialogState = showRecordingConcurrencyDialogState,
         showRecordingPaddingDialogState = showRecordingPaddingDialogState,
         showRecordingBrowserDialogState = showRecordingBrowserDialogState,
+        selectedRemoteShortcutTargetKeyState = selectedRemoteShortcutTargetKeyState,
         selectedRecordingIdState = selectedRecordingIdState,
         categorySortDialogTypeState = categorySortDialogTypeState,
         selectedCategoryState = selectedCategoryState,

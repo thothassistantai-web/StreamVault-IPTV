@@ -18,6 +18,7 @@ import com.streamvault.domain.model.LiveVariantPreferenceMode
 import com.streamvault.domain.model.VodHttpProtocolMode
 import com.streamvault.domain.model.PlayerSurfaceMode
 import com.streamvault.domain.model.Provider
+import com.streamvault.domain.model.RemoteShortcutPreferences
 
 enum class ProviderWarningAction {
     EPG,
@@ -80,6 +81,7 @@ internal data class SettingsPreferenceSnapshot(
     val showLiveSourceSwitcher: Boolean,
     val showAllChannelsCategory: Boolean,
     val showRecentChannelsCategory: Boolean,
+    val remoteShortcutPreferences: RemoteShortcutPreferences,
     val liveTvCategoryFilters: List<String>,
     val liveTvQuickFilterVisibilityMode: LiveTvQuickFilterVisibilityMode,
     val liveChannelNumberingMode: ChannelNumberingMode,

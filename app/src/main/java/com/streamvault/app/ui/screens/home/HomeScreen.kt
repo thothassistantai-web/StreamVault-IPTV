@@ -92,10 +92,19 @@ import java.util.Date
 import java.util.Locale
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.interaction.TvButton
+import com.streamvault.app.ui.remote.LiveBrowseRemoteShortcutHandler
+import com.streamvault.app.ui.remote.dispatchLiveBrowseRemoteShortcut
+import com.streamvault.app.ui.remote.remoteColorButtonForKeyCode
+import com.streamvault.domain.model.RemoteShortcutProfile
 
 private enum class FocusRestoreTarget {
     CATEGORY,
     CHANNEL
+}
+
+private sealed interface FocusedRemoteShortcutTarget {
+    data class CategoryTarget(val category: Category) : FocusedRemoteShortcutTarget
+    data class ChannelTarget(val channel: Channel) : FocusedRemoteShortcutTarget
 }
 
 private const val HOME_ALL_FILTER_KEY = "__all_categories__"
@@ -141,6 +150,7 @@ fun HomeScreen(
     multiViewViewModel: MultiViewViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val remoteShortcutPreferences by viewModel.remoteShortcutPreferences.collectAsStateWithLifecycle()
     val providerNameById = remember(uiState.allProviders) {
         uiState.allProviders.associateBy({ it.id }, { it.name })
     }
@@ -446,6 +456,7 @@ fun HomeScreen(
                 var pendingRestoreTarget by remember { mutableStateOf<FocusRestoreTarget?>(null) }
                 var focusRestoreNonce by rememberSaveable { mutableStateOf(0) }
                 var pendingCategoryContentJumpCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
+                var focusedRemoteShortcutTarget by remember { mutableStateOf<FocusedRemoteShortcutTarget?>(null) }
 
                 fun requestChannelFocus(channelId: Long?): Boolean {
                     val resolvedChannelId = channelId ?: return false
@@ -626,7 +637,58 @@ fun HomeScreen(
                         }
                     }
                 ) {
-                Row(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            if (hasOverlay || isReorderMode) return@onPreviewKeyEvent false
+                            val button = remoteColorButtonForKeyCode(event.nativeKeyEvent.keyCode) ?: return@onPreviewKeyEvent false
+                            val action = remoteShortcutPreferences.resolvedAction(RemoteShortcutProfile.BROWSE, button)
+                            val handler = when (val target = focusedRemoteShortcutTarget) {
+                                is FocusedRemoteShortcutTarget.ChannelTarget -> LiveBrowseRemoteShortcutHandler.Channel(
+                                    onToggleFavorite = {
+                                        if (target.channel.isFavorite) viewModel.removeFavorite(target.channel)
+                                        else viewModel.addFavorite(target.channel)
+                                    },
+                                    onPlayChannel = {
+                                        onChannelClick(
+                                            target.channel,
+                                            uiState.selectedCategory,
+                                            resolveProviderForChannel(target.channel),
+                                            (uiState.activeLiveSource as? ActiveLiveSource.CombinedM3uSource)?.profileId,
+                                            uiState.selectedCombinedSourceProviderId
+                                        )
+                                    },
+                                    onAddToSplitScreen = { pendingSplitPlannerChannel = target.channel },
+                                    onOpenGuide = { onNavigate(Routes.EPG) }
+                                )
+                                is FocusedRemoteShortcutTarget.CategoryTarget -> {
+                                    val category = target.category
+                                    val isLockedCategory = isCategoryLocked(category)
+                                    if (isLockedCategory && action in setOf(
+                                            com.streamvault.domain.model.RemoteShortcutAction.PIN_CATEGORY,
+                                            com.streamvault.domain.model.RemoteShortcutAction.HIDE_CATEGORY
+                                        )
+                                    ) {
+                                        null
+                                    } else {
+                                        LiveBrowseRemoteShortcutHandler.Category(
+                                            onPinCategory = { viewModel.toggleCategoryPinned(category) },
+                                            onToggleCategoryLock = {
+                                                pendingLockToggleCategory = category
+                                                showPinDialog = true
+                                            },
+                                            onHideCategory = { viewModel.hideCategory(category) },
+                                            onOpenGuide = { onNavigate(Routes.EPG) }
+                                        )
+                                    }
+                                }
+                                null -> null
+                            } ?: return@onPreviewKeyEvent false
+                            dispatchLiveBrowseRemoteShortcut(action, handler)
+                        }
+                ) {
                     // Sidebar - Categories
                     val categorySearchFocusRequester = remember { FocusRequester() }
                     val focusManager = LocalFocusManager.current
@@ -897,7 +959,18 @@ fun HomeScreen(
                                         false
                                     }
                                 },
-                                onFocused = { lastFocusedCategoryId = category.id }
+                                onFocused = { lastFocusedCategoryId = category.id },
+                                onFocusChanged = { isFocused ->
+                                    focusedRemoteShortcutTarget = if (isFocused) {
+                                        FocusedRemoteShortcutTarget.CategoryTarget(category)
+                                    } else if (focusedRemoteShortcutTarget is FocusedRemoteShortcutTarget.CategoryTarget &&
+                                        (focusedRemoteShortcutTarget as FocusedRemoteShortcutTarget.CategoryTarget).category.id == category.id
+                                    ) {
+                                        null
+                                    } else {
+                                        focusedRemoteShortcutTarget
+                                    }
+                                }
                             )
                         }
                     }
@@ -1245,6 +1318,11 @@ fun HomeScreen(
                                             .onFocusChanged { focusState ->
                                                 if (focusState.isFocused) {
                                                     lastFocusedChannelId = channel.id
+                                                    focusedRemoteShortcutTarget = FocusedRemoteShortcutTarget.ChannelTarget(channel)
+                                                } else if (focusedRemoteShortcutTarget is FocusedRemoteShortcutTarget.ChannelTarget &&
+                                                    (focusedRemoteShortcutTarget as FocusedRemoteShortcutTarget.ChannelTarget).channel.id == channel.id
+                                                ) {
+                                                    focusedRemoteShortcutTarget = null
                                                 }
                                             }
                                             .onPreviewKeyEvent { event ->

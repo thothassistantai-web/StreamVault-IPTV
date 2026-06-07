@@ -274,7 +274,8 @@ internal fun CategoryItem(
     onLongClick: (() -> Unit)? = null,
     onJumpToSearch: () -> Boolean,
     onJumpToContent: () -> Boolean,
-    onFocused: () -> Unit
+    onFocused: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit = {}
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
@@ -287,6 +288,7 @@ internal fun CategoryItem(
             .focusRequester(focusRequester)
             .onFocusChanged {
                 isFocused = it.isFocused
+                onFocusChanged(it.isFocused)
                 if (it.isFocused) onFocused()
             }
             .onPreviewKeyEvent { event ->

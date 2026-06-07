@@ -11,6 +11,7 @@ import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.PlayerSurfaceMode
+import com.streamvault.domain.model.RemoteShortcutSelection
 
 @Composable
 internal fun SettingsPreferenceDialogs(
@@ -66,7 +67,9 @@ internal fun SettingsPreferenceDialogs(
     showLanguageDialog: Boolean,
     onShowLanguageDialogChange: (Boolean) -> Unit,
     categorySortDialogType: String?,
-    onCategorySortDialogTypeChange: (String?) -> Unit
+    onCategorySortDialogTypeChange: (String?) -> Unit,
+    selectedRemoteShortcutTargetKey: String?,
+    onSelectedRemoteShortcutTargetKeyChange: (String?) -> Unit
 ) {
     SettingsPlayerPreferenceDialogs(
         uiState = uiState,
@@ -146,6 +149,28 @@ internal fun SettingsPreferenceDialogs(
             onDismiss = { onShowLiveTvFiltersDialogChange(false) },
             onAddFilter = viewModel::addLiveTvCategoryFilter,
             onRemoveFilter = viewModel::removeLiveTvCategoryFilter
+        )
+    }
+
+    val remoteShortcutTarget = remember(selectedRemoteShortcutTargetKey) {
+        RemoteShortcutDialogTarget.fromStorageKey(selectedRemoteShortcutTargetKey)
+    }
+    if (remoteShortcutTarget != null) {
+        RemoteShortcutSelectionDialog(
+            target = remoteShortcutTarget,
+            selectedSelection = uiState.remoteShortcutPreferences.selection(
+                remoteShortcutTarget.profile,
+                remoteShortcutTarget.button
+            ),
+            onDismiss = { onSelectedRemoteShortcutTargetKeyChange(null) },
+            onSelection = { selection: RemoteShortcutSelection ->
+                viewModel.setRemoteShortcutSelection(
+                    profile = remoteShortcutTarget.profile,
+                    button = remoteShortcutTarget.button,
+                    selection = selection
+                )
+                onSelectedRemoteShortcutTargetKeyChange(null)
+            }
         )
     }
 
