@@ -195,6 +195,7 @@ dependencies {
     implementation(libs.retrofit.gson)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+    implementation(libs.zxing.core)
     implementation(libs.kotlinx.serialization.json)
 
     // Activity & Lifecycle
