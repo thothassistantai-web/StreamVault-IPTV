@@ -11,11 +11,14 @@ All notable product changes are recorded in this document.
 - Added a stream format selector to the player so users can switch formats when decoder recovery needs an alternate stream variant.
 - Added a default landing screen setting so startup can open Home, Live TV, Movies, Series, Guide, Downloads, Plugins, or Settings instead of always opening Home.
 - Added configurable colored remote button support for Android TV remotes, with global defaults plus playback and live-browse overrides for actions such as guide, channel info, favorites, category pinning, and split screen.
+- Added QR-based provider pairing so users can scan from a phone on the same LAN, submit provider details locally, and add Xtream, Stalker, or M3U providers directly to the TV.
+- Added a transparent live-TV full guide overlay that opens over player playback, reuses the EPG grid, supports category switching and search, and lets you tune channels directly from the overlay.
 
 ### Changed
 
 - Changed VOD downloads to use a single FIFO provider-stream scheduler with fresh provider URL resolution before each capture attempt.
 - Changed provider playback/download coordination so provider-backed internal or external playback pauses active downloads, deletes partial output, and restarts from zero after playback ends.
+- Changed the live player EPG flow so a second right-press can expand the channel EPG into the full transparent guide grid, with an on-screen directional cue and overlay-specific grid navigation.
 
 ### Fixed
 
