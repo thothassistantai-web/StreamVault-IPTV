@@ -22,6 +22,7 @@ navigation-compose = "2.9.7"
 datastore = "1.2.1"
 security-crypto = "1.1.0-alpha06"
 gson = "2.11.0"
+zxing = "3.5.3"
 kotlinx-serialization = "1.9.0"
 leakcanary = "2.14"
 work = "2.11.1"
@@ -81,6 +82,7 @@ retrofit-gson = { group = "com.squareup.retrofit2", name = "converter-gson", ver
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 leakcanary-android = { group = "com.squareup.leakcanary", name = "leakcanary-android", version.ref = "leakcanary" }
 
