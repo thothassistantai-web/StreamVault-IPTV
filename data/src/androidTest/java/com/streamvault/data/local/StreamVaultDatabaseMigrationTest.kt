@@ -1173,6 +1173,46 @@ class StreamVaultDatabaseMigrationTest {
         migratedDb.close()
     }
 
+    @Test
+    fun migrate59To60_addsDownloadSourceColumns() {
+        migrationTestHelper.createDatabase("streamvault-59-60-test", 59).close()
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-59-60-test",
+            60,
+            true,
+            StreamVaultDatabase.MIGRATION_59_60
+        )
+
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'source_stream_url'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'source_stream_id'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'container_extension'"))
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun migrate57To60_upgradeChainValidatesLatestSchema() {
+        migrationTestHelper.createDatabase("streamvault-57-60-test", 57).close()
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-57-60-test",
+            60,
+            true,
+            StreamVaultDatabase.MIGRATION_57_58,
+            StreamVaultDatabase.MIGRATION_58_59,
+            StreamVaultDatabase.MIGRATION_59_60
+        )
+
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'source_stream_url'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'source_stream_id'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'container_extension'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'supports_resume'"))
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'retry_count'"))
+
+        migratedDb.close()
+    }
+
     private fun countRows(db: androidx.sqlite.db.SupportSQLiteDatabase, sql: String): Int {
         db.query(sql).use { cursor ->
             if (!cursor.moveToFirst()) return 0

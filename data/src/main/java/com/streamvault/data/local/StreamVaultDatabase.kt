@@ -2666,9 +2666,9 @@ abstract class StreamVaultDatabase : RoomDatabase() {
 
         val MIGRATION_59_60 = object : Migration(59, 60) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE downloads ADD COLUMN source_stream_url TEXT")
-                database.execSQL("ALTER TABLE downloads ADD COLUMN source_stream_id INTEGER")
-                database.execSQL("ALTER TABLE downloads ADD COLUMN container_extension TEXT")
+                addColumnIfMissing(database, "downloads", "source_stream_url", "TEXT")
+                addColumnIfMissing(database, "downloads", "source_stream_id", "INTEGER")
+                addColumnIfMissing(database, "downloads", "container_extension", "TEXT")
             }
         }
 
@@ -2711,6 +2711,34 @@ abstract class StreamVaultDatabase : RoomDatabase() {
             database.execSQL("ALTER TABLE $tableName ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0")
             database.execSQL("ALTER TABLE $tableName ADD COLUMN retry_budget_remaining INTEGER NOT NULL DEFAULT 3")
             database.execSQL("ALTER TABLE $tableName ADD COLUMN last_page_fingerprint TEXT")
+        }
+
+        private fun addColumnIfMissing(
+            database: SupportSQLiteDatabase,
+            tableName: String,
+            columnName: String,
+            columnDefinition: String
+        ) {
+            if (tableHasColumn(database, tableName, columnName)) {
+                return
+            }
+            database.execSQL("ALTER TABLE $tableName ADD COLUMN $columnName $columnDefinition")
+        }
+
+        private fun tableHasColumn(
+            database: SupportSQLiteDatabase,
+            tableName: String,
+            columnName: String
+        ): Boolean {
+            database.query("PRAGMA table_info($tableName)").use { cursor ->
+                val nameIndex = cursor.getColumnIndex("name")
+                while (cursor.moveToNext()) {
+                    if (nameIndex >= 0 && cursor.getString(nameIndex) == columnName) {
+                        return true
+                    }
+                }
+            }
+            return false
         }
     }
 }
