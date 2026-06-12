@@ -579,7 +579,7 @@ class OkHttpStalkerApiServiceTest {
     }
 
     @Test
-    fun getLiveCategories_retries_alternate_endpoint_for_authenticated_requests() = runTest {
+    fun getLiveCategories_stays_on_selected_endpoint_after_authentication() = runTest {
         val requestedUrls = mutableListOf<String>()
         val service = OkHttpStalkerApiService(
             okHttpClient = OkHttpClient.Builder()
@@ -622,12 +622,66 @@ class OkHttpStalkerApiServiceTest {
             )
         )
 
-        assertThat(result).isInstanceOf(Result.Success::class.java)
-        val success = result as Result.Success
-        assertThat(success.data.map { it.name }).containsExactly("News")
-        assertThat(requestedUrls).containsAtLeast(
-            "https://portal.example.com/server/load.php?type=itv&action=get_genres&JsHttpRequest=1-xml",
-            "https://portal.example.com/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml"
+        assertThat(result).isInstanceOf(Result.Error::class.java)
+        val error = result as Result.Error
+        assertThat(error.message).contains("not found")
+        assertThat(requestedUrls).containsExactly(
+            "https://portal.example.com/server/load.php?type=itv&action=get_genres&JsHttpRequest=1-xml"
+        )
+    }
+
+    @Test
+    fun streamLiveStreams_stays_on_selected_endpoint_after_authentication() = runTest {
+        val requestedUrls = mutableListOf<String>()
+        val streamed = mutableListOf<StalkerItemRecord>()
+        val service = OkHttpStalkerApiService(
+            okHttpClient = OkHttpClient.Builder()
+                .addInterceptor(Interceptor { chain ->
+                    val request = chain.request()
+                    requestedUrls += request.url.toString()
+                    val response = when (request.url.encodedPath) {
+                        "/server/load.php" -> throw java.io.IOException("stream endpoint failed")
+                        "/portal.php" -> Response.Builder()
+                            .request(request)
+                            .protocol(Protocol.HTTP_1_1)
+                            .code(200)
+                            .message("OK")
+                            .body(
+                                """{"js":{"data":[{"id":"100","name":"News","tv_genre_id":"10","cmd":"ffmpeg http://example.com/live.ts"}]}}"""
+                                    .toResponseBody("application/json".toMediaType())
+                            )
+                            .build()
+                        else -> error("Unexpected path ${request.url.encodedPath}")
+                    }
+                    response
+                })
+                .build(),
+            json = Json { ignoreUnknownKeys = true }
+        )
+
+        val result = service.streamLiveStreams(
+            session = StalkerSession(
+                loadUrl = "https://portal.example.com/server/load.php",
+                portalReferer = "https://portal.example.com/c/",
+                token = "token-123"
+            ),
+            profile = buildStalkerDeviceProfile(
+                portalUrl = "https://portal.example.com/c",
+                macAddress = "00:1A:79:12:34:56",
+                deviceProfile = "MAG250",
+                timezone = "UTC",
+                locale = "en"
+            )
+        ) { item ->
+            streamed += item
+        }
+
+        assertThat(result).isInstanceOf(Result.Error::class.java)
+        val error = result as Result.Error
+        assertThat(error.message).contains("stream endpoint failed")
+        assertThat(streamed).isEmpty()
+        assertThat(requestedUrls).containsExactly(
+            "https://portal.example.com/server/load.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml"
         )
     }
 

@@ -86,6 +86,7 @@ class OkHttpStalkerApiService @Inject constructor(
                             url = loadUrl,
                             profile = attemptProfile,
                             referer = referer,
+                            allowAlternateEndpointRetry = true,
                             query = mapOf(
                                 "type" to "stb",
                                 "action" to "handshake",
@@ -115,7 +116,8 @@ class OkHttpStalkerApiService @Inject constructor(
                                 url = loadUrl,
                                 profile = attemptProfile,
                                 referer = referer,
-                                token = token
+                                token = token,
+                                allowAlternateEndpointRetry = true
                             )
                         }.getOrElse { error ->
                             lastError = error
@@ -137,6 +139,7 @@ class OkHttpStalkerApiService @Inject constructor(
                                 profile = attemptProfile,
                                 referer = referer,
                                 token = token,
+                                allowAlternateEndpointRetry = true,
                                 query = mapOf(
                                     "type" to "stb",
                                     "action" to "get_localization",
@@ -153,6 +156,7 @@ class OkHttpStalkerApiService @Inject constructor(
                             profile = attemptProfile,
                             referer = referer,
                             token = token,
+                            allowAlternateEndpointRetry = true,
                             query = buildProfileQuery(attemptProfile)
                         )
                     }.getOrElse { error ->
@@ -179,6 +183,7 @@ class OkHttpStalkerApiService @Inject constructor(
                                 profile = attemptProfile,
                                 referer = referer,
                                 token = token,
+                                allowAlternateEndpointRetry = true,
                                 query = mapOf(
                                     "type" to "account_info",
                                     "action" to "get_main_info",
@@ -198,6 +203,7 @@ class OkHttpStalkerApiService @Inject constructor(
                                 profile = attemptProfile,
                                 referer = referer,
                                 token = token,
+                                allowAlternateEndpointRetry = true,
                                 query = mapOf(
                                     "type" to "stb",
                                     "action" to "get_localization",
@@ -215,6 +221,7 @@ class OkHttpStalkerApiService @Inject constructor(
                                 profile = attemptProfile,
                                 referer = referer,
                                 token = token,
+                                allowAlternateEndpointRetry = true,
                                 query = mapOf(
                                     "type" to "stb",
                                     "action" to "get_modules",
@@ -239,6 +246,7 @@ class OkHttpStalkerApiService @Inject constructor(
                                 profile = attemptProfile,
                                 referer = referer,
                                 token = token,
+                                allowAlternateEndpointRetry = true,
                                 query = mapOf(
                                     "type" to "stb",
                                     "action" to "get_events",
@@ -911,11 +919,11 @@ class OkHttpStalkerApiService @Inject constructor(
         referer: String,
         query: Map<String, String>,
         token: String? = null,
+        allowAlternateEndpointRetry: Boolean = false,
         method: String = "GET",
         body: String? = null
     ): JsonElement = withContext(Dispatchers.IO) {
         val action = query["action"]
-        val canRetryAlternateEndpoint = !token.isNullOrBlank()
         val fullUrl = buildUrl(url, query)
         val requestBuilder = Request.Builder()
             .url(fullUrl)
@@ -935,7 +943,7 @@ class OkHttpStalkerApiService @Inject constructor(
         runCatching {
             executeJsonRequest(request, action)
         }.recoverCatching { error ->
-            if (!canRetryAlternateEndpoint) throw error
+            if (!allowAlternateEndpointRetry) throw error
             val alternateUrl = siblingLoadUrl(url)
                 ?.takeIf { it != url }
                 ?: throw error
@@ -1047,23 +1055,7 @@ class OkHttpStalkerApiService @Inject constructor(
             .get()
             .build()
 
-        runCatching {
-            executeStreamingRequest(request, action, onItem)
-        }.recoverCatching { error ->
-            val alternateUrl = siblingLoadUrl(url)
-                ?.takeIf { it != url }
-                ?: throw error
-            Log.w(
-                TAG,
-                "Retrying streamed Stalker ${action.orEmpty()} via alternate endpoint $alternateUrl after ${error.message}"
-            )
-            val alternateRequest = request.newBuilder()
-                .url(buildUrl(alternateUrl, query))
-                .header("Referer", StalkerUrlFactory.portalReferer(alternateUrl))
-                .header("Cookie", buildCookieHeader(buildUrl(alternateUrl, query), profile))
-                .build()
-            executeStreamingRequest(alternateRequest, action, onItem)
-        }.getOrElse { throw it }
+        executeStreamingRequest(request, action, onItem)
     }
 
     private suspend fun executeStreamingRequest(
@@ -1195,23 +1187,7 @@ class OkHttpStalkerApiService @Inject constructor(
             .get()
             .build()
 
-        runCatching {
-            executeStreamingPrograms(request, action, channelIdOverride, onProgram)
-        }.recoverCatching { error ->
-            val alternateUrl = siblingLoadUrl(url)
-                ?.takeIf { it != url }
-                ?: throw error
-            Log.w(
-                TAG,
-                "Retrying streamed Stalker EPG ${action.orEmpty()} via alternate endpoint $alternateUrl after ${error.message}"
-            )
-            val alternateRequest = request.newBuilder()
-                .url(buildUrl(alternateUrl, query))
-                .header("Referer", StalkerUrlFactory.portalReferer(alternateUrl))
-                .header("Cookie", buildCookieHeader(buildUrl(alternateUrl, query), profile))
-                .build()
-            executeStreamingPrograms(alternateRequest, action, channelIdOverride, onProgram)
-        }.getOrElse { throw it }
+        executeStreamingPrograms(request, action, channelIdOverride, onProgram)
     }
 
     private suspend fun executeStreamingPrograms(
@@ -1480,7 +1456,8 @@ class OkHttpStalkerApiService @Inject constructor(
         url: String,
         profile: StalkerDeviceProfile,
         referer: String,
-        token: String
+        token: String,
+        allowAlternateEndpointRetry: Boolean = false
     ): JsonElement {
         val formBody = listOf(
             "login" to profile.username,
@@ -1497,6 +1474,7 @@ class OkHttpStalkerApiService @Inject constructor(
                 profile = profile,
                 referer = referer,
                 token = token,
+                allowAlternateEndpointRetry = allowAlternateEndpointRetry,
                 query = query,
                 method = "POST",
                 body = formBody
@@ -1507,6 +1485,7 @@ class OkHttpStalkerApiService @Inject constructor(
                 profile = profile,
                 referer = referer,
                 token = token,
+                allowAlternateEndpointRetry = allowAlternateEndpointRetry,
                 query = query + mapOf(
                     "login" to profile.username,
                     "password" to profile.password

@@ -2,6 +2,12 @@
 
 All notable product changes are recorded in this document.
 
+## [1.0.15] - 2026-06-13
+
+### Fixed
+
+- Fixed Stalker endpoint handling so authenticated requests stay on the discovered API endpoint instead of retrying the sibling `portal.php` or `server/load.php` path automatically.
+
 ## [1.0.14] - 2026-06-06
 
 ### Added
