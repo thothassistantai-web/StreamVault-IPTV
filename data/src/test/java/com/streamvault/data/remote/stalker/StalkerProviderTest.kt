@@ -243,8 +243,12 @@ class StalkerProviderTest {
             playbackBackendHint = com.streamvault.domain.model.StalkerPlaybackBackendHint.TEMP_LINK_STRICT,
             cookieModeHint = com.streamvault.domain.model.StalkerCookieMode.CREATE_LINK,
             deviceProfile = "MAG322",
-            timezone = "UTC",
-            locale = "en"
+            timezone = "Europe/Amsterdam",
+            locale = "en us",
+            serialNumber = "serial-123",
+            deviceId = "device-123",
+            deviceId2 = "device-456",
+            signature = "signature-789"
         )
 
         val result = provider.resolvePlaybackInfo(
@@ -260,6 +264,13 @@ class StalkerProviderTest {
         assertThat(result).isInstanceOf(Result.Success::class.java)
         val success = result as Result.Success
         assertThat(success.data.headers["Cookie"]).contains("PHPSESSID=fresh-session")
+        assertThat(success.data.headers["Cookie"]).contains("mac=00%3A1A%3A79%3A12%3A34%3A56")
+        assertThat(success.data.headers["Cookie"]).contains("stb_lang=en%20us")
+        assertThat(success.data.headers["Cookie"]).contains("timezone=Europe%2FAmsterdam")
+        assertThat(success.data.headers["Cookie"]).doesNotContain("sn=")
+        assertThat(success.data.headers["Cookie"]).doesNotContain("device_id=")
+        assertThat(success.data.headers["Cookie"]).doesNotContain("device_id2=")
+        assertThat(success.data.headers["Cookie"]).doesNotContain("signature=")
         assertThat(success.data.headers["Accept-Encoding"]).isEqualTo("identity")
     }
 

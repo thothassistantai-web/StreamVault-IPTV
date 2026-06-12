@@ -531,8 +531,12 @@ class OkHttpStalkerApiServiceTest {
                 portalUrl = "https://portal.example.com/c",
                 macAddress = "00:1A:79:12:34:56",
                 deviceProfile = "MAG250",
-                timezone = "UTC",
-                locale = "en"
+                timezone = "Europe/Amsterdam",
+                locale = "en us",
+                serialNumberOverride = "serial-123",
+                deviceIdOverride = "device-123",
+                deviceId2Override = "device-456",
+                signatureOverride = "signature-789"
             )
         ) as Result.Success
 
@@ -542,8 +546,12 @@ class OkHttpStalkerApiServiceTest {
                 portalUrl = "https://portal.example.com/c",
                 macAddress = "00:1A:79:12:34:56",
                 deviceProfile = "MAG250",
-                timezone = "UTC",
-                locale = "en"
+                timezone = "Europe/Amsterdam",
+                locale = "en us",
+                serialNumberOverride = "serial-123",
+                deviceIdOverride = "device-123",
+                deviceId2Override = "device-456",
+                signatureOverride = "signature-789"
             ),
             kind = StalkerStreamKind.LIVE,
             cmd = "ffmpeg http://localhost/ch/1234_"
@@ -552,6 +560,13 @@ class OkHttpStalkerApiServiceTest {
         assertThat(createLinkResult).isInstanceOf(Result.Success::class.java)
         assertThat(authResult.data.first.serverCookieHeader).contains("PHPSESSID=session-42")
         assertThat(observedCookies.single()).contains("PHPSESSID=session-42")
+        assertThat(observedCookies.single()).contains("mac=00%3A1A%3A79%3A12%3A34%3A56")
+        assertThat(observedCookies.single()).contains("stb_lang=en%20us")
+        assertThat(observedCookies.single()).contains("timezone=Europe%2FAmsterdam")
+        assertThat(observedCookies.single()).doesNotContain("sn=")
+        assertThat(observedCookies.single()).doesNotContain("device_id=")
+        assertThat(observedCookies.single()).doesNotContain("device_id2=")
+        assertThat(observedCookies.single()).doesNotContain("signature=")
     }
 
     @Test

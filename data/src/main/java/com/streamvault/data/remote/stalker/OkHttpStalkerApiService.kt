@@ -1434,13 +1434,9 @@ class OkHttpStalkerApiService @Inject constructor(
 
     private fun buildCookieHeader(url: String, profile: StalkerDeviceProfile): String {
         val cookies = linkedMapOf<String, String>()
-        profile.macAddress.takeIf { it.isNotBlank() }?.let { cookies["mac"] = it }
-        profile.locale.takeIf { it.isNotBlank() }?.let { cookies["stb_lang"] = it }
-        profile.timezone.takeIf { it.isNotBlank() }?.let { cookies["timezone"] = it }
-        profile.serialNumber.takeIf { it.isNotBlank() }?.let { cookies["sn"] = it }
-        profile.deviceId.takeIf { it.isNotBlank() }?.let { cookies["device_id"] = it }
-        profile.deviceId2.takeIf { it.isNotBlank() }?.let { cookies["device_id2"] = it }
-        profile.signature.takeIf { it.isNotBlank() }?.let { cookies["signature"] = it }
+        profile.macAddress.takeIf { it.isNotBlank() }?.let { cookies["mac"] = encode(it) }
+        profile.locale.takeIf { it.isNotBlank() }?.let { cookies["stb_lang"] = encode(it) }
+        profile.timezone.takeIf { it.isNotBlank() }?.let { cookies["timezone"] = encode(it) }
         cookieJar.cookieHeaderFor(url).split(';')
             .mapNotNull { part ->
                 val key = part.substringBefore('=', missingDelimiterValue = "").trim()

@@ -27,6 +27,7 @@ import com.streamvault.domain.provider.IptvProvider
 import com.streamvault.domain.util.ChannelNormalizer
 import java.io.IOException
 import java.net.URI
+import java.net.URLEncoder
 import java.util.Base64
 import java.util.Locale
 import kotlinx.coroutines.sync.Mutex
@@ -877,13 +878,9 @@ class StalkerProvider(
         profile: StalkerDeviceProfile
     ): String {
         val cookies = linkedMapOf(
-            "mac" to profile.macAddress,
-            "stb_lang" to profile.locale,
-            "timezone" to profile.timezone,
-            "sn" to profile.serialNumber,
-            "device_id" to profile.deviceId,
-            "device_id2" to profile.deviceId2,
-            "signature" to profile.signature
+            "mac" to encodeCookieValue(profile.macAddress),
+            "stb_lang" to encodeCookieValue(profile.locale),
+            "timezone" to encodeCookieValue(profile.timezone)
         )
         serverCookieHeader.split(';')
             .mapNotNull { part ->
@@ -895,6 +892,9 @@ class StalkerProvider(
         }
         return cookies.entries.joinToString("; ") { (key, value) -> "$key=$value" }
     }
+
+    private fun encodeCookieValue(value: String): String =
+        URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
 
     private fun derivePlaybackCookieMode(
         current: StalkerCookieMode,
