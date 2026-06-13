@@ -46,7 +46,15 @@ object ProviderInputSanitizer {
             .trim()
             .replace(WHITESPACE_REGEX, " ")
 
-    fun normalizeUrl(input: String): String = sanitizeRaw(input, MAX_URL_LENGTH).trim()
+    fun normalizeUrl(input: String): String {
+        val raw = sanitizeRaw(input, MAX_URL_LENGTH).trim()
+        val protocolMatch = URL_PROTOCOL_REGEX.find(raw)
+        if (protocolMatch != null) {
+            val prefix = protocolMatch.value.lowercase()
+            return prefix + raw.substring(protocolMatch.value.length)
+        }
+        return raw
+    }
 
     fun normalizeUsername(input: String): String = sanitizeSingleLine(input, MAX_USERNAME_LENGTH).trim()
 
