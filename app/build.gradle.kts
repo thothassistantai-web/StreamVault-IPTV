@@ -161,7 +161,6 @@ kover {
 
 dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
-
     implementation(project(":domain"))
     implementation(project(":data"))
     implementation(project(":player"))

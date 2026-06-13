@@ -181,6 +181,7 @@ class Media3PlayerEngine @Inject constructor(
     private var fastRetryOnTransientFailures: Boolean = false
     private var audioOutputPath: String = "UNKNOWN"
     private var compatibilityDecisionSource: String = "DEFAULT"
+    @Volatile
     private var pendingLearnedAudioFallback: PendingLearnedAudioFallback? = null
     private var videoStallCount = 0
     private var videoStallRecoveryAttempt = 0
@@ -442,6 +443,12 @@ class Media3PlayerEngine @Inject constructor(
         retryJob?.cancel()
         exoPlayer?.stop()
         _playbackState.value = PlaybackState.IDLE
+        _isPlaying.value = false
+        _mediaTitle.value = null
+        lastStreamInfo = null
+        lastMediaId = null
+        playbackStarted = false
+        hasRenderedFirstVideoFrame = false
         audioFocusController.onPauseOrStop()
     }
 
