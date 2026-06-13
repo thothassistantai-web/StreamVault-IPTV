@@ -6,6 +6,10 @@ All notable product changes are recorded in this document.
 
 ### Fixed
 
+- Fixed Picture-in-Picture compatibility on Android 7.1 / API 25 devices.
+- Fixed live playback recovery so decoder failures can retry with an alternate stream format after a software-decoder attempt.
+- Fixed movie decoder fallback so HEVC playback failures can retry against an AVC/H.264 variant when another version is available.
+- Fixed bundled FFmpeg validation and artifact support so MPEG Layer II (`MP2` / `audio/mpeg-L2`) audio remains available for compatible streams.
 - Fixed grouped movie duplicate actions so favorites and custom-group dialogs account for all raw versions while play, copy URL, download, and add actions target the selected version.
 - Fixed grouped movie detail loading to reuse the already-known variant group from browse navigation instead of re-discovering duplicate versions again on the detail screen.
 - Fixed grouped series detail loading to reuse the already-known variant group from browse, search, continue-watching, and dashboard history navigation instead of re-discovering duplicate versions again on the detail screen.
@@ -22,6 +26,7 @@ All notable product changes are recorded in this document.
 
 ### Added
 
+- Added a playback setting to prefer live stream format selection with `Auto`, `HLS`, or `MPEG-TS` modes for Xtream live playback.
 - Added Movies duplicate handling with smart/grouped presentation, preferred version ranking, detail-page version selection, sticky manual choices, and playback observations for reliability-based movie variant selection.
 - Added Series duplicate handling with smart/grouped browse and search presentation, preferred version ranking, detail-page version selection with sticky manual choice, and raw-safe favorites/custom-group actions across grouped variants.
 - Added Stalker advanced HTTP header overrides, including support for custom headers and removing default request/playback headers by leaving an override value blank.
@@ -32,6 +37,7 @@ All notable product changes are recorded in this document.
 
 ### Changed
 
+- Changed the app minimum supported Android version to Android 7.1 / API 25.
 - Changed the Stalker `Device profile` field label in setup to `MAG Type` while keeping the same underlying saved value and behavior.
 
 ## [1.0.14] - 2026-06-06
