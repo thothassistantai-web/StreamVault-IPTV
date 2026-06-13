@@ -1034,7 +1034,25 @@ private fun ProviderFormContent(
                         stalkerDeviceId2 = stalkerDeviceId2,
                         onStalkerDeviceId2Change = onStalkerDeviceId2Change,
                         stalkerSignature = stalkerSignature,
-                        onStalkerSignatureChange = onStalkerSignatureChange
+                        onStalkerSignatureChange = onStalkerSignatureChange,
+                        stalkerHwVersion = stalkerHwVersion,
+                        onStalkerHwVersionChange = onStalkerHwVersionChange,
+                        stalkerApiUserAgent = stalkerApiUserAgent,
+                        onStalkerApiUserAgentChange = onStalkerApiUserAgentChange,
+                        stalkerPlayerUserAgent = stalkerPlayerUserAgent,
+                        onStalkerPlayerUserAgentChange = onStalkerPlayerUserAgentChange,
+                        stalkerXUserAgentLink = stalkerXUserAgentLink,
+                        onStalkerXUserAgentLinkChange = onStalkerXUserAgentLinkChange,
+                        stalkerProxyEnabled = stalkerProxyEnabled,
+                        onStalkerProxyEnabledChange = onStalkerProxyEnabledChange,
+                        stalkerProxyHost = stalkerProxyHost,
+                        onStalkerProxyHostChange = onStalkerProxyHostChange,
+                        stalkerProxyPort = stalkerProxyPort,
+                        onStalkerProxyPortChange = onStalkerProxyPortChange,
+                        stalkerRequestRules = stalkerRequestRules,
+                        onAddStalkerRequestRule = onAddStalkerRequestRule,
+                        onUpdateStalkerRequestRule = onUpdateStalkerRequestRule,
+                        onRemoveStalkerRequestRule = onRemoveStalkerRequestRule
                     )
                     FormErrors(uiState.validationError, uiState.error)
                     ActionButton(
@@ -1591,27 +1609,49 @@ private fun AdvancedProviderOptionsSection(
                             )
                         }
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    TvClickableSurface(
+                        onClick = { onStalkerProxyEnabledChange(!stalkerProxyEnabled) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { contentDescription = "Use HTTP proxy" },
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = if (stalkerProxyEnabled) Primary.copy(alpha = 0.1f) else Surface,
+                            focusedContainerColor = Primary.copy(alpha = 0.22f)
+                        ),
+                        border = ClickableSurfaceDefaults.border(
+                            border = Border(
+                                BorderStroke(
+                                    1.dp,
+                                    if (stalkerProxyEnabled) Primary.copy(alpha = 0.4f) else SurfaceHighlight
+                                )
+                            ),
+                            focusedBorder = Border(BorderStroke(3.dp, PrimaryLight))
+                        ),
+                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Use HTTP proxy",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "Applies to Stalker API and playback only.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceDim
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "Use HTTP proxy",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "Applies to Stalker API and playback only.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = OnSurfaceDim
+                                )
+                            }
+                            Switch(
+                                checked = stalkerProxyEnabled,
+                                onCheckedChange = onStalkerProxyEnabledChange
                             )
                         }
-                        Switch(
-                            checked = stalkerProxyEnabled,
-                            onCheckedChange = onStalkerProxyEnabledChange
-                        )
                     }
                     AnimatedVisibility(stalkerProxyEnabled) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1676,6 +1716,17 @@ private fun StalkerRequestRulesEditor(
     onUpdateRule: (Int, StalkerRequestRuleUiState) -> Unit,
     onRemoveRule: (Int) -> Unit
 ) {
+    val newestRuleBringIntoViewRequester = remember { BringIntoViewRequester() }
+    var previousRuleCount by remember { mutableIntStateOf(rules.size) }
+
+    LaunchedEffect(rules.size) {
+        if (rules.size > previousRuleCount) {
+            delay(120)
+            runCatching { newestRuleBringIntoViewRequester.bringIntoView() }
+        }
+        previousRuleCount = rules.size
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1697,12 +1748,19 @@ private fun StalkerRequestRulesEditor(
                     color = OnSurfaceDim
                 )
             }
-            TextButton(onClick = onAddRule) { Text("Add") }
+            RequestRuleActionButton(text = "Add Rule", onClick = onAddRule)
         }
         rules.forEachIndexed { index, rule ->
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(
+                        if (index == rules.lastIndex) {
+                            Modifier.bringIntoViewRequester(newestRuleBringIntoViewRequester)
+                        } else {
+                            Modifier
+                        }
+                    )
                     .border(1.dp, SurfaceHighlight.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
                     .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1713,7 +1771,11 @@ private fun StalkerRequestRulesEditor(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Rule ${index + 1}", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
-                    TextButton(onClick = { onRemoveRule(index) }) { Text("Delete") }
+                    RequestRuleActionButton(
+                        text = "Delete",
+                        onClick = { onRemoveRule(index) },
+                        compact = true
+                    )
                 }
                 ProviderTextField(
                     value = rule.action,
@@ -1744,6 +1806,47 @@ private fun StalkerRequestRulesEditor(
                     placeholder = "Param overrides: name=value | remove_me="
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun RequestRuleActionButton(
+    text: String,
+    onClick: () -> Unit,
+    compact: Boolean = false
+) {
+    TvClickableSurface(
+        onClick = onClick,
+        modifier = Modifier
+            .width(if (compact) 88.dp else 124.dp)
+            .height(40.dp)
+            .mouseClickable(onClick = onClick)
+            .semantics { contentDescription = text },
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (compact) SurfaceHighlight.copy(alpha = 0.9f) else Primary,
+            focusedContainerColor = if (compact) SurfaceHighlight else PrimaryLight
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow.None),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                BorderStroke(
+                    1.dp,
+                    if (compact) SurfaceHighlight.copy(alpha = 0.8f) else PrimaryLight
+                )
+            ),
+            focusedBorder = Border(BorderStroke(3.dp, FocusBorder))
+        )
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextPrimary,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
