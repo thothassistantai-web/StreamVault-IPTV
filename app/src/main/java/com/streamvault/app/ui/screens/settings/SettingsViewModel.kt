@@ -34,6 +34,7 @@ import com.streamvault.domain.manager.DriveBackupSyncManager
 import com.streamvault.domain.manager.ParentalControlManager
 import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.model.Category
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.AppTopLevelDestination
@@ -465,6 +466,20 @@ class SettingsViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    fun setAppHomeDashboardShelves(shelves: List<AppHomeDashboardShelf>) {
+        viewModelScope.launch {
+            preferencesRepository.setAppHomeDashboardShelves(
+                AppHomeDashboardShelf.normalizeForStorage(shelves)
+            )
+        }
+    }
+
+    fun resetAppHomeDashboardShelves() {
+        viewModelScope.launch {
+            preferencesRepository.setAppHomeDashboardShelves(AppHomeDashboardShelf.defaultOrder)
         }
     }
 

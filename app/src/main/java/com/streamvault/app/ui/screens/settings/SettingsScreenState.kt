@@ -8,6 +8,7 @@ import com.streamvault.app.MainActivity
 import com.streamvault.app.R
 import com.streamvault.app.ui.time.createDateTimeFormat
 import com.streamvault.app.util.OfficialBuildStatus
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.AppTopLevelDestination
 import com.streamvault.domain.model.AppTimeFormat
@@ -20,6 +21,7 @@ internal data class SettingsScreenLabels(
     val appLanguageLabel: String,
     val appLandingDestinationLabel: String,
     val topNavigationSummaryLabel: String,
+    val homeDashboardSummaryLabel: String,
     val timeFormatLabel: String,
     val preferredAudioLanguageLabel: String,
     val playbackSpeedLabel: String,
@@ -65,6 +67,9 @@ internal fun rememberSettingsScreenLabels(
     }
     val topNavigationSummaryLabel = remember(uiState.appTopLevelDestinations, context) {
         formatTopNavigationSummaryLabel(uiState.appTopLevelDestinations, context)
+    }
+    val homeDashboardSummaryLabel = remember(uiState.appHomeDashboardShelves, context) {
+        formatHomeDashboardSummaryLabel(uiState.appHomeDashboardShelves, context)
     }
     val timeFormatLabel = remember(uiState.appTimeFormat, context) {
         formatAppTimeFormatLabel(uiState.appTimeFormat, context)
@@ -169,6 +174,7 @@ internal fun rememberSettingsScreenLabels(
         appLanguageLabel = appLanguageLabel,
         appLandingDestinationLabel = appLandingDestinationLabel,
         topNavigationSummaryLabel = topNavigationSummaryLabel,
+        homeDashboardSummaryLabel = homeDashboardSummaryLabel,
         timeFormatLabel = timeFormatLabel,
         preferredAudioLanguageLabel = preferredAudioLanguageLabel,
         playbackSpeedLabel = playbackSpeedLabel,
@@ -230,6 +236,15 @@ private fun formatTopNavigationSummaryLabel(
     R.plurals.settings_top_navigation_count,
     destinations.size,
     destinations.size
+)
+
+private fun formatHomeDashboardSummaryLabel(
+    shelves: List<AppHomeDashboardShelf>,
+    context: Context
+): String = context.resources.getQuantityString(
+    R.plurals.settings_home_dashboard_count,
+    shelves.size,
+    shelves.size
 )
 
 private fun formatOfficialBuildStatusLabel(

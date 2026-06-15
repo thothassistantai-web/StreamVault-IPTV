@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import com.streamvault.app.R
+import com.streamvault.app.ui.screens.dashboard.DashboardShelfCustomizationDialog
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.AppTopLevelDestination
@@ -21,6 +22,8 @@ internal fun SettingsPreferenceDialogs(
     context: Context,
     showTopNavigationDialog: Boolean,
     onShowTopNavigationDialogChange: (Boolean) -> Unit,
+    showHomeDashboardDialog: Boolean,
+    onShowHomeDashboardDialogChange: (Boolean) -> Unit,
     showLandingScreenDialog: Boolean,
     onShowLandingScreenDialogChange: (Boolean) -> Unit,
     showGuideDefaultCategoryDialog: Boolean,
@@ -115,6 +118,17 @@ internal fun SettingsPreferenceDialogs(
             onSave = { destinations ->
                 viewModel.setAppTopLevelDestinations(destinations)
                 onShowTopNavigationDialogChange(false)
+            }
+        )
+    }
+
+    if (showHomeDashboardDialog) {
+        DashboardShelfCustomizationDialog(
+            currentShelves = uiState.appHomeDashboardShelves,
+            onDismiss = { onShowHomeDashboardDialogChange(false) },
+            onSave = { shelves ->
+                viewModel.setAppHomeDashboardShelves(shelves)
+                onShowHomeDashboardDialogChange(false)
             }
         )
     }

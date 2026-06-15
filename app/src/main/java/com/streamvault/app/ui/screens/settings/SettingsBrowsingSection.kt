@@ -51,6 +51,7 @@ internal fun LazyListScope.settingsBrowsingSection(
     context: android.content.Context,
     appLandingDestinationLabel: String,
     topNavigationSummaryLabel: String,
+    homeDashboardSummaryLabel: String,
     guideDefaultCategoryLabel: String,
     timeFormatLabel: String,
     appLanguageLabel: String,
@@ -62,6 +63,7 @@ internal fun LazyListScope.settingsBrowsingSection(
     onShowGroupedChannelLabelDialogChange: (Boolean) -> Unit,
     onShowLiveVariantPreferenceDialogChange: (Boolean) -> Unit,
     onShowTopNavigationDialogChange: (Boolean) -> Unit,
+    onShowHomeDashboardDialogChange: (Boolean) -> Unit,
     onShowLandingScreenDialogChange: (Boolean) -> Unit,
     onShowGuideDefaultCategoryDialogChange: (Boolean) -> Unit,
     onShowTimeFormatDialogChange: (Boolean) -> Unit,
@@ -82,6 +84,11 @@ internal fun LazyListScope.settingsBrowsingSection(
             label = stringResource(R.string.settings_top_navigation),
             value = topNavigationSummaryLabel,
             onClick = { onShowTopNavigationDialogChange(true) }
+        )
+        ClickableSettingsRow(
+            label = stringResource(R.string.settings_customize_home),
+            value = homeDashboardSummaryLabel,
+            onClick = { onShowHomeDashboardDialogChange(true) }
         )
         ClickableSettingsRow(
             label = stringResource(R.string.settings_default_landing_screen),

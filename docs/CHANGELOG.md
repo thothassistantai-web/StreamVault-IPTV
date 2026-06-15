@@ -31,6 +31,7 @@ All notable product changes are recorded in this document.
 ### Added
 
 - Added episode preview artwork in series details, preferring episode thumbnails and falling back to series poster/backdrop artwork when episode art is missing.
+- Added customizable Home dashboard shelves so users can hide default rows, enable extra built-in rows, and reorder the Home layout.
 - Added customizable top navigation so users can show, hide, and reorder primary tabs while keeping Settings always available and automatically constraining the default landing screen to visible tabs.
 - Added a playback setting to prefer live stream format selection with `Auto`, `HLS`, or `MPEG-TS` modes for Xtream live playback.
 - Added Movies duplicate handling with smart/grouped presentation, preferred version ranking, detail-page version selection, sticky manual choices, and playback observations for reliability-based movie variant selection.

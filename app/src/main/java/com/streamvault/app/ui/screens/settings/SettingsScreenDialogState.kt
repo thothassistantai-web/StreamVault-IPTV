@@ -20,6 +20,7 @@ internal class SettingsScreenDialogState(
     private val showGroupedChannelLabelDialogState: MutableState<Boolean>,
     private val showLiveVariantPreferenceDialogState: MutableState<Boolean>,
     private val showTopNavigationDialogState: MutableState<Boolean>,
+    private val showHomeDashboardDialogState: MutableState<Boolean>,
     private val showLandingScreenDialogState: MutableState<Boolean>,
     private val showVodViewModeDialogState: MutableState<Boolean>,
     private val showVodDuplicateHandlingDialogState: MutableState<Boolean>,
@@ -80,6 +81,7 @@ internal class SettingsScreenDialogState(
     var showGroupedChannelLabelDialog by showGroupedChannelLabelDialogState
     var showLiveVariantPreferenceDialog by showLiveVariantPreferenceDialogState
     var showTopNavigationDialog by showTopNavigationDialogState
+    var showHomeDashboardDialog by showHomeDashboardDialogState
     var showLandingScreenDialog by showLandingScreenDialogState
     var showVodViewModeDialog by showVodViewModeDialogState
     var showVodDuplicateHandlingDialog by showVodDuplicateHandlingDialogState
@@ -208,6 +210,7 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
     val showGroupedChannelLabelDialogState = rememberSaveable { mutableStateOf(false) }
     val showLiveVariantPreferenceDialogState = rememberSaveable { mutableStateOf(false) }
     val showTopNavigationDialogState = rememberSaveable { mutableStateOf(false) }
+    val showHomeDashboardDialogState = rememberSaveable { mutableStateOf(false) }
     val showLandingScreenDialogState = rememberSaveable { mutableStateOf(false) }
     val showVodViewModeDialogState = rememberSaveable { mutableStateOf(false) }
     val showVodDuplicateHandlingDialogState = rememberSaveable { mutableStateOf(false) }
@@ -277,6 +280,7 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
         showGroupedChannelLabelDialogState = showGroupedChannelLabelDialogState,
         showLiveVariantPreferenceDialogState = showLiveVariantPreferenceDialogState,
         showTopNavigationDialogState = showTopNavigationDialogState,
+        showHomeDashboardDialogState = showHomeDashboardDialogState,
         showLandingScreenDialogState = showLandingScreenDialogState,
         showVodViewModeDialogState = showVodViewModeDialogState,
         showVodDuplicateHandlingDialogState = showVodDuplicateHandlingDialogState,

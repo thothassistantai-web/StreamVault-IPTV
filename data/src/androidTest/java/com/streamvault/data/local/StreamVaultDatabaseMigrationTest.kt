@@ -1193,10 +1193,10 @@ class StreamVaultDatabaseMigrationTest {
 
     @Test
     fun migrate57To61_upgradeChainValidatesLatestSchema() {
-        migrationTestHelper.createDatabase("streamvault-57-60-test", 57).close()
+        migrationTestHelper.createDatabase("streamvault-57-61-test", 57).close()
 
         val migratedDb = migrationTestHelper.runMigrationsAndValidate(
-            "streamvault-57-60-test",
+            "streamvault-57-61-test",
             61,
             true,
             StreamVaultDatabase.MIGRATION_57_58,
@@ -1211,6 +1211,62 @@ class StreamVaultDatabaseMigrationTest {
         assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'supports_resume'"))
         assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name = 'retry_count'"))
         assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'stalker_advanced_options_json'"))
+
+        migratedDb.close()
+    }
+
+    @Test
+    fun migrate60To61_release114To115UpgradePreservesProviders() {
+        migrationTestHelper.createDatabase("streamvault-release-114-115-test", 60).apply {
+            execSQL(
+                """
+                INSERT INTO providers (
+                    id, name, type, server_url, username, password, m3u_url, epg_url,
+                    http_user_agent, http_headers, stalker_mac_address, stalker_device_profile,
+                    stalker_device_timezone, stalker_device_locale, stalker_serial_number,
+                    stalker_device_id, stalker_device_id2, stalker_signature, stalker_auth_mode,
+                    stalker_portal_profile, stalker_portal_fingerprint, stalker_mag_preset,
+                    stalker_last_bootstrap_recipe, stalker_endpoint_preference, stalker_cookie_mode,
+                    stalker_playback_backend_hint, stalker_last_playback_mode,
+                    stalker_credentials_required, stalker_mac_required, stalker_uses_temp_links,
+                    stalker_module_restricted, stalker_strict_fingerprint_required,
+                    stalker_recipe_fallback_used, stalker_recipe_rediscovery_attempts,
+                    is_active, max_connections, expiration_date, api_version,
+                    allowed_output_formats_json, epg_sync_mode, xtream_fast_sync_enabled,
+                    xtream_live_sync_mode, m3u_vod_classification_enabled, status,
+                    last_synced_at, created_at
+                ) VALUES (
+                    1, 'Release 1.0.14 Provider', 'STALKER_PORTAL', 'https://portal.example.com', '', '', '', '',
+                    'MAG200 stbapp', '{\"X-Test\":\"1\"}', '00:1A:79:12:34:56', 'MAG250',
+                    'UTC', 'en', 'serial-1', 'device-1', 'device-2', 'signature-1', 'AUTO',
+                    'MAG_BASIC', 'BASIC_MAC', 'GENERIC_SAFE', 'GENERIC_SAFE', 'AUTO', 'NONE',
+                    'AUTO', NULL, 0, 1, 0,
+                    0, 0, 0, 0,
+                    1, 1, NULL, 'legacy-api',
+                    '[]', 'UPFRONT', 1,
+                    'AUTO', 0, 'ACTIVE',
+                    1234, 5678
+                )
+                """.trimIndent()
+            )
+            close()
+        }
+
+        val migratedDb = migrationTestHelper.runMigrationsAndValidate(
+            "streamvault-release-114-115-test",
+            61,
+            true,
+            StreamVaultDatabase.MIGRATION_60_61
+        )
+
+        assertEquals(1, countRows(migratedDb, "SELECT COUNT(*) FROM pragma_table_info('providers') WHERE name = 'stalker_advanced_options_json'"))
+        assertEquals(
+            1,
+            countRows(
+                migratedDb,
+                "SELECT COUNT(*) FROM providers WHERE id = 1 AND name = 'Release 1.0.14 Provider' AND stalker_advanced_options_json = ''"
+            )
+        )
 
         migratedDb.close()
     }

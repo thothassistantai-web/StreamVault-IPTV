@@ -23,6 +23,7 @@ import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.ActiveLiveSource
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.LiveChannelGroupingMode
@@ -101,6 +102,7 @@ class PreferencesRepository @Inject constructor(
         val APP_LANGUAGE = stringPreferencesKey("app_language")
         val APP_LANDING_DESTINATION = stringPreferencesKey("app_landing_destination")
         val APP_TOP_LEVEL_DESTINATIONS = stringPreferencesKey("app_top_level_destinations")
+        val APP_HOME_DASHBOARD_SHELVES = stringPreferencesKey("app_home_dashboard_shelves")
         val APP_TIME_FORMAT = stringPreferencesKey("app_time_format")
         val LIVE_TV_CHANNEL_MODE = stringPreferencesKey("live_tv_channel_mode")
         val SHOW_LIVE_SOURCE_SWITCHER = booleanPreferencesKey("show_live_source_switcher")
@@ -1260,6 +1262,10 @@ class PreferencesRepository @Inject constructor(
         decodeAppTopLevelDestinations(preferences[PreferencesKeys.APP_TOP_LEVEL_DESTINATIONS])
     }
 
+    val appHomeDashboardShelves: Flow<List<AppHomeDashboardShelf>> = context.dataStore.data.map { preferences ->
+        decodeAppHomeDashboardShelves(preferences[PreferencesKeys.APP_HOME_DASHBOARD_SHELVES])
+    }
+
     suspend fun setAppLandingDestination(destination: AppLandingDestination) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.APP_LANDING_DESTINATION] = destination.storageValue
@@ -1270,6 +1276,13 @@ class PreferencesRepository @Inject constructor(
         val normalized = AppTopLevelDestination.normalizeForStorage(destinations)
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.APP_TOP_LEVEL_DESTINATIONS] = encodeAppTopLevelDestinations(normalized)
+        }
+    }
+
+    suspend fun setAppHomeDashboardShelves(shelves: List<AppHomeDashboardShelf>) {
+        val normalized = AppHomeDashboardShelf.normalizeForStorage(shelves)
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_HOME_DASHBOARD_SHELVES] = encodeAppHomeDashboardShelves(normalized)
         }
     }
 
@@ -1958,6 +1971,29 @@ class PreferencesRepository @Inject constructor(
             AppTopLevelDestination.defaultOrder
         } else {
             AppTopLevelDestination.normalizeForStorage(decoded)
+        }
+    }
+
+    private fun encodeAppHomeDashboardShelves(shelves: List<AppHomeDashboardShelf>): String =
+        AppHomeDashboardShelf.normalizeForStorage(shelves)
+            .joinToString(",") { it.storageValue }
+
+    private fun decodeAppHomeDashboardShelves(encoded: String?): List<AppHomeDashboardShelf> {
+        if (encoded == null) {
+            return AppHomeDashboardShelf.defaultOrder
+        }
+        if (encoded.isBlank()) {
+            return emptyList()
+        }
+        val decoded = encoded
+            .split(',')
+            .asSequence()
+            .mapNotNull { token -> AppHomeDashboardShelf.fromStorage(token.trim()) }
+            .toList()
+        return if (decoded.isEmpty()) {
+            AppHomeDashboardShelf.defaultOrder
+        } else {
+            AppHomeDashboardShelf.normalizeForStorage(decoded)
         }
     }
 

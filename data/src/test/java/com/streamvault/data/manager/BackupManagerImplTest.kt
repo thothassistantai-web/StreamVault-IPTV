@@ -23,6 +23,7 @@ import com.streamvault.domain.manager.BackupImportPlan
 import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.manager.RecordingScheduleImportDisposition
 import com.streamvault.domain.manager.ScheduledRecordingBackup
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.AppTopLevelDestination
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.Favorite
@@ -495,6 +496,66 @@ class BackupManagerImplTest {
                 AppTopLevelDestination.HOME,
                 AppTopLevelDestination.SEARCH,
                 AppTopLevelDestination.SETTINGS
+            )
+        )
+    }
+
+    @Test
+    fun `importConfig restores home dashboard shelves preference`() = runBlocking {
+        val context: Context = mock()
+        val contentResolver: ContentResolver = mock()
+        val preferencesRepository: PreferencesRepository = mock()
+        val providerDao: ProviderDao = mock()
+        whenever(context.contentResolver).thenReturn(contentResolver)
+        val gson = Gson()
+        val backupData = BackupData(
+            preferences = mapOf(
+                "appHomeDashboardShelves" to "favorite_channels,recommended_movies,top_rated_movies"
+            )
+        )
+        whenever(contentResolver.openInputStream(Uri.parse("content://backup-home-dashboard"))).thenReturn(
+            ByteArrayInputStream(gson.toJson(backupData).toByteArray())
+        )
+        whenever(providerDao.getAllSync()).thenReturn(emptyList())
+
+        val manager = BackupManagerImpl(
+            context = context,
+            preferencesRepository = preferencesRepository,
+            credentialCrypto = mock<CredentialCrypto>(),
+            providerDao = providerDao,
+            favoriteDao = mock<FavoriteDao>(),
+            virtualGroupDao = mock<VirtualGroupDao>(),
+            playbackHistoryDao = mock<PlaybackHistoryDao>(),
+            movieDao = mock<MovieDao>(),
+            episodeDao = mock<EpisodeDao>(),
+            categoryRepository = mock<CategoryRepository>(),
+            recordingScheduleDao = mock<RecordingScheduleDao>(),
+            recordingManager = mock<RecordingManager>(),
+            transactionRunner = object : DatabaseTransactionRunner {
+                override suspend fun <T> inTransaction(block: suspend () -> T): T = block()
+            },
+            gson = gson
+        )
+
+        val result = manager.importConfig(
+            uriString = "content://backup-home-dashboard",
+            plan = BackupImportPlan(
+                importPreferences = true,
+                importProviders = false,
+                importSavedLibrary = false,
+                importPlaybackHistory = false,
+                importMultiViewPresets = false,
+                importRecordingSchedules = false,
+                conflictStrategy = BackupConflictStrategy.KEEP_EXISTING
+            )
+        )
+
+        assertThat(result).isInstanceOf(Result.Success::class.java)
+        verify(preferencesRepository).setAppHomeDashboardShelves(
+            listOf(
+                AppHomeDashboardShelf.FAVORITE_CHANNELS,
+                AppHomeDashboardShelf.RECOMMENDED_MOVIES,
+                AppHomeDashboardShelf.TOP_RATED_MOVIES
             )
         )
     }

@@ -44,6 +44,7 @@ import com.streamvault.domain.model.PlaybackHistory
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ContinueWatchingRow(
+    title: String? = null,
     items: List<PlaybackHistory>,
     onItemClick: (PlaybackHistory) -> Unit,
     modifier: Modifier = Modifier
@@ -59,7 +60,7 @@ fun ContinueWatchingRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = stringResource(R.string.continue_watching_title),
+                text = title ?: stringResource(R.string.continue_watching_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = TextPrimary
             )

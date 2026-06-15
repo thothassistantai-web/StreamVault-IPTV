@@ -107,11 +107,18 @@
     <string name="dashboard_subtitle">%1$s is active. Jump back into live, catch up on progress, or browse fresh additions.</string>
     <string name="dashboard_favorite_channels">Favorite Channels</string>
     <string name="dashboard_recent_channels">Recent Channels</string>
+    <string name="dashboard_favorite_movies">Favorite Movies</string>
+    <string name="dashboard_favorite_series">Favorite Series</string>
     <string name="dashboard_recent_movies">Recently Added Movies</string>
     <string name="dashboard_recent_series">Recently Updated Series</string>
+    <string name="dashboard_top_rated_movies">Top Rated Movies</string>
+    <string name="dashboard_recommended_movies">Recommended Movies</string>
     <string name="dashboard_search_library">Search Library</string>
     <string name="dashboard_live_shortcuts">Live Shortcuts</string>
     <string name="dashboard_live_shortcuts_subtitle">Favorites, recent channels, and last group.</string>
+    <string name="dashboard_customize_home">Customize Home</string>
+    <string name="dashboard_customize_home_subtitle">Choose which shelves appear here, add more rows, and reorder them any time.</string>
+    <string name="dashboard_customize_home_action">Customize</string>
     <string name="dashboard_provider_health_title">Provider Health</string>
     <string name="dashboard_provider_status">Status</string>
     <string name="dashboard_provider_source">Source</string>
@@ -372,11 +379,23 @@
     <string name="settings_top_navigation_move_up">Up</string>
     <string name="settings_top_navigation_move_down">Down</string>
     <string name="settings_top_navigation_default_updated">Default landing screen changed to %1$s because the previous tab is no longer visible.</string>
+    <string name="settings_customize_home">Customize Home</string>
+    <string name="settings_home_dashboard_dialog_title">Customize Home</string>
+    <string name="settings_home_dashboard_dialog_subtitle">Choose which shelves appear on Home and arrange them in the order you want. Empty shelves stay hidden until they have content.</string>
+    <string name="settings_home_dashboard_enabled_section">Visible on Home</string>
+    <string name="settings_home_dashboard_available_section">Available to add</string>
+    <string name="settings_home_dashboard_enabled_empty">Home is currently empty. Add shelves below to build your layout.</string>
+    <string name="settings_home_dashboard_add">Add</string>
+    <string name="settings_home_dashboard_remove">Remove</string>
     <string name="settings_default_landing_screen">Default landing screen</string>
     <string name="settings_select_default_landing_screen">Select default landing screen</string>
     <plurals name="settings_top_navigation_count">
         <item quantity="one">%d tab</item>
         <item quantity="other">%d tabs</item>
+    </plurals>
+    <plurals name="settings_home_dashboard_count">
+        <item quantity="one">%d shelf</item>
+        <item quantity="other">%d shelves</item>
     </plurals>
     <string name="settings_live_tv_quick_filters">Live TV Quick Filters</string>
     <string name="settings_live_tv_quick_filters_none">None</string>
@@ -1558,6 +1577,8 @@
     <string name="dashboard_resume_episode">Resume episode</string>
     <string name="dashboard_resume_live">Resume</string>
     <string name="dashboard_continue_watching">Continue Watching</string>
+    <string name="dashboard_continue_watching_movies">Continue Watching Movies</string>
+    <string name="dashboard_continue_watching_series">Continue Watching Series</string>
     <string name="dashboard_jump_back_live">Jump back into live TV</string>
     <string name="dashboard_watch_live">Watch Live</string>
     <string name="dashboard_fresh_movie_pick">Fresh movie pick</string>

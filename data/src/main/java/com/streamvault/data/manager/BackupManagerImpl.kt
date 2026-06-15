@@ -33,6 +33,7 @@ import com.streamvault.domain.manager.ProtectedCategoryBackup
 import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.manager.ScheduledRecordingBackup
 import com.streamvault.domain.model.AppTopLevelDestination
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.RecordingRecurrence
 import com.streamvault.domain.model.RecordingRequest
@@ -89,6 +90,10 @@ class BackupManagerImpl @Inject constructor(
                 put(
                     "appTopLevelDestinations",
                     preferencesRepository.appTopLevelDestinations.first().joinToString(",") { it.storageValue }
+                )
+                put(
+                    "appHomeDashboardShelves",
+                    preferencesRepository.appHomeDashboardShelves.first().joinToString(",") { it.storageValue }
                 )
                 put("liveTvCategoryFilters", preferencesRepository.liveTvCategoryFilters.first().joinToString("\n"))
                 put("liveTvQuickFilterVisibility", preferencesRepository.liveTvQuickFilterVisibility.first() ?: "always")
@@ -572,6 +577,13 @@ class BackupManagerImpl @Inject constructor(
             if (destinations.isNotEmpty()) {
                 preferencesRepository.setAppTopLevelDestinations(destinations)
             }
+        }
+        if (prefs.containsKey("appHomeDashboardShelves")) {
+            val shelves = prefs["appHomeDashboardShelves"]
+                .orEmpty()
+                .split(',')
+                .mapNotNull { token -> AppHomeDashboardShelf.fromStorage(token.trim()) }
+            preferencesRepository.setAppHomeDashboardShelves(shelves)
         }
         prefs["liveTvCategoryFilters"]?.let { preferencesRepository.setLiveTvCategoryFilters(it.split('\n')) }
         prefs["liveTvQuickFilterVisibility"]?.takeIf { it.isNotBlank() }

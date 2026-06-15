@@ -174,6 +174,8 @@ internal fun SettingsScreenDialogs(
         context = context,
         showTopNavigationDialog = dialogState.showTopNavigationDialog,
         onShowTopNavigationDialogChange = { dialogState.showTopNavigationDialog = it },
+        showHomeDashboardDialog = dialogState.showHomeDashboardDialog,
+        onShowHomeDashboardDialogChange = { dialogState.showHomeDashboardDialog = it },
         showLandingScreenDialog = dialogState.showLandingScreenDialog,
         onShowLandingScreenDialogChange = { dialogState.showLandingScreenDialog = it },
         showGuideDefaultCategoryDialog = dialogState.showGuideDefaultCategoryDialog,
