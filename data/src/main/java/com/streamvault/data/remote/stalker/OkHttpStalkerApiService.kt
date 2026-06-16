@@ -71,11 +71,10 @@ class OkHttpStalkerApiService @Inject constructor(
     override suspend fun authenticate(profile: StalkerDeviceProfile): Result<Pair<StalkerSession, StalkerProviderProfile>> {
         var lastError: Throwable? = null
         var lockedLoadUrl: String? = null
+        val failedHandshakeLoadUrls = mutableSetOf<String>()
+        val bootstrapSessions = mutableMapOf<String, StalkerBootstrapSession>()
         val authModes = candidateAuthModes(profile)
         for (effectiveAuthMode in authModes) {
-            if (lockedLoadUrl == null) {
-                lockedLoadUrl = probeReachableLoadUrl(profile, effectiveAuthMode)
-            }
             for (attempt in candidateAuthAttempts(profile, effectiveAuthMode)) {
                 val recipeIndex = attempt.recipeIndex
                 val recipe = attempt.recipe
@@ -83,55 +82,70 @@ class OkHttpStalkerApiService @Inject constructor(
                 if (lockedLoadUrl != null && lockedLoadUrl != loadUrl) {
                     continue
                 }
+                if (lockedLoadUrl == null && loadUrl in failedHandshakeLoadUrls) {
+                    continue
+                }
                     cookieJar.clear()
                     val referer = StalkerUrlFactory.portalReferer(loadUrl)
                     val evidence = mutableListOf<String>()
                     val recipeEvidence = mutableListOf("recipe:${recipe.recipe.name}", "preset:${recipe.magPreset.name}")
                     val attemptProfile = profile.withRecipe(recipe, effectiveAuthMode)
-                    val handshakePayload = runCatching {
-                        requestJson(
-                            url = loadUrl,
-                            profile = attemptProfile,
-                            referer = referer,
-                            query = mapOf(
-                                "type" to "stb",
-                                "action" to "handshake",
-                                "token" to "",
-                                "JsHttpRequest" to "1-xml"
-                            )
-                        )
-                    }.getOrElse { error ->
-                        lastError = error
-                        continue
-                    }
-                    evidence += "handshake"
-                    val token = handshakePayload.findString("token")
-                        ?.takeIf { it.isNotBlank() }
-                        ?: run {
-                            lastError = IOException("Portal handshake did not return a token.")
-                            continue
-                        }
-                    lockedLoadUrl = loadUrl
-
-                    if (recipe.authMode.requiresCredentials()) {
-                        if (attemptProfile.username.isBlank()) {
-                            lastError = IOException("Portal requires account credentials for this connection.")
-                            continue
-                        }
-                        val authPayload = runCatching {
-                            requestCredentialAuth(
+                    val bootstrapSessionKey = "${effectiveAuthMode.name}|$loadUrl"
+                    var bootstrapSession = bootstrapSessions[bootstrapSessionKey]
+                    val token = bootstrapSession?.token ?: run {
+                        val handshakePayload = runCatching {
+                            requestJson(
                                 url = loadUrl,
                                 profile = attemptProfile,
                                 referer = referer,
-                                token = token,
-                                allowAlternateEndpointRetry = false
+                                query = mapOf(
+                                    "type" to "stb",
+                                    "action" to "handshake",
+                                    "token" to "",
+                                    "JsHttpRequest" to "1-xml"
+                                )
                             )
                         }.getOrElse { error ->
+                            failedHandshakeLoadUrls += loadUrl
                             lastError = error
                             continue
                         }
+                        handshakePayload.findString("token")
+                            ?.takeIf { it.isNotBlank() }
+                            ?: run {
+                                lastError = IOException("Portal handshake did not return a token.")
+                                continue
+                            }
+                    }
+                    evidence += "handshake"
+                    lockedLoadUrl = loadUrl
+                    if (bootstrapSession == null) {
+                        bootstrapSession = StalkerBootstrapSession(token)
+                        bootstrapSessions[bootstrapSessionKey] = bootstrapSession
+                    }
+
+                    if (recipe.authMode.requiresCredentials()) {
+                        if (!bootstrapSession.credentialAuthenticated) {
+                            if (attemptProfile.username.isBlank()) {
+                                lastError = IOException("Portal requires account credentials for this connection.")
+                                continue
+                            }
+                            val authPayload = runCatching {
+                                requestCredentialAuth(
+                                    url = loadUrl,
+                                    profile = attemptProfile,
+                                    referer = referer,
+                                    token = token,
+                                    allowAlternateEndpointRetry = false
+                                )
+                            }.getOrElse { error ->
+                                lastError = error
+                                continue
+                            }
+                            authPayload.ensureNoPortalError()
+                            bootstrapSession.credentialAuthenticated = true
+                        }
                         evidence += "do_auth"
-                        authPayload.ensureNoPortalError()
                     }
 
                     var session = StalkerSession(
@@ -955,41 +969,6 @@ class OkHttpStalkerApiService @Inject constructor(
                 .build()
             executeJsonRequest(alternateRequest, action, profile)
         }.getOrElse { throw it }
-    }
-
-    private suspend fun probeReachableLoadUrl(
-        profile: StalkerDeviceProfile,
-        effectiveAuthMode: StalkerAuthMode
-    ): String? = withContext(Dispatchers.IO) {
-        val recipe = candidateRecipes(profile, effectiveAuthMode).firstOrNull() ?: return@withContext null
-        val attemptProfile = profile.withRecipe(recipe, effectiveAuthMode)
-        val handshakeQuery = mapOf(
-            "type" to "stb",
-            "action" to "handshake",
-            "token" to "",
-            "JsHttpRequest" to "1-xml"
-        )
-        orderedLoadUrlCandidates(profile, recipe).firstOrNull { loadUrl ->
-            val fullUrl = buildUrl(loadUrl, prepareQuery(attemptProfile, handshakeQuery))
-            val request = Request.Builder()
-                .url(fullUrl)
-                .header("User-Agent", attemptProfile.userAgent)
-                .header("X-User-Agent", attemptProfile.xUserAgent)
-                .header("Referer", StalkerUrlFactory.portalReferer(loadUrl))
-                .header("Accept", "*/*")
-                .header("Cookie", buildCookieHeader(fullUrl, attemptProfile))
-                .applyStalkerHeaderOverrides(
-                    headerOverrides = attemptProfile.headerOverrides,
-                    preserveUserAgent = attemptProfile.advancedOptions.apiUserAgent.isNotBlank()
-                )
-                .get()
-                .build()
-            runCatching {
-                stalkerHttpClientFor(attemptProfile).newCall(request).execute().use { response ->
-                    response.code == 200
-                }
-            }.getOrDefault(false)
-        }
     }
 
     private fun executeJsonRequest(request: Request, action: String?, profile: StalkerDeviceProfile): JsonElement {
@@ -2373,6 +2352,11 @@ class OkHttpStalkerApiService @Inject constructor(
         val loadUrl: String
     )
 
+    private data class StalkerBootstrapSession(
+        val token: String,
+        var credentialAuthenticated: Boolean = false
+    )
+
     private fun endpointPreferenceFor(loadUrl: String): StalkerEndpointPreference =
         when {
             loadUrl.lowercase(Locale.ROOT).endsWith("/portal.php") -> StalkerEndpointPreference.PORTAL
@@ -2533,9 +2517,7 @@ internal fun buildStalkerDeviceProfile(
             headerOverrides = headerOverrides
         ).orEmpty()
     }
-    val playerUserAgent = advancedOptions.playerUserAgent.trim().ifBlank {
-        apiUserAgent
-    }
+    val playerUserAgent = advancedOptions.playerUserAgent.trim()
     return StalkerDeviceProfile(
         portalUrl = portalUrl,
         macAddress = normalizedMac,

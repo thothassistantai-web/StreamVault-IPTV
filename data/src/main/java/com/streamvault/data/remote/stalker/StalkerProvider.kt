@@ -449,7 +449,7 @@ class StalkerProvider(
                                 StalkerPlaybackInfo(
                                     url = candidate,
                                     headers = buildPlaybackHeaders(session, profile, candidate),
-                                    userAgent = resolvePlaybackUserAgent(profile),
+                                    userAgent = resolveDirectPlaybackUserAgent(profile),
                                     allowInvalidSsl = true,
                                     proxyHost = profile.advancedOptions.proxy?.host.orEmpty(),
                                     proxyPort = profile.advancedOptions.proxy?.port,
@@ -915,6 +915,18 @@ class StalkerProvider(
             name.equals("User-Agent", ignoreCase = true)
         }?.let { (_, value) -> return value }
         return profile.playerUserAgent.ifBlank { DEFAULT_PLAYER_USER_AGENT }
+    }
+
+    private fun resolveDirectPlaybackUserAgent(profile: StalkerDeviceProfile): String? {
+        profile.advancedOptions.playerUserAgent.trim().takeIf { it.isNotBlank() }?.let { return it }
+        parseStalkerHeaderOverrides(profile.advancedOptions.playerHeaders).entries.firstOrNull { (name, _) ->
+            name.equals("User-Agent", ignoreCase = true)
+        }?.let { (_, value) -> return value }
+        profile.headerOverrides.entries.firstOrNull { (name, _) ->
+            name.equals("User-Agent", ignoreCase = true)
+        }?.let { (_, value) -> return value }
+        profile.playerUserAgent.takeIf { it.isNotBlank() }?.let { return it }
+        return profile.userAgent.ifBlank { DEFAULT_PLAYER_USER_AGENT }
     }
 
     private fun buildPlaybackHostHeader(url: String): String? {
@@ -1519,6 +1531,7 @@ class StalkerProvider(
         signature.trim().uppercase(Locale.ROOT)
 
     private fun authCacheKey(): String = listOf(
+        System.identityHashCode(api).toString(),
         providerId.toString(),
         StalkerUrlFactory.normalizePortalUrl(portalUrl),
         normalizedMacAddress(),

@@ -79,7 +79,7 @@ class StalkerPortalReplayHarnessTest {
                 .isEqualTo(fixture.expected.authMode)
             assertWithFixture(path, authSuccess.data.first.portalProfile.name)
                 .isEqualTo(fixture.expected.portalProfile)
-            assertThat(authSuccess.data.first.bootstrapEvidence)
+            assertWithMessage(path).that(authSuccess.data.first.bootstrapEvidence)
                 .containsExactlyElementsIn(fixture.expected.bootstrapEvidence)
                 .inOrder()
             fixture.expected.portalFingerprint?.let { expectedFingerprint ->
@@ -202,7 +202,11 @@ class StalkerPortalReplayHarnessTest {
                 requestedActions += action
                 val key = "$method:$action"
                 val scripted = responsesByAction[key]?.removeFirstOrNull()
-                    ?: error("Missing replay response for $key in fixture ${fixture.name}")
+                    ?: error(
+                        "Missing replay response for $key in fixture ${fixture.name}; " +
+                            "path=${request.url.encodedPath}; " +
+                            "requested=${requestedActions.joinToString(",")}"
+                    )
                 val builder = Response.Builder()
                     .request(request)
                     .protocol(Protocol.HTTP_1_1)
