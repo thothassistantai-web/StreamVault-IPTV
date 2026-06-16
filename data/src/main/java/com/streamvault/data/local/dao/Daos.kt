@@ -2,6 +2,7 @@ package com.streamvault.data.local.dao
 
 import androidx.room.*
 import com.streamvault.data.local.entity.*
+import com.streamvault.domain.model.ProviderType
 import kotlinx.coroutines.flow.Flow
 
 data class RemoteIdMapping(
@@ -41,6 +42,9 @@ abstract class ProviderDao {
 
     @Query("SELECT * FROM providers WHERE id IN (:ids)")
     abstract suspend fun getByIds(ids: List<Long>): List<ProviderEntity>
+
+    @Query("SELECT * FROM providers WHERE type = :type")
+    abstract fun getByTypeSync(type: ProviderType): List<ProviderEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun insertDirect(provider: ProviderEntity): Long
@@ -1426,6 +1430,15 @@ interface MovieDao {
     @Query("SELECT * FROM movies WHERE provider_id = :providerId")
     suspend fun getByProviderSync(providerId: Long): List<MovieEntity>
 
+    @Query("SELECT * FROM movies WHERE provider_id = :providerId AND tmdb_id = :tmdbId")
+    suspend fun getByProviderAndTmdbIdSync(providerId: Long, tmdbId: Long): List<MovieEntity>
+
+    @Query("SELECT * FROM movies WHERE provider_id = :providerId AND year = :year")
+    suspend fun getByProviderAndYearSync(providerId: Long, year: String): List<MovieEntity>
+
+    @Query("SELECT * FROM movies WHERE provider_id = :providerId AND release_date LIKE :yearPrefix")
+    suspend fun getByProviderAndReleaseYearPrefixSync(providerId: Long, yearPrefix: String): List<MovieEntity>
+
     @Query("SELECT tmdb_id FROM movies WHERE provider_id = :providerId AND tmdb_id IS NOT NULL")
     suspend fun getTmdbIdsByProvider(providerId: Long): List<TmdbIdMapping>
 
@@ -2418,6 +2431,12 @@ interface SeriesDao {
     @Query("SELECT * FROM series WHERE provider_id = :providerId")
     suspend fun getByProviderSync(providerId: Long): List<SeriesEntity>
 
+    @Query("SELECT * FROM series WHERE provider_id = :providerId AND tmdb_id = :tmdbId")
+    suspend fun getByProviderAndTmdbIdSync(providerId: Long, tmdbId: Long): List<SeriesEntity>
+
+    @Query("SELECT * FROM series WHERE provider_id = :providerId AND release_date LIKE :yearPrefix")
+    suspend fun getByProviderAndReleaseYearPrefixSync(providerId: Long, yearPrefix: String): List<SeriesEntity>
+
     @Query("SELECT tmdb_id FROM series WHERE provider_id = :providerId AND tmdb_id IS NOT NULL")
     suspend fun getTmdbIdsByProvider(providerId: Long): List<TmdbIdMapping>
 
@@ -3015,6 +3034,9 @@ abstract class FavoriteDao {
 
     @Query("SELECT * FROM favorites WHERE provider_id = :providerId AND content_type = :contentType ORDER BY position ASC")
     abstract fun getAllByType(providerId: Long, contentType: String): Flow<List<FavoriteEntity>>
+
+    @Query("SELECT * FROM favorites WHERE provider_id IN (:providerIds) AND content_type = :contentType ORDER BY provider_id ASC, position ASC")
+    abstract fun getAllByTypeForProviders(providerIds: List<Long>, contentType: String): Flow<List<FavoriteEntity>>
 
     @Query(
         """

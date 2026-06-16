@@ -13,7 +13,7 @@
 
 StreamVault is a TV-first IPTV player for Android TV built with Kotlin, Jetpack Compose, Room, Hilt, and Media3.
 
-It is designed for large playlists, remote-friendly browsing, fast provider switching, and a polished living-room playback experience. StreamVault supports `M3U` playlists, `Xtream Codes`, and `Stalker Portal` providers, with dedicated flows for `Live TV`, `Movies`, and `Series`.
+It is designed for large playlists, remote-friendly browsing, fast provider switching, and a polished living-room playback experience. StreamVault supports `M3U` playlists, `Xtream Codes`, `Stalker Portal`, and `Jellyfin` providers, with dedicated flows for `Live TV`, `Movies`, and `Series`.
 
 Built for Android TV first, StreamVault focuses on the things generic IPTV apps usually get wrong: D-pad navigation, quick channel movement, large-library organization, and a player that still feels good to use from the couch. Phone and tablet installs are also supported, but the primary UX target is TV.
 
@@ -42,33 +42,40 @@ Built for Android TV first, StreamVault focuses on the things generic IPTV apps 
 ## Highlights
 
 - Android TV-first interface with D-pad-friendly focus, navigation, and playback flows
-- Playlist support for `Xtream Codes`, `Stalker Portal`, and `M3U` sources, including local playlist files
+- Provider support for `Xtream Codes`, `Stalker Portal`, `Jellyfin`, and `M3U` sources, including local playlist files
 - Combined M3U live-source support with optional in-browser source switching for merged Live TV setups
+- Jellyfin onboarding with password sign-in or Quick Connect QR/code flow for TV-friendly setup
 - Fast live-TV browsing with preview mode, favorites, recent channels, custom groups, and pinned categories
+- Transparent full-guide overlay that can open over live playback without leaving the player
 - Movie and series libraries with detailed info pages, resume support, episode switching, and auto-play for next episodes
+- Offline VOD downloads with grouped episode queues, pause or resume controls, and local playback for completed files
 - Full EPG support with guide search, XMLTV support, and provider archive or catch-up when available
 - Built-in DVR with scheduled recording, background capture, recording playback, and app-managed default storage
 - Multi-view split-screen playback for watching multiple channels at once
 - Plugin API for creating companion Android APKs that extend providers, playback, Cast URL handling, or configuration flows
 - Strong parental controls with PIN-protected categories and automatic adult-category detection
-- TV integrations including Watch Next, launcher recommendations, TV input sync, Cast support, and in-app update delivery
+- TV integrations including Watch Next, launcher recommendations, TV input sync, Cast support, external-player handoff, and in-app update delivery
 
 ## Features
 
-### Playlist Support
+### Provider Support
 
 - `Xtream Codes`
 - `Stalker Portal`
+- `Jellyfin` media servers with direct library sync and TV-friendly Quick Connect support
 - `M3U` playlists from URLs plus local files
 - Separate onboarding and sync flows for live channels, movies, series, and guide data
 - Fast switching between providers with provider-scoped settings
 - Combined M3U profiles for merging multiple M3U providers into a single Live TV source
+- QR-based provider pairing from a phone on the same LAN for faster TV setup
 
 ### Navigation And TV UX
 
 - Designed for Android TV and D-pad navigation first
 - Fast channel browsing with large-playlist friendly layouts
 - Numeric remote input for direct channel entry
+- Configurable startup landing screen so the app can open Home, Live TV, Movies, Series, Guide, Downloads, Plugins, or Settings first
+- Colored remote button remapping with global defaults plus playback and live-browse overrides
 - Preview mode while browsing channels
 - TV-friendly search and text-entry flows
 
@@ -86,6 +93,7 @@ Built for Android TV first, StreamVault focuses on the things generic IPTV apps 
 ### Guide, Search, And Playback
 
 - Full EPG grid view
+- Transparent full-guide overlay over live playback
 - Program search inside the guide
 - XMLTV guide support with built-in EPG source management
 - Manual EPG match overrides and source-priority controls from inside Settings and Guide flows
@@ -93,11 +101,12 @@ Built for Android TV first, StreamVault focuses on the things generic IPTV apps 
 - Live rewind or timeshift playback with up to 30 minutes of buffer, even when provider catch-up is unavailable
 - Global search across live TV, movies, and series
 - Multi-view for watching multiple live streams at once
-- Player controls for subtitles, audio tracks, aspect ratio, playback speed, video quality, and Cast
+- Player controls for subtitles, audio tracks, aspect ratio, playback speed, video quality, Cast, and external-player handoff
 
 ### Recording And Playback
 
 - Scheduled and background DVR recording for live channels
+- Offline VOD downloads with grouped episode handling and completed-file local playback
 - Program reminders from guide entries when you want a notification without scheduling a recording
 - Conflict detection, persistence, and repair support for recording jobs
 - App-managed default recording folder with optional custom storage selection

@@ -6,6 +6,7 @@ import com.streamvault.data.local.DatabaseTransactionRunner
 import com.streamvault.data.local.dao.CatalogSyncDao
 import com.streamvault.data.local.dao.CategoryDao
 import com.streamvault.data.local.dao.ChannelDao
+import com.streamvault.data.local.dao.EpisodeDao
 import com.streamvault.data.local.dao.MovieCategoryHydrationDao
 import com.streamvault.data.local.dao.MovieDao
 import com.streamvault.data.local.dao.ProgramDao
@@ -33,6 +34,7 @@ import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.stalker.StalkerPlaybackMode
 import com.streamvault.data.remote.stalker.StalkerProvider
 import com.streamvault.data.remote.stalker.StalkerProviderProfile
+import com.streamvault.data.remote.jellyfin.JellyfinProvider
 import com.streamvault.data.remote.stalker.StalkerTrafficCoordinator
 import com.streamvault.data.remote.dto.XtreamCategory
 import com.streamvault.data.remote.dto.XtreamSeriesItem
@@ -180,6 +182,8 @@ class SyncManager @Inject constructor(
     private val xtreamIndexJobDao: XtreamIndexJobDao,
     private val xtreamLiveOnboardingDao: XtreamLiveOnboardingDao,
     private val stalkerApiService: StalkerApiService,
+    private val episodeDao: EpisodeDao,
+    private val jellyfinProvider: JellyfinProvider,
     private val xtreamJson: Json,
     private val m3uParser: M3uParser,
     private val epgRepository: EpgRepository,
@@ -690,6 +694,7 @@ class SyncManager @Inject constructor(
                         )
                         ProviderType.M3U -> syncM3u(provider, force, onProgress)
                         ProviderType.STALKER_PORTAL -> syncStalker(provider, force, onProgress)
+                        ProviderType.JELLYFIN -> syncJellyfin(provider, force, onProgress)
                     }
                 }
                 providerDao.updateSyncTime(providerId, System.currentTimeMillis())
@@ -4080,6 +4085,82 @@ class SyncManager @Inject constructor(
         return if (warnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = warnings)
     }
 
+    private suspend fun syncJellyfin(
+        provider: Provider,
+        force: Boolean,
+        onProgress: ((String) -> Unit)?
+    ): SyncOutcome {
+        val warnings = mutableListOf<String>()
+        try {
+            val decryptedPassword = credentialCrypto.decryptIfNeeded(provider.password)
+            val decryptedProvider = provider.copy(password = decryptedPassword)
+            android.util.Log.d("JellyfinSync", "Starting Jellyfin sync for provider=${provider.id}")
+            progress(provider.id, onProgress, "Loading Jellyfin library...")
+            val (resolvedMovies, resolvedSeries) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val movieResult = jellyfinProvider.fetchMovies(decryptedProvider)
+                val seriesResult = jellyfinProvider.fetchSeries(decryptedProvider)
+                movieResult to seriesResult
+            }
+            if (resolvedMovies is com.streamvault.domain.model.Result.Error) android.util.Log.e("JellyfinSync", "Movies error: ${resolvedMovies.message}")
+            if (resolvedSeries is com.streamvault.domain.model.Result.Error) android.util.Log.e("JellyfinSync", "Series error: ${resolvedSeries.message}")
+
+            if (resolvedMovies is com.streamvault.domain.model.Result.Error && resolvedSeries is com.streamvault.domain.model.Result.Error) {
+                warnings.add("Failed to load Jellyfin catalog: ${resolvedMovies.message}; ${resolvedSeries.message}")
+                return SyncOutcome(partial = true, warnings = warnings)
+            }
+
+            val movieEntities = (resolvedMovies as? com.streamvault.domain.model.Result.Success)?.data.orEmpty()
+            val seriesEntities = (resolvedSeries as? com.streamvault.domain.model.Result.Success)?.data.orEmpty()
+
+            if (movieEntities.isNotEmpty()) {
+                progress(provider.id, onProgress, "Importing Jellyfin movies...")
+                movieEntities.chunked(50).forEach { chunk ->
+                    transactionRunner.inTransaction {
+                        movieDao.upsertCategoryPage(provider.id, chunk)
+                    }
+                }
+                transactionRunner.inTransaction {
+                    categoryDao.replaceAll(provider.id, com.streamvault.domain.model.ContentType.MOVIE.name, listOf(
+                        com.streamvault.data.local.entity.CategoryEntity(
+                            providerId = provider.id, categoryId = 1L, name = "Movies",
+                            type = com.streamvault.domain.model.ContentType.MOVIE
+                        )
+                    ))
+                }
+            }
+
+            if (seriesEntities.isNotEmpty()) {
+                progress(provider.id, onProgress, "Importing Jellyfin series...")
+                seriesEntities.forEach { seriesEntity ->
+                    val remoteId = seriesEntity.providerSeriesId
+                    if (!remoteId.isNullOrBlank()) {
+                        transactionRunner.inTransaction {
+                            seriesDao.insertAll(listOf(seriesEntity))
+                        }
+                    }
+                }
+                transactionRunner.inTransaction {
+                    categoryDao.replaceAll(provider.id, com.streamvault.domain.model.ContentType.SERIES.name, listOf(
+                        com.streamvault.data.local.entity.CategoryEntity(
+                            providerId = provider.id, categoryId = 2L, name = "Series",
+                            type = com.streamvault.domain.model.ContentType.SERIES
+                        )
+                    ))
+                }
+            }
+
+            if (movieEntities.isEmpty() && seriesEntities.isEmpty()) {
+                warnings.add("Jellyfin library is empty or contains no supported movies or series.")
+                return SyncOutcome(partial = true, warnings = warnings)
+            }
+
+            return SyncOutcome(warnings = warnings)
+        } catch (e: Exception) {
+            warnings.add("Jellyfin sync failed: ${e.message.orEmpty()}")
+            return SyncOutcome(partial = true, warnings = warnings)
+        }
+    }
+
     /**
      * Returned by [syncProviderEpg] so callers can distinguish between warning-only
      * degradations and transient network/IO failures that WorkManager should retry.
@@ -4199,6 +4280,8 @@ class SyncManager @Inject constructor(
                     updatedMetadata = syncMetadataRepository.getMetadata(provider.id) ?: updatedMetadata
                 }
             }
+
+            ProviderType.JELLYFIN -> Unit
         }
 
         try {
@@ -4254,6 +4337,7 @@ class SyncManager @Inject constructor(
             }
             ProviderType.M3U -> providerDao.getById(provider.id)?.epgUrl ?: provider.epgUrl
             ProviderType.STALKER_PORTAL -> providerDao.getById(provider.id)?.epgUrl ?: provider.epgUrl
+            ProviderType.JELLYFIN -> ""
         }
         if (epgUrl.isBlank()) {
             if (provider.type == ProviderType.STALKER_PORTAL) {
@@ -4274,6 +4358,7 @@ class SyncManager @Inject constructor(
             ProviderType.XTREAM_CODES -> UrlSecurityPolicy.validateXtreamEpgUrl(epgUrl)
             ProviderType.M3U -> UrlSecurityPolicy.validateOptionalEpgUrl(epgUrl)
             ProviderType.STALKER_PORTAL -> UrlSecurityPolicy.validateOptionalEpgUrl(epgUrl)
+            ProviderType.JELLYFIN -> null
         }
         validationError?.let { message ->
             throw IllegalStateException(message)
@@ -4740,6 +4825,8 @@ class SyncManager @Inject constructor(
                 )
                 sectionWarnings += liveCatalogResult.warnings
             }
+
+            ProviderType.JELLYFIN -> throw IllegalStateException("Live TV retry is unavailable for Jellyfin providers")
         }
         return if (sectionWarnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = sectionWarnings)
     }
@@ -4849,6 +4936,8 @@ class SyncManager @Inject constructor(
                 syncMetadataRepository.updateMetadata(metadata)
                 scheduleStalkerIndexContinuation(provider, ContentType.MOVIE, force = true)
             }
+
+            ProviderType.JELLYFIN -> throw IllegalStateException("Movies retry is unavailable for Jellyfin providers")
         }
         return if (sectionWarnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = sectionWarnings)
     }
@@ -4936,6 +5025,8 @@ class SyncManager @Inject constructor(
             ProviderType.M3U -> {
                 throw IllegalStateException("Series retry is unavailable for this provider")
             }
+
+            ProviderType.JELLYFIN -> throw IllegalStateException("Series retry is unavailable for Jellyfin providers")
         }
         return if (sectionWarnings.isEmpty()) SyncOutcome() else SyncOutcome(partial = true, warnings = sectionWarnings)
     }
@@ -5365,6 +5456,8 @@ class SyncManager @Inject constructor(
             authMode = provider.stalkerAuthMode,
             username = provider.username,
             password = provider.password,
+            httpUserAgent = provider.httpUserAgent,
+            httpHeaders = provider.httpHeaders,
             portalFingerprintHint = provider.stalkerPortalFingerprint,
             magPresetHint = provider.stalkerMagPreset,
             bootstrapRecipeHint = provider.stalkerLastBootstrapRecipe,
@@ -5380,7 +5473,8 @@ class SyncManager @Inject constructor(
             serialNumber = provider.stalkerSerialNumber,
             deviceId = provider.stalkerDeviceId,
             deviceId2 = provider.stalkerDeviceId2,
-            signature = provider.stalkerSignature
+            signature = provider.stalkerSignature,
+            stalkerAdvancedOptionsJson = provider.stalkerAdvancedOptionsJson
         )
     }
 

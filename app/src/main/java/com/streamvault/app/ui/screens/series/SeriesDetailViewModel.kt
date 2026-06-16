@@ -6,8 +6,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamvault.app.R
+import com.streamvault.app.navigation.SERIES_DETAIL_PRESENTATION_HINT_KEY
 import com.streamvault.app.plugins.StreamVaultPluginManager
 import com.streamvault.app.service.DownloadForegroundService
+import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DownloadContentType
 import com.streamvault.domain.model.DownloadRequest
@@ -17,6 +19,7 @@ import com.streamvault.domain.model.ExternalRatingsLookup
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.Season
 import com.streamvault.domain.model.Series
+import com.streamvault.domain.model.SeriesDetailPresentationHint
 import com.streamvault.domain.repository.DownloadManager
 import com.streamvault.domain.repository.ExternalRatingsRepository
 import com.streamvault.domain.repository.FavoriteRepository
@@ -43,6 +46,7 @@ class SeriesDetailViewModel @Inject constructor(
     private val playbackHistoryRepository: PlaybackHistoryRepository,
     private val externalRatingsRepository: ExternalRatingsRepository,
     private val favoriteRepository: FavoriteRepository,
+    private val preferencesRepository: PreferencesRepository,
     private val pluginManager: StreamVaultPluginManager,
     private val downloadManager: DownloadManager
 ) : ViewModel() {
@@ -51,11 +55,14 @@ class SeriesDetailViewModel @Inject constructor(
         savedStateHandle.get<Long>("seriesId")
             ?: savedStateHandle.get<String>("seriesId")?.toLongOrNull()
     )
+    private val knownPresentationHint: SeriesDetailPresentationHint? =
+        savedStateHandle[SERIES_DETAIL_PRESENTATION_HINT_KEY]
 
     private val _uiState = MutableStateFlow(SeriesDetailUiState())
     val uiState: StateFlow<SeriesDetailUiState> = _uiState.asStateFlow()
 
     private var providerDetailJob: Job? = null
+    private var unwatchedCountJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -68,15 +75,7 @@ class SeriesDetailViewModel @Inject constructor(
                 }
                 providerDetailJob = launch {
                     val effectiveProviderId = resolveEffectiveProviderId(provider.id)
-                    launch {
-                        playbackHistoryRepository.getUnwatchedCount(
-                            providerId = effectiveProviderId,
-                            seriesId = seriesId
-                        ).collect { count ->
-                            _uiState.update { it.copy(unwatchedEpisodeCount = count) }
-                        }
-                    }
-                    loadSeriesDetailsForProvider(effectiveProviderId)
+                    loadSeriesDetailsForProvider(effectiveProviderId, seriesId)
                 }
             }
         }
@@ -87,21 +86,25 @@ class SeriesDetailViewModel @Inject constructor(
             ?: fallbackProviderId
     }
 
-    private suspend fun loadSeriesDetailsForProvider(providerId: Long) {
+    private suspend fun loadSeriesDetailsForProvider(providerId: Long, requestedSeriesId: Long) {
         try {
             _uiState.update { it.copy(isLoading = true, error = null) }
 
-            when (val result = seriesRepository.getSeriesDetails(providerId, seriesId)) {
+            when (val result = seriesRepository.getSeriesDetails(providerId, requestedSeriesId, knownPresentationHint)) {
                 is Result.Success -> {
                     val isFavoriteDeferred = viewModelScope.async {
-                        favoriteRepository.isFavorite(providerId, seriesId, ContentType.SERIES)
+                        favoriteRepository.isFavorite(providerId, result.data.id, ContentType.SERIES)
                     }
                     loadExternalRatings(result.data)
+                    startUnwatchedCountCollection(providerId, result.data.id)
+                    val selectedSeasonNumber = _uiState.value.selectedSeason?.seasonNumber
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             series = result.data.copy(isFavorite = isFavoriteDeferred.await()),
-                            selectedSeason = result.data.seasons.firstOrNull(),
+                            selectedSeason = result.data.seasons.firstOrNull { season ->
+                                season.seasonNumber == selectedSeasonNumber
+                            } ?: result.data.seasons.firstOrNull(),
                             resumeEpisode = findResumeEpisode(result.data),
                             error = null
                         )
@@ -126,6 +129,17 @@ class SeriesDetailViewModel @Inject constructor(
         }
     }
 
+    fun selectSeriesVariant(rawSeriesId: Long) {
+        val currentSeries = _uiState.value.series ?: return
+        if (rawSeriesId <= 0L || rawSeriesId == currentSeries.id) return
+        viewModelScope.launch {
+            currentSeries.logicalGroupId.takeIf { it.isNotBlank() }?.let { logicalGroupId ->
+                preferencesRepository.setPreferredVodVariant(currentSeries.providerId, logicalGroupId, rawSeriesId)
+            }
+            loadSeriesDetailsForProvider(currentSeries.providerId, rawSeriesId)
+        }
+    }
+
     fun toggleFavorite() {
         val series = _uiState.value.series ?: return
         viewModelScope.launch {
@@ -136,6 +150,18 @@ class SeriesDetailViewModel @Inject constructor(
                 favoriteRepository.removeFavorite(series.providerId, series.id, ContentType.SERIES)
             }
             _uiState.update { it.copy(series = series.copy(isFavorite = newState)) }
+        }
+    }
+
+    private fun startUnwatchedCountCollection(providerId: Long, selectedSeriesId: Long) {
+        unwatchedCountJob?.cancel()
+        unwatchedCountJob = viewModelScope.launch {
+            playbackHistoryRepository.getUnwatchedCount(
+                providerId = providerId,
+                seriesId = selectedSeriesId
+            ).collect { count ->
+                _uiState.update { it.copy(unwatchedEpisodeCount = count) }
+            }
         }
     }
 

@@ -8,6 +8,8 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.streamvault.domain.model.VodHttpProtocolMode
 import com.streamvault.domain.model.StreamInfo
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -30,7 +32,10 @@ class PlayerDataSourceFactoryProvider(
     private data class ClientKey(
         val profile: PlayerTimeoutProfile,
         val forceHttp1: Boolean,
-        val port: Int
+        val port: Int,
+        val allowInvalidSsl: Boolean,
+        val proxyHost: String,
+        val proxyPort: Int?
     )
 
     private val addressHealthStore = PlayerAddressHealthStore()
@@ -53,8 +58,21 @@ class PlayerDataSourceFactoryProvider(
             vodHttpProtocolMode = vodHttpProtocolMode
         )
         val port = streamPort(streamInfo.url)
-        val client = clientsByKey.computeIfAbsent(ClientKey(profile, forceHttp1, port)) {
-            baseClient.newBuilder()
+        val clientKey = ClientKey(
+            profile = profile,
+            forceHttp1 = forceHttp1,
+            port = port,
+            allowInvalidSsl = streamInfo.allowInvalidSsl,
+            proxyHost = streamInfo.proxyHost.trim(),
+            proxyPort = streamInfo.proxyPort
+        )
+        val client = clientsByKey.computeIfAbsent(clientKey) {
+            val builder = if (streamInfo.allowInvalidSsl) {
+                baseClient.newBuilder().applyUnsafeTlsBypass()
+            } else {
+                baseClient.newBuilder()
+            }
+            builder
                 .addInterceptor(StalkerPlaybackRequestLoggingInterceptor)
                 .connectTimeout(profile.connectTimeoutMs, TimeUnit.MILLISECONDS)
                 .readTimeout(profile.readTimeoutMs, TimeUnit.MILLISECONDS)
@@ -65,6 +83,7 @@ class PlayerDataSourceFactoryProvider(
                     if (forceHttp1) {
                         protocols(listOf(Protocol.HTTP_1_1))
                     }
+                    streamInfo.httpProxy()?.let { proxy(it) }
                 }
                 .build()
         }
@@ -118,6 +137,12 @@ class PlayerDataSourceFactoryProvider(
             "https" -> 443
             else -> -1
         }
+    }
+
+    private fun StreamInfo.httpProxy(): Proxy? {
+        val host = proxyHost.trim().takeIf { it.isNotBlank() } ?: return null
+        val port = proxyPort ?: return null
+        return Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port))
     }
 }
 

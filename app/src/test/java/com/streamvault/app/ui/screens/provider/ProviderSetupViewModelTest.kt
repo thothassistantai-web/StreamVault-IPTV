@@ -412,6 +412,8 @@ class ProviderSetupViewModelTest {
             username = "",
             password = "",
             name = "MAG",
+            httpUserAgent = "",
+            httpHeaders = "",
             deviceProfile = "MAG250",
             timezone = "UTC",
             locale = "en"

@@ -77,7 +77,7 @@ class EpgViewModelTest {
     private val playerEngine: PlayerEngine = mock()
     private val playerEngineProvider: InjectProvider<PlayerEngine> = mock()
     private val application: Application = mock()
-    private val getCustomCategories by lazy { GetCustomCategories(favoriteRepository) }
+    private val getCustomCategories by lazy { GetCustomCategories(favoriteRepository, channelRepository) }
     private val createdViewModels = mutableListOf<EpgViewModel>()
 
     private val testDispatcher = StandardTestDispatcher()

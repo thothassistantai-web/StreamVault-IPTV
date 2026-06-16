@@ -5,7 +5,9 @@ package com.streamvault.app.ui.screens.settings
 import com.streamvault.app.ui.model.LiveTvChannelMode
 import com.streamvault.app.ui.model.LiveTvQuickFilterVisibilityMode
 import com.streamvault.app.ui.model.VodViewMode
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.AppLandingDestination
+import com.streamvault.domain.model.AppTopLevelDestination
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.AudioOutputPreference
@@ -15,7 +17,10 @@ import com.streamvault.domain.model.ExternalPlaybackMode
 import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
+import com.streamvault.domain.model.PlaybackBufferMode
+import com.streamvault.domain.model.VodDuplicateHandlingMode
 import com.streamvault.domain.model.VodHttpProtocolMode
+import com.streamvault.domain.model.VodVariantPreferenceMode
 import com.streamvault.domain.model.VirtualCategoryIds
 import com.streamvault.domain.repository.ProviderRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,11 +45,14 @@ internal fun observeSettingsPreferenceSnapshot(
             hasParentalPin = hasParentalPin,
             appLanguage = "system",
             appLandingDestination = AppLandingDestination.HOME,
+            appTopLevelDestinations = AppTopLevelDestination.defaultOrder,
+            appHomeDashboardShelves = AppHomeDashboardShelf.defaultOrder,
             appTimeFormat = AppTimeFormat.SYSTEM,
             preferredAudioLanguage = "auto",
             playerMediaSessionEnabled = true,
             playerFastRetryOnTransientFailures = false,
             playerDecoderMode = DecoderMode.AUTO,
+            playerPlaybackBufferMode = PlaybackBufferMode.AUTO,
             playerAudioOutputPreference = AudioOutputPreference.AUTO,
             playerCompatibilityMemoryEnabled = true,
             playerSurfaceMode = com.streamvault.domain.model.PlayerSurfaceMode.AUTO,
@@ -62,6 +70,8 @@ internal fun observeSettingsPreferenceSnapshot(
             subtitleTextScale = 1f,
             subtitleTextColor = 0xFFFFFFFF.toInt(),
             subtitleBackgroundColor = 0x80000000.toInt(),
+            playerLiveTranslationEnabled = false,
+            playerLiveTranslationEndpoint = "http://10.0.2.2:8765",
             wifiMaxVideoHeight = null,
             ethernetMaxVideoHeight = null,
             playerTimeshiftEnabled = false,
@@ -89,6 +99,8 @@ internal fun observeSettingsPreferenceSnapshot(
             liveVariantPreferenceMode = LiveVariantPreferenceMode.BALANCED,
             vodViewMode = VodViewMode.MODERN,
             vodInfiniteScroll = true,
+            vodDuplicateHandlingMode = VodDuplicateHandlingMode.SHOW_ALL,
+            vodVariantPreferenceMode = VodVariantPreferenceMode.BALANCED,
             guideDefaultCategoryId = VirtualCategoryIds.FAVORITES,
             guideDefaultCategoryOptions = emptyList(),
             preventStandbyDuringPlayback = true,
@@ -108,6 +120,10 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(appLanguage = language)
     }.combine(preferencesRepository.appLandingDestination) { snapshot, destination ->
         snapshot.copy(appLandingDestination = destination)
+    }.combine(preferencesRepository.appTopLevelDestinations) { snapshot, destinations ->
+        snapshot.copy(appTopLevelDestinations = destinations)
+    }.combine(preferencesRepository.appHomeDashboardShelves) { snapshot, shelves ->
+        snapshot.copy(appHomeDashboardShelves = shelves)
     }.combine(preferencesRepository.appTimeFormat) { snapshot, timeFormat ->
         snapshot.copy(appTimeFormat = timeFormat)
     }.combine(preferencesRepository.preferredAudioLanguage) { snapshot, preferredAudioLanguage ->
@@ -118,6 +134,8 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(playerFastRetryOnTransientFailures = enabled)
     }.combine(preferencesRepository.playerDecoderMode) { snapshot, decoderMode ->
         snapshot.copy(playerDecoderMode = decoderMode)
+    }.combine(preferencesRepository.playerPlaybackBufferMode) { snapshot, bufferMode ->
+        snapshot.copy(playerPlaybackBufferMode = bufferMode)
     }.combine(preferencesRepository.playerAudioOutputPreference) { snapshot, audioOutputPreference ->
         snapshot.copy(playerAudioOutputPreference = audioOutputPreference)
     }.combine(preferencesRepository.playerCompatibilityMemoryEnabled) { snapshot, enabled ->
@@ -152,6 +170,10 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(subtitleTextColor = subtitleTextColor)
     }.combine(preferencesRepository.playerSubtitleBackgroundColor) { snapshot, subtitleBackgroundColor ->
         snapshot.copy(subtitleBackgroundColor = subtitleBackgroundColor)
+    }.combine(preferencesRepository.playerLiveTranslationEnabled) { snapshot, enabled ->
+        snapshot.copy(playerLiveTranslationEnabled = enabled)
+    }.combine(preferencesRepository.playerLiveTranslationEndpoint) { snapshot, endpoint ->
+        snapshot.copy(playerLiveTranslationEndpoint = endpoint)
     }.combine(preferencesRepository.playerWifiMaxVideoHeight) { snapshot, wifiMaxVideoHeight ->
         snapshot.copy(wifiMaxVideoHeight = wifiMaxVideoHeight)
     }.combine(preferencesRepository.playerEthernetMaxVideoHeight) { snapshot, ethernetMaxVideoHeight ->
@@ -208,6 +230,10 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(vodViewMode = VodViewMode.fromStorage(vodViewMode))
     }.combine(preferencesRepository.vodInfiniteScroll) { snapshot, vodInfiniteScroll ->
         snapshot.copy(vodInfiniteScroll = vodInfiniteScroll)
+    }.combine(preferencesRepository.vodDuplicateHandlingMode) { snapshot, vodDuplicateHandlingMode ->
+        snapshot.copy(vodDuplicateHandlingMode = vodDuplicateHandlingMode)
+    }.combine(preferencesRepository.vodVariantPreferenceMode) { snapshot, vodVariantPreferenceMode ->
+        snapshot.copy(vodVariantPreferenceMode = vodVariantPreferenceMode)
     }.combine(preferencesRepository.guideDefaultCategoryId) { snapshot, guideDefaultCategoryId ->
         snapshot.copy(guideDefaultCategoryId = guideDefaultCategoryId ?: VirtualCategoryIds.FAVORITES)
     }.combine(preferencesRepository.preventStandbyDuringPlayback) { snapshot, preventStandby ->

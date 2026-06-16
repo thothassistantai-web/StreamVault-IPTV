@@ -30,7 +30,12 @@ data class StalkerDeviceProfile(
     val deviceId2: String,
     val signature: String,
     val userAgent: String,
-    val xUserAgent: String
+    val playerUserAgent: String,
+    val xUserAgent: String,
+    val httpUserAgent: String = "",
+    val httpHeaders: String = "",
+    val headerOverrides: Map<String, String?> = emptyMap(),
+    val advancedOptions: StalkerAdvancedOptions = StalkerAdvancedOptions()
 )
 
 data class StalkerSession(

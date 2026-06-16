@@ -43,6 +43,8 @@ data class StalkerProviderSetupCommand(
     val authMode: StalkerAuthMode = StalkerAuthMode.AUTO,
     val username: String = "",
     val password: String = "",
+    val httpUserAgent: String = "",
+    val httpHeaders: String = "",
     val deviceProfile: String = "",
     val timezone: String = "",
     val locale: String = "",
@@ -50,7 +52,22 @@ data class StalkerProviderSetupCommand(
     val deviceId: String = "",
     val deviceId2: String = "",
     val signature: String = "",
+    val stalkerAdvancedOptionsJson: String = "",
     val epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+    val existingProviderId: Long? = null
+)
+
+data class JellyfinProviderSetupCommand(
+    val serverUrl: String,
+    val username: String,
+    val password: String,
+    val name: String,
+    val existingProviderId: Long? = null
+)
+
+data class JellyfinQuickConnectProviderSetupCommand(
+    val serverUrl: String,
+    val name: String,
     val existingProviderId: Long? = null
 )
 
@@ -126,13 +143,16 @@ class ValidateAndAddProvider @Inject constructor(
                 username = command.username,
                 password = command.password,
                 allowBlankPassword = command.existingProviderId != null,
+                httpUserAgent = command.httpUserAgent,
+                httpHeaders = command.httpHeaders,
                 deviceProfile = command.deviceProfile,
                 timezone = command.timezone,
                 locale = command.locale,
                 serialNumber = command.serialNumber,
                 deviceId = command.deviceId,
                 deviceId2 = command.deviceId2,
-                signature = command.signature
+                signature = command.signature,
+                stalkerAdvancedOptionsJson = command.stalkerAdvancedOptionsJson
             )
         ) {
             is Result.Error -> ValidateAndAddProviderResult.ValidationError(result.message)
@@ -241,13 +261,16 @@ class ValidateAndAddProvider @Inject constructor(
                 username = command.username,
                 password = command.password,
                 allowBlankPassword = command.existingProviderId != null,
+                httpUserAgent = command.httpUserAgent,
+                httpHeaders = command.httpHeaders,
                 deviceProfile = command.deviceProfile,
                 timezone = command.timezone,
                 locale = command.locale,
                 serialNumber = command.serialNumber,
                 deviceId = command.deviceId,
                 deviceId2 = command.deviceId2,
-                signature = command.signature
+                signature = command.signature,
+                stalkerAdvancedOptionsJson = command.stalkerAdvancedOptionsJson
             )
         ) {
             is Result.Success -> providerRepository.loginStalker(
@@ -257,6 +280,8 @@ class ValidateAndAddProvider @Inject constructor(
                 authMode = validated.data.authMode,
                 username = validated.data.username,
                 password = validated.data.password,
+                httpUserAgent = validated.data.httpUserAgent,
+                httpHeaders = validated.data.httpHeaders,
                 deviceProfile = validated.data.deviceProfile,
                 timezone = validated.data.timezone,
                 locale = validated.data.locale,
@@ -264,7 +289,59 @@ class ValidateAndAddProvider @Inject constructor(
                 deviceId = validated.data.deviceId,
                 deviceId2 = validated.data.deviceId2,
                 signature = validated.data.signature,
+                stalkerAdvancedOptionsJson = validated.data.stalkerAdvancedOptionsJson,
                 epgSyncMode = command.epgSyncMode,
+                onProgress = onProgress,
+                id = command.existingProviderId
+            ).toUseCaseResult()
+
+            is Result.Error -> ValidateAndAddProviderResult.ValidationError(validated.message)
+            is Result.Loading -> ValidateAndAddProviderResult.Error("Unexpected loading state")
+        }
+    }
+
+    suspend fun loginJellyfin(
+        command: JellyfinProviderSetupCommand,
+        onProgress: ((String) -> Unit)? = null
+    ): ValidateAndAddProviderResult {
+        return when (
+            val validated = providerSetupInputValidator.validateJellyfin(
+                serverUrl = command.serverUrl,
+                username = command.username,
+                password = command.password,
+                allowBlankPassword = command.existingProviderId != null,
+                name = command.name
+            )
+        ) {
+            is Result.Success -> providerRepository.loginJellyfin(
+                serverUrl = validated.data.serverUrl,
+                username = validated.data.username,
+                password = validated.data.password,
+                name = validated.data.name,
+                onProgress = onProgress,
+                id = command.existingProviderId
+            ).toUseCaseResult()
+
+            is Result.Error -> ValidateAndAddProviderResult.ValidationError(validated.message)
+            is Result.Loading -> ValidateAndAddProviderResult.Error("Unexpected loading state")
+        }
+    }
+
+    suspend fun loginJellyfinQuickConnect(
+        command: JellyfinQuickConnectProviderSetupCommand,
+        onCode: ((String) -> Unit)? = null,
+        onProgress: ((String) -> Unit)? = null
+    ): ValidateAndAddProviderResult {
+        return when (
+            val validated = providerSetupInputValidator.validateJellyfinQuickConnect(
+                serverUrl = command.serverUrl,
+                name = command.name
+            )
+        ) {
+            is Result.Success -> providerRepository.loginJellyfinQuickConnect(
+                serverUrl = validated.data.serverUrl,
+                name = validated.data.name,
+                onCode = onCode,
                 onProgress = onProgress,
                 id = command.existingProviderId
             ).toUseCaseResult()

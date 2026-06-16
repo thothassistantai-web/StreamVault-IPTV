@@ -3,6 +3,8 @@ package com.streamvault.domain.usecase
 import com.google.common.truth.Truth.assertThat
 import com.streamvault.domain.manager.ProviderCredentials
 import com.streamvault.domain.manager.ProviderSetupInputValidator
+import com.streamvault.domain.manager.ValidatedJellyfinProviderInput
+import com.streamvault.domain.manager.ValidatedJellyfinQuickConnectProviderInput
 import com.streamvault.domain.model.Program
 import com.streamvault.domain.manager.ValidatedM3uProviderInput
 import com.streamvault.domain.manager.ValidatedStalkerProviderInput
@@ -431,6 +433,8 @@ class ValidateAndAddProviderTest {
                         username = "",
                         password = "",
                         name = "MAG",
+                        httpUserAgent = "Stalker Agent/1.0",
+                        httpHeaders = "Referer: | X-Test: enabled",
                         deviceProfile = "MAG250",
                         timezone = "UTC",
                         locale = "en"
@@ -448,6 +452,8 @@ class ValidateAndAddProviderTest {
                 username = "",
                 password = "",
                 name = " MAG ",
+                httpUserAgent = " Stalker Agent/1.0 ",
+                httpHeaders = " Referer: | X-Test: enabled ",
                 deviceProfile = " MAG250 ",
                 timezone = " UTC ",
                 locale = " en ",
@@ -465,6 +471,8 @@ class ValidateAndAddProviderTest {
                 username = "",
                 password = "",
                 name = "MAG",
+                httpUserAgent = "Stalker Agent/1.0",
+                httpHeaders = "Referer: | X-Test: enabled",
                 deviceProfile = "MAG250",
                 timezone = "UTC",
                 locale = "en",
@@ -502,9 +510,25 @@ private class FakeProviderSetupInputValidator(
             username = "",
             password = "",
             name = "Provider",
+            httpUserAgent = "",
+            httpHeaders = "",
             deviceProfile = "MAG250",
             timezone = "UTC",
             locale = "en"
+        )
+    ),
+    private val jellyfinResult: Result<ValidatedJellyfinProviderInput> = Result.success(
+        ValidatedJellyfinProviderInput(
+            serverUrl = "https://jellyfin.example.com",
+            username = "user",
+            password = "secret",
+            name = "Jellyfin"
+        )
+    ),
+    private val jellyfinQuickConnectResult: Result<ValidatedJellyfinQuickConnectProviderInput> = Result.success(
+        ValidatedJellyfinQuickConnectProviderInput(
+            serverUrl = "https://jellyfin.example.com",
+            name = "Jellyfin"
         )
     )
 ) : ProviderSetupInputValidator {
@@ -533,14 +557,30 @@ private class FakeProviderSetupInputValidator(
         username: String,
         password: String,
         allowBlankPassword: Boolean,
+        httpUserAgent: String,
+        httpHeaders: String,
         deviceProfile: String,
         timezone: String,
         locale: String,
         serialNumber: String,
         deviceId: String,
         deviceId2: String,
-        signature: String
+        signature: String,
+        stalkerAdvancedOptionsJson: String
     ): Result<ValidatedStalkerProviderInput> = stalkerResult
+
+    override fun validateJellyfin(
+        serverUrl: String,
+        username: String,
+        password: String,
+        name: String,
+        allowBlankPassword: Boolean
+    ): Result<ValidatedJellyfinProviderInput> = jellyfinResult
+
+    override fun validateJellyfinQuickConnect(
+        serverUrl: String,
+        name: String
+    ): Result<ValidatedJellyfinQuickConnectProviderInput> = jellyfinQuickConnectResult
 }
 
 private data class XtreamCall(
@@ -573,6 +613,8 @@ private data class StalkerCall(
     val username: String,
     val password: String,
     val name: String,
+    val httpUserAgent: String,
+    val httpHeaders: String,
     val deviceProfile: String,
     val timezone: String,
     val locale: String,
@@ -580,6 +622,7 @@ private data class StalkerCall(
     val deviceId: String = "",
     val deviceId2: String = "",
     val signature: String = "",
+    val stalkerAdvancedOptionsJson: String = "",
     val epgSyncMode: ProviderEpgSyncMode,
     val id: Long?
 )
@@ -652,6 +695,8 @@ private class FakeProviderRepository : ProviderRepository {
         authMode: StalkerAuthMode,
         username: String,
         password: String,
+        httpUserAgent: String,
+        httpHeaders: String,
         deviceProfile: String,
         timezone: String,
         locale: String,
@@ -659,6 +704,7 @@ private class FakeProviderRepository : ProviderRepository {
         deviceId: String,
         deviceId2: String,
         signature: String,
+        stalkerAdvancedOptionsJson: String,
         epgSyncMode: ProviderEpgSyncMode,
         onProgress: ((String) -> Unit)?,
         id: Long?
@@ -670,6 +716,8 @@ private class FakeProviderRepository : ProviderRepository {
             username = username,
             password = password,
             name = name,
+            httpUserAgent = httpUserAgent,
+            httpHeaders = httpHeaders,
             deviceProfile = deviceProfile,
             timezone = timezone,
             locale = locale,
@@ -677,6 +725,7 @@ private class FakeProviderRepository : ProviderRepository {
             deviceId = deviceId,
             deviceId2 = deviceId2,
             signature = signature,
+            stalkerAdvancedOptionsJson = stalkerAdvancedOptionsJson,
             epgSyncMode = epgSyncMode,
             id = id
         )
@@ -685,6 +734,8 @@ private class FakeProviderRepository : ProviderRepository {
                 serverUrl = portalUrl,
                 username = username,
                 password = password,
+                httpUserAgent = httpUserAgent,
+                httpHeaders = httpHeaders,
                 stalkerMacAddress = macAddress,
                 stalkerAuthMode = authMode,
                 stalkerDeviceProfile = deviceProfile,
@@ -694,6 +745,40 @@ private class FakeProviderRepository : ProviderRepository {
                 stalkerDeviceId = deviceId,
                 stalkerDeviceId2 = deviceId2,
                 stalkerSignature = signature
+            )
+        )
+    }
+
+    override suspend fun loginJellyfin(
+        serverUrl: String,
+        username: String,
+        password: String,
+        name: String,
+        onProgress: ((String) -> Unit)?,
+        id: Long?
+    ): Result<Provider> {
+        return Result.success(
+            provider(id = id ?: 4L, name = name, type = ProviderType.JELLYFIN).copy(
+                serverUrl = serverUrl,
+                username = username,
+                password = password
+            )
+        )
+    }
+
+    override suspend fun loginJellyfinQuickConnect(
+        serverUrl: String,
+        name: String,
+        onCode: ((String) -> Unit)?,
+        onProgress: ((String) -> Unit)?,
+        id: Long?
+    ): Result<Provider> {
+        onCode?.invoke("ABCD")
+        return Result.success(
+            provider(id = id ?: 5L, name = name, type = ProviderType.JELLYFIN).copy(
+                serverUrl = serverUrl,
+                username = name,
+                password = "quick-connect-token"
             )
         )
     }

@@ -2,7 +2,6 @@ package com.streamvault.app
 
 import android.app.SearchManager
 import android.content.Intent
-import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Build
@@ -265,29 +264,16 @@ class MainActivity : ComponentActivity() {
         if (!state.enabled || (requirePlaying && !state.isPlaying)) {
             return false
         }
-        val params = buildPlayerPictureInPictureParams(state)
         return runCatching {
-            setPictureInPictureParams(params)
-            enterPictureInPictureMode(params)
+            PictureInPictureCompat.enter(this, state)
         }.getOrDefault(false)
     }
 
     private fun applyPlayerPictureInPictureParams() {
         if (!supportsPictureInPicture()) return
         runCatching {
-            setPictureInPictureParams(buildPlayerPictureInPictureParams(playerPictureInPictureState))
+            PictureInPictureCompat.apply(this, playerPictureInPictureState)
         }
-    }
-
-    private fun buildPlayerPictureInPictureParams(
-        state: PlayerPictureInPictureState
-    ): PictureInPictureParams {
-        val builder = PictureInPictureParams.Builder()
-        state.aspectRatio?.let { builder.setAspectRatio(it) }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(state.enabled && state.isPlaying)
-        }
-        return builder.build()
     }
 
     private fun videoAspectRatioOrNull(
@@ -307,6 +293,30 @@ class MainActivity : ComponentActivity() {
     private fun supportsPictureInPicture(): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+    private object PictureInPictureCompat {
+        fun enter(activity: MainActivity, state: PlayerPictureInPictureState): Boolean {
+            val params = build(state)
+            activity.setPictureInPictureParams(params)
+            return activity.enterPictureInPictureMode(params)
+        }
+
+        fun apply(activity: MainActivity, state: PlayerPictureInPictureState) {
+            activity.setPictureInPictureParams(build(state))
+        }
+
+        private fun build(
+            state: PlayerPictureInPictureState
+        ): android.app.PictureInPictureParams {
+            val builder = android.app.PictureInPictureParams.Builder()
+            state.aspectRatio?.let { builder.setAspectRatio(it) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                builder.setAutoEnterEnabled(state.enabled && state.isPlaying)
+            }
+            return builder.build()
+        }
     }
 
     private fun handleExternalIntent(intent: Intent?) {

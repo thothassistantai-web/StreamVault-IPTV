@@ -6,11 +6,13 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import com.streamvault.app.diagnostics.CrashReportStore
 import com.streamvault.app.diagnostics.RuntimeDiagnosticsManager
 import com.streamvault.app.update.GitHubReleaseChecker
 import com.streamvault.app.ui.accessibility.isReducedMotionEnabled
+import com.streamvault.data.remote.jellyfin.JellyfinImageAuthInterceptor
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.domain.model.Result
 import dagger.hilt.android.HiltAndroidApp
@@ -31,6 +33,7 @@ import com.streamvault.data.sync.ProviderSyncWorker
 import com.streamvault.data.sync.XtreamIndexWorker
 import com.streamvault.player.timeshift.TimeshiftDiskManager
 import javax.inject.Inject
+import okhttp3.OkHttpClient
 
 @HiltAndroidApp
 class StreamVaultApp : Application(), SingletonImageLoader.Factory {
@@ -42,6 +45,18 @@ class StreamVaultApp : Application(), SingletonImageLoader.Factory {
 
     @Inject
     lateinit var gitHubReleaseChecker: GitHubReleaseChecker
+
+    @Inject
+    lateinit var okHttpClient: OkHttpClient
+
+    @Inject
+    lateinit var jellyfinImageAuthInterceptor: JellyfinImageAuthInterceptor
+
+    private val imageOkHttpClient: OkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .addInterceptor(jellyfinImageAuthInterceptor)
+            .build()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -118,6 +133,13 @@ class StreamVaultApp : Application(), SingletonImageLoader.Factory {
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
+            .components {
+                add(
+                    OkHttpNetworkFetcherFactory(
+                        callFactory = { imageOkHttpClient }
+                    )
+                )
+            }
             .memoryCache {
                 MemoryCache.Builder()
                     .maxSizePercent(context, 0.15) // Conservative TV memory cache

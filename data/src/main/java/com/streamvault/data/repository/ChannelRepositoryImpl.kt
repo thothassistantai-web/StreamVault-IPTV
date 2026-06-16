@@ -259,6 +259,9 @@ class ChannelRepositoryImpl @Inject constructor(
                     title = channel.name,
                     headers = resolvedStream.headers,
                     userAgent = resolvedStream.userAgent,
+                    allowInvalidSsl = resolvedStream.allowInvalidSsl,
+                    proxyHost = resolvedStream.proxyHost,
+                    proxyPort = resolvedStream.proxyPort,
                     streamType = StreamType.fromContainerExtension(resolvedStream.containerExtension),
                     containerExtension = resolvedStream.containerExtension,
                     expirationTime = resolvedStream.expirationTime

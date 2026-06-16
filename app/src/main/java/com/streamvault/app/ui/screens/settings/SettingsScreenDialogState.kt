@@ -19,13 +19,18 @@ internal class SettingsScreenDialogState(
     private val showLiveChannelGroupingDialogState: MutableState<Boolean>,
     private val showGroupedChannelLabelDialogState: MutableState<Boolean>,
     private val showLiveVariantPreferenceDialogState: MutableState<Boolean>,
+    private val showTopNavigationDialogState: MutableState<Boolean>,
+    private val showHomeDashboardDialogState: MutableState<Boolean>,
     private val showLandingScreenDialogState: MutableState<Boolean>,
     private val showVodViewModeDialogState: MutableState<Boolean>,
+    private val showVodDuplicateHandlingDialogState: MutableState<Boolean>,
+    private val showVodVariantPreferenceDialogState: MutableState<Boolean>,
     private val showGuideDefaultCategoryDialogState: MutableState<Boolean>,
     private val showPlaybackSpeedDialogState: MutableState<Boolean>,
     private val showExternalPlaybackModeDialogState: MutableState<Boolean>,
     private val showAudioVideoOffsetDialogState: MutableState<Boolean>,
     private val showDecoderModeDialogState: MutableState<Boolean>,
+    private val showPlaybackBufferModeDialogState: MutableState<Boolean>,
     private val showAudioOutputPreferenceDialogState: MutableState<Boolean>,
     private val showSurfaceModeDialogState: MutableState<Boolean>,
     private val showVodHttpProtocolDialogState: MutableState<Boolean>,
@@ -41,6 +46,7 @@ internal class SettingsScreenDialogState(
     private val showSubtitleSizeDialogState: MutableState<Boolean>,
     private val showSubtitleTextColorDialogState: MutableState<Boolean>,
     private val showSubtitleBackgroundDialogState: MutableState<Boolean>,
+    private val showLiveTranslationEndpointDialogState: MutableState<Boolean>,
     private val showWifiQualityDialogState: MutableState<Boolean>,
     private val showProviderSyncDialogState: MutableState<Boolean>,
     private val showCustomProviderSyncDialogState: MutableState<Boolean>,
@@ -76,13 +82,18 @@ internal class SettingsScreenDialogState(
     var showLiveChannelGroupingDialog by showLiveChannelGroupingDialogState
     var showGroupedChannelLabelDialog by showGroupedChannelLabelDialogState
     var showLiveVariantPreferenceDialog by showLiveVariantPreferenceDialogState
+    var showTopNavigationDialog by showTopNavigationDialogState
+    var showHomeDashboardDialog by showHomeDashboardDialogState
     var showLandingScreenDialog by showLandingScreenDialogState
     var showVodViewModeDialog by showVodViewModeDialogState
+    var showVodDuplicateHandlingDialog by showVodDuplicateHandlingDialogState
+    var showVodVariantPreferenceDialog by showVodVariantPreferenceDialogState
     var showGuideDefaultCategoryDialog by showGuideDefaultCategoryDialogState
     var showPlaybackSpeedDialog by showPlaybackSpeedDialogState
     var showExternalPlaybackModeDialog by showExternalPlaybackModeDialogState
     var showAudioVideoOffsetDialog by showAudioVideoOffsetDialogState
     var showDecoderModeDialog by showDecoderModeDialogState
+    var showPlaybackBufferModeDialog by showPlaybackBufferModeDialogState
     var showAudioOutputPreferenceDialog by showAudioOutputPreferenceDialogState
     var showSurfaceModeDialog by showSurfaceModeDialogState
     var showVodHttpProtocolDialog by showVodHttpProtocolDialogState
@@ -98,6 +109,7 @@ internal class SettingsScreenDialogState(
     var showSubtitleSizeDialog by showSubtitleSizeDialogState
     var showSubtitleTextColorDialog by showSubtitleTextColorDialogState
     var showSubtitleBackgroundDialog by showSubtitleBackgroundDialogState
+    var showLiveTranslationEndpointDialog by showLiveTranslationEndpointDialogState
     var showWifiQualityDialog by showWifiQualityDialogState
     var showProviderSyncDialog by showProviderSyncDialogState
     var showCustomProviderSyncDialog by showCustomProviderSyncDialogState
@@ -201,13 +213,18 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
     val showLiveChannelGroupingDialogState = rememberSaveable { mutableStateOf(false) }
     val showGroupedChannelLabelDialogState = rememberSaveable { mutableStateOf(false) }
     val showLiveVariantPreferenceDialogState = rememberSaveable { mutableStateOf(false) }
+    val showTopNavigationDialogState = rememberSaveable { mutableStateOf(false) }
+    val showHomeDashboardDialogState = rememberSaveable { mutableStateOf(false) }
     val showLandingScreenDialogState = rememberSaveable { mutableStateOf(false) }
     val showVodViewModeDialogState = rememberSaveable { mutableStateOf(false) }
+    val showVodDuplicateHandlingDialogState = rememberSaveable { mutableStateOf(false) }
+    val showVodVariantPreferenceDialogState = rememberSaveable { mutableStateOf(false) }
     val showGuideDefaultCategoryDialogState = rememberSaveable { mutableStateOf(false) }
     val showPlaybackSpeedDialogState = rememberSaveable { mutableStateOf(false) }
     val showExternalPlaybackModeDialogState = rememberSaveable { mutableStateOf(false) }
     val showAudioVideoOffsetDialogState = rememberSaveable { mutableStateOf(false) }
     val showDecoderModeDialogState = rememberSaveable { mutableStateOf(false) }
+    val showPlaybackBufferModeDialogState = rememberSaveable { mutableStateOf(false) }
     val showAudioOutputPreferenceDialogState = rememberSaveable { mutableStateOf(false) }
     val showSurfaceModeDialogState = rememberSaveable { mutableStateOf(false) }
     val showVodHttpProtocolDialogState = rememberSaveable { mutableStateOf(false) }
@@ -223,6 +240,7 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
     val showSubtitleSizeDialogState = rememberSaveable { mutableStateOf(false) }
     val showSubtitleTextColorDialogState = rememberSaveable { mutableStateOf(false) }
     val showSubtitleBackgroundDialogState = rememberSaveable { mutableStateOf(false) }
+    val showLiveTranslationEndpointDialogState = rememberSaveable { mutableStateOf(false) }
     val showWifiQualityDialogState = rememberSaveable { mutableStateOf(false) }
     val showProviderSyncDialogState = rememberSaveable { mutableStateOf(false) }
     val showCustomProviderSyncDialogState = rememberSaveable { mutableStateOf(false) }
@@ -267,13 +285,18 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
         showLiveChannelGroupingDialogState = showLiveChannelGroupingDialogState,
         showGroupedChannelLabelDialogState = showGroupedChannelLabelDialogState,
         showLiveVariantPreferenceDialogState = showLiveVariantPreferenceDialogState,
+        showTopNavigationDialogState = showTopNavigationDialogState,
+        showHomeDashboardDialogState = showHomeDashboardDialogState,
         showLandingScreenDialogState = showLandingScreenDialogState,
         showVodViewModeDialogState = showVodViewModeDialogState,
+        showVodDuplicateHandlingDialogState = showVodDuplicateHandlingDialogState,
+        showVodVariantPreferenceDialogState = showVodVariantPreferenceDialogState,
         showGuideDefaultCategoryDialogState = showGuideDefaultCategoryDialogState,
         showPlaybackSpeedDialogState = showPlaybackSpeedDialogState,
         showExternalPlaybackModeDialogState = showExternalPlaybackModeDialogState,
         showAudioVideoOffsetDialogState = showAudioVideoOffsetDialogState,
         showDecoderModeDialogState = showDecoderModeDialogState,
+        showPlaybackBufferModeDialogState = showPlaybackBufferModeDialogState,
         showAudioOutputPreferenceDialogState = showAudioOutputPreferenceDialogState,
         showSurfaceModeDialogState = showSurfaceModeDialogState,
         showVodHttpProtocolDialogState = showVodHttpProtocolDialogState,
@@ -289,6 +312,7 @@ internal fun rememberSettingsScreenDialogState(): SettingsScreenDialogState {
         showSubtitleSizeDialogState = showSubtitleSizeDialogState,
         showSubtitleTextColorDialogState = showSubtitleTextColorDialogState,
         showSubtitleBackgroundDialogState = showSubtitleBackgroundDialogState,
+        showLiveTranslationEndpointDialogState = showLiveTranslationEndpointDialogState,
         showWifiQualityDialogState = showWifiQualityDialogState,
         showProviderSyncDialogState = showProviderSyncDialogState,
         showCustomProviderSyncDialogState = showCustomProviderSyncDialogState,

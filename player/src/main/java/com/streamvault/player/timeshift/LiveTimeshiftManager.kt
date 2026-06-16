@@ -5,12 +5,16 @@ import android.content.Context
 import android.content.res.Configuration
 import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.StreamType
+import com.streamvault.player.playback.applyUnsafeTlsBypass
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.URI
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -71,6 +75,12 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient
 ) : LiveTimeshiftManager, ComponentCallbacks2 {
+    private val unsafeOkHttpClient: OkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .applyUnsafeTlsBypass()
+            .build()
+    }
+    private val proxiedClients = ConcurrentHashMap<String, OkHttpClient>()
 
     init {
         context.registerComponentCallbacks(this)
@@ -299,9 +309,31 @@ internal class DefaultLiveTimeshiftManager @Inject constructor(
         }.build()
 
         protected fun trackCall(request: Request): okhttp3.Call {
-            val call = okHttpClient.newCall(request)
+            val call = httpClientFor(streamInfo).newCall(request)
             activeCall = call
             return call
+        }
+
+        private fun httpClientFor(streamInfo: StreamInfo): OkHttpClient {
+            val proxy = streamInfo.httpProxy()
+            if (proxy == null) {
+                return if (streamInfo.allowInvalidSsl) unsafeOkHttpClient else okHttpClient
+            }
+            val key = "${streamInfo.allowInvalidSsl}:${streamInfo.proxyHost.trim()}:${streamInfo.proxyPort}"
+            return proxiedClients.computeIfAbsent(key) {
+                val builder = if (streamInfo.allowInvalidSsl) {
+                    okHttpClient.newBuilder().applyUnsafeTlsBypass()
+                } else {
+                    okHttpClient.newBuilder()
+                }
+                builder.proxy(proxy).build()
+            }
+        }
+
+        private fun StreamInfo.httpProxy(): Proxy? {
+            val host = proxyHost.trim().takeIf { it.isNotBlank() } ?: return null
+            val port = proxyPort ?: return null
+            return Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port))
         }
 
         protected fun clearTrackedCall(call: okhttp3.Call) {

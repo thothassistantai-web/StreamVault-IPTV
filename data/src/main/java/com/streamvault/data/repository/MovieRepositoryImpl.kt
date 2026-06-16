@@ -29,6 +29,8 @@ import com.streamvault.data.remote.xtream.XtreamProvider
 import com.streamvault.data.security.CredentialCrypto
 import com.streamvault.data.sync.ContentCachePolicy
 import com.streamvault.data.sync.SyncManager
+import com.streamvault.data.util.MoviePresentationSettings
+import com.streamvault.data.util.buildPresentedMovies
 import com.streamvault.data.util.rankSearchResults
 import com.streamvault.data.util.toFtsPrefixQuery
 import com.streamvault.domain.model.Category
@@ -36,6 +38,7 @@ import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.LibraryFilterType
 import com.streamvault.domain.model.LibraryBrowseQuery
 import com.streamvault.domain.model.LibrarySortBy
+import com.streamvault.domain.model.MovieDetailPresentationHint
 import com.streamvault.domain.model.Movie
 import com.streamvault.domain.model.PagedResult
 import com.streamvault.domain.model.PlaybackHistory
@@ -44,6 +47,9 @@ import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.Result.Success
 import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.StreamType
+import com.streamvault.domain.model.VodDuplicateConfidence
+import com.streamvault.domain.model.VodDuplicateHandlingMode
+import com.streamvault.domain.model.VodMovieVariant
 import com.streamvault.domain.repository.MovieRepository
 import com.streamvault.domain.repository.PlaybackHistoryRepository
 import com.streamvault.domain.repository.SyncMetadataRepository
@@ -104,6 +110,7 @@ class MovieRepositoryImpl @Inject constructor(
         const val DETAIL_REFRESH_TTL_MILLIS = 14L * 24L * 60L * 60L * 1000L
         const val CACHE_STATE_SUMMARY_ONLY = "SUMMARY_ONLY"
         const val CACHE_STATE_DETAIL_HYDRATED = "DETAIL_HYDRATED"
+        val DETAIL_YEAR_REGEX = Regex("""(19|20)\\d{2}""")
     }
 
     private data class CachedXtreamProvider(
@@ -135,12 +142,27 @@ class MovieRepositoryImpl @Inject constructor(
     private val repositoryScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO.limitedParallelism(XTREAM_CATEGORY_HYDRATION_CONCURRENCY)
     )
+    private val moviePresentationSettingsFlow: Flow<MoviePresentationSettings> = combine(
+        preferencesRepository.vodDuplicateHandlingMode,
+        preferencesRepository.vodVariantPreferenceMode,
+        preferencesRepository.vodVariantSelections,
+        preferencesRepository.vodVariantObservations
+    ) { duplicateHandlingMode, preferenceMode, preferredVariants, observations ->
+        MoviePresentationSettings(
+            duplicateHandlingMode = duplicateHandlingMode,
+            preferenceMode = preferenceMode,
+            preferredVariants = preferredVariants,
+            observations = observations
+        )
+    }
 
     override fun getMovies(providerId: Long): Flow<List<Movie>> =
         preferencesRepository.parentalControlLevel.flatMapLatest { level ->
             if (level >= 3) movieDao.getByProviderUnprotected(providerId)
             else movieDao.getByProvider(providerId)
-        }.map { list -> list.map { it.toDomain() } }
+        }.combine(moviePresentationSettingsFlow) { list, settings ->
+            buildPresentedMovies(list.map { it.toDomain() }, settings)
+        }
 
     override fun getMoviesByCategory(providerId: Long, categoryId: Long): Flow<List<Movie>> =
         flow {
@@ -149,7 +171,9 @@ class MovieRepositoryImpl @Inject constructor(
                 preferencesRepository.parentalControlLevel.flatMapLatest { level ->
                     if (level >= 3) movieDao.getByCategoryUnprotected(providerId, categoryId)
                     else movieDao.getByCategory(providerId, categoryId)
-                }.map { list -> list.map { it.toDomain() } }
+                }.combine(moviePresentationSettingsFlow) { list, settings ->
+                    buildPresentedMovies(list.map { it.toDomain() }, settings)
+                }
             )
         }
 
@@ -171,6 +195,9 @@ class MovieRepositoryImpl @Inject constructor(
                     entities
                 }
             }.map { list -> list.map { it.toDomain() } }
+                .combine(moviePresentationSettingsFlow) { movies, settings ->
+                    buildPresentedMovies(movies, settings)
+                }
         )
     }
 
@@ -188,6 +215,9 @@ class MovieRepositoryImpl @Inject constructor(
                         entities
                     }
                 }.map { list -> list.map { it.toDomain() } }
+                    .combine(moviePresentationSettingsFlow) { movies, settings ->
+                        buildPresentedMovies(movies, settings).take(limit)
+                    }
             )
         }
 
@@ -236,8 +266,13 @@ class MovieRepositoryImpl @Inject constructor(
                             (cat.categoryId as Long?) to items.map { it.toDomain() }
                         }
                 }
-                combine(categoryGroupFlows) { pairs ->
-                    pairs.associate { it.first to it.second }
+                combine(
+                    combine(categoryGroupFlows) { pairs ->
+                        pairs.associate { it.first to it.second }
+                    },
+                    moviePresentationSettingsFlow
+                ) { previews, settings ->
+                    previews.mapValues { (_, movies) -> buildPresentedMovies(movies, settings).take(limitPerCategory) }
                 }.collect { previews ->
                     send(previews)
                 }
@@ -255,6 +290,9 @@ class MovieRepositoryImpl @Inject constructor(
                 entities
             }
         }.map { list -> list.map { it.toDomain() } }
+            .combine(moviePresentationSettingsFlow) { movies, settings ->
+                buildPresentedMovies(movies, settings).take(limit)
+            }
 
     override fun getFreshPreview(providerId: Long, limit: Int): Flow<List<Movie>> =
         combine(
@@ -267,6 +305,9 @@ class MovieRepositoryImpl @Inject constructor(
                 entities
             }
         }.map { list -> list.map { it.toDomain() } }
+            .combine(moviePresentationSettingsFlow) { movies, settings ->
+                buildPresentedMovies(movies, settings).take(limit)
+            }
 
     override fun getRecommendations(providerId: Long, limit: Int): Flow<List<Movie>> =
         combine(
@@ -375,13 +416,25 @@ class MovieRepositoryImpl @Inject constructor(
             }.combine(favoriteDao.getAllByType(providerId, ContentType.MOVIE.name)) { movies, favorites ->
                 val favoriteIds = favorites.map { it.contentId }.toSet()
                 movies.map { if (it.id in favoriteIds) it.copy(isFavorite = true) else it }
+            }.combine(moviePresentationSettingsFlow) { movies, settings ->
+                buildPresentedMovies(movies, settings)
             }
         }
 
     override suspend fun getMovie(movieId: Long): Movie? =
         movieDao.getById(movieId)?.toDomain()
 
-    override suspend fun getMovieDetails(providerId: Long, movieId: Long): Result<Movie> {
+    override suspend fun getMovieVariants(movieId: Long): List<VodMovieVariant> =
+        movieDao.getById(movieId)
+            ?.toDomain()
+            ?.let { movie -> attachMoviePresentation(movie).variants }
+            .orEmpty()
+
+    override suspend fun getMovieDetails(
+        providerId: Long,
+        movieId: Long,
+        knownPresentation: MovieDetailPresentationHint?
+    ): Result<Movie> {
         val movieEntity = movieDao.getById(movieId)
             ?: return Result.error("Movie not found")
 
@@ -389,14 +442,15 @@ class MovieRepositoryImpl @Inject constructor(
             ?: return Result.error("Provider not found")
 
         if (provider.type == ProviderType.XTREAM_CODES && movieEntity.hasFreshXtreamDetails()) {
-            return Result.success(movieEntity.toDomain())
+            return Result.success(attachMoviePresentation(movieEntity.toDomain(), knownPresentation))
         }
 
         val remoteMovieResult = try {
             when (provider.type) {
                 ProviderType.XTREAM_CODES -> getOrCreateXtreamProvider(providerId, provider).getVodInfo(movieEntity.streamId)
-                ProviderType.STALKER_PORTAL -> return Result.success(movieEntity.toDomain())
-                ProviderType.M3U -> return Result.success(movieEntity.toDomain())
+                ProviderType.STALKER_PORTAL -> return Result.success(attachMoviePresentation(movieEntity.toDomain(), knownPresentation))
+                ProviderType.M3U -> return Result.success(attachMoviePresentation(movieEntity.toDomain(), knownPresentation))
+                ProviderType.JELLYFIN -> return Result.success(attachMoviePresentation(movieEntity.toDomain(), knownPresentation))
             }
         } catch (e: Exception) {
             if (provider.type == ProviderType.XTREAM_CODES) {
@@ -407,7 +461,7 @@ class MovieRepositoryImpl @Inject constructor(
                     errorState = "DETAIL_FAILED_RETRYABLE"
                 )
             }
-            return Result.success(movieEntity.toDomain())
+            return Result.success(attachMoviePresentation(movieEntity.toDomain(), knownPresentation))
         }
 
         return when (val remoteResult = remoteMovieResult) {
@@ -442,7 +496,7 @@ class MovieRepositoryImpl @Inject constructor(
                     imageUrl = updatedMovie.posterUrl,
                     detailHydratedAt = updatedMovie.detailHydratedAt
                 )
-                Result.success((movieDao.getById(movieEntity.id) ?: updatedMovie).toDomain())
+                Result.success(attachMoviePresentation((movieDao.getById(movieEntity.id) ?: updatedMovie).toDomain(), knownPresentation))
             }
             is Result.Error -> {
                 if (provider.type == ProviderType.XTREAM_CODES) {
@@ -453,7 +507,7 @@ class MovieRepositoryImpl @Inject constructor(
                         errorState = "DETAIL_FAILED_RETRYABLE"
                     )
                 }
-                Result.success(movieEntity.toDomain())
+                Result.success(attachMoviePresentation(movieEntity.toDomain(), knownPresentation))
             }
             is Result.Loading -> Result.error("Unexpected loading state")
         }
@@ -474,6 +528,9 @@ class MovieRepositoryImpl @Inject constructor(
                     title = movie.name,
                     headers = resolvedStream.headers,
                     userAgent = resolvedStream.userAgent,
+                    allowInvalidSsl = resolvedStream.allowInvalidSsl,
+                    proxyHost = resolvedStream.proxyHost,
+                    proxyPort = resolvedStream.proxyPort,
                     streamType = StreamType.fromContainerExtension(ext),
                     containerExtension = ext,
                     expirationTime = resolvedStream.expirationTime
@@ -486,6 +543,84 @@ class MovieRepositoryImpl @Inject constructor(
 
     override suspend fun refreshMovies(providerId: Long): Result<Unit> =
         Result.success(Unit) // Handled by ProviderRepository
+
+    private suspend fun attachMoviePresentation(
+        movie: Movie,
+        knownPresentation: MovieDetailPresentationHint? = null
+    ): Movie {
+        val settings = moviePresentationSettingsFlow.first()
+        if (settings.duplicateHandlingMode == VodDuplicateHandlingMode.SHOW_ALL) {
+            return movie
+        }
+        knownPresentation
+            ?.takeIf { hint ->
+                hint.providerId == movie.providerId && hint.variants.any { variant -> variant.rawMovieId == movie.id }
+            }
+            ?.let { hint ->
+                return attachPresentedMovie(
+                    movie = movie,
+                    logicalGroupId = hint.logicalGroupId,
+                    variants = hint.variants,
+                    duplicateConfidence = hint.duplicateConfidence
+                )
+            }
+        val groupedMovie = buildPresentedMovies(
+            movies = loadPresentationCandidates(movie).map { it.toDomain() },
+            settings = settings
+        ).firstOrNull { presented ->
+            presented.id == movie.id || presented.variants.any { variant -> variant.rawMovieId == movie.id }
+        } ?: return movie
+        return attachPresentedMovie(
+            movie = movie,
+            logicalGroupId = groupedMovie.logicalGroupId,
+            variants = groupedMovie.variants,
+            duplicateConfidence = groupedMovie.duplicateConfidence,
+            fallbackVariantLabel = groupedMovie.variantLabel
+        )
+    }
+
+    private suspend fun loadPresentationCandidates(movie: Movie): List<com.streamvault.data.local.entity.MovieEntity> {
+        movie.tmdbId?.takeIf { it > 0L }?.let { tmdbId ->
+            val tmdbMatches = movieDao.getByProviderAndTmdbIdSync(movie.providerId, tmdbId)
+            if (tmdbMatches.isNotEmpty()) {
+                return tmdbMatches
+            }
+        }
+
+        val displayYear = movieDisplayYearForDetail(movie)
+        if (displayYear != null) {
+            val yearMatches = movieDao.getByProviderAndYearSync(movie.providerId, displayYear.toString())
+            val releaseMatches = movieDao.getByProviderAndReleaseYearPrefixSync(movie.providerId, "$displayYear%")
+            val narrowed = (yearMatches + releaseMatches + listOfNotNull(movieDao.getById(movie.id))).distinctBy { it.id }
+            if (narrowed.isNotEmpty()) {
+                return narrowed
+            }
+        }
+
+        return listOfNotNull(movieDao.getById(movie.id))
+    }
+
+    private fun attachPresentedMovie(
+        movie: Movie,
+        logicalGroupId: String?,
+        variants: List<VodMovieVariant>,
+        duplicateConfidence: VodDuplicateConfidence,
+        fallbackVariantLabel: String? = null
+    ): Movie {
+        val selectedVariant = variants.firstOrNull { it.rawMovieId == movie.id }
+        return movie.copy(
+            logicalGroupId = logicalGroupId,
+            selectedVariantId = movie.id,
+            variants = variants,
+            duplicateConfidence = duplicateConfidence,
+            variantLabel = selectedVariant?.label ?: fallbackVariantLabel
+        )
+    }
+
+    private fun movieDisplayYearForDetail(movie: Movie): Int? =
+        movie.year?.trim()?.toIntOrNull()
+            ?: movie.releaseDate?.filter(Char::isDigit)?.take(4)?.toIntOrNull()
+            ?: DETAIL_YEAR_REGEX.find(movie.name)?.value?.toIntOrNull()
 
     private fun buildRecommendations(
         movies: List<Movie>,
@@ -593,7 +728,7 @@ class MovieRepositoryImpl @Inject constructor(
     private fun movieBrowseSource(query: LibraryBrowseQuery): Flow<List<Movie>> {
         val normalizedSearch = query.searchQuery.trim()
         val fetchLimit = browseFetchLimit(query)
-        val fastFlow = when {
+        val fastFlow: Flow<List<Movie>>? = when {
             normalizedSearch.length >= MIN_SEARCH_QUERY_LENGTH -> {
                 val ftsQuery = normalizedSearch.toFtsPrefixQuery() ?: return flowOf(emptyList())
                 query.categoryId?.let { categoryId ->
@@ -617,7 +752,25 @@ class MovieRepositoryImpl @Inject constructor(
                         entities.map { it.toDomain() }
                             .rankSearchResults(normalizedSearch) { it.name }
                     }
-                } ?: searchMovies(query.providerId, normalizedSearch)
+                } ?: combine(
+                    safeMovieSearchFlow(
+                        source = movieDao.search(query.providerId, ftsQuery, SEARCH_RESULT_LIMIT),
+                        fallback = {
+                            movieDao.searchFallback(
+                                query.providerId,
+                                normalizedSearch.toSqlLikePattern(),
+                                SEARCH_RESULT_LIMIT
+                            )
+                        },
+                        rawQuery = normalizedSearch
+                    ),
+                    preferencesRepository.parentalControlLevel
+                ) { entities, level ->
+                    if (level >= 3) entities.filter { !it.isUserProtected } else entities
+                }.map { entities ->
+                    entities.map { it.toDomain() }
+                        .rankSearchResults(normalizedSearch) { it.name }
+                }
             }
             query.filterBy.type in setOf(LibraryFilterType.ALL, LibraryFilterType.TOP_RATED, LibraryFilterType.RECENTLY_UPDATED) &&
                 query.sortBy in setOf(LibrarySortBy.LIBRARY, LibrarySortBy.TITLE, LibrarySortBy.RELEASE, LibrarySortBy.UPDATED, LibrarySortBy.RATING) -> {
@@ -635,7 +788,12 @@ class MovieRepositoryImpl @Inject constructor(
                                     }.map { entities -> entities.map { it.toDomain() } }
                                 )
                             }
-                        } ?: getTopRatedPreview(query.providerId, fetchLimit)
+                        } ?: combine(
+                            movieDao.getTopRatedPreview(query.providerId, fetchLimit),
+                            preferencesRepository.parentalControlLevel
+                        ) { entities, level ->
+                            if (level >= 3) entities.filter { !it.isUserProtected } else entities
+                        }.map { entities -> entities.map { it.toDomain() } }
                     }
                     query.sortBy == LibrarySortBy.RELEASE -> {
                         query.categoryId?.let { categoryId ->
@@ -670,7 +828,12 @@ class MovieRepositoryImpl @Inject constructor(
                                     }.map { entities -> entities.map { it.toDomain() } }
                                 )
                             }
-                        } ?: getFreshPreview(query.providerId, fetchLimit)
+                        } ?: combine(
+                            movieDao.getFreshPreview(query.providerId, fetchLimit),
+                            preferencesRepository.parentalControlLevel
+                        ) { entities, level ->
+                            if (level >= 3) entities.filter { !it.isUserProtected } else entities
+                        }.map { entities -> entities.map { it.toDomain() } }
                     }
                     else -> {
                         query.categoryId?.let { categoryId ->
@@ -869,8 +1032,9 @@ class MovieRepositoryImpl @Inject constructor(
 
     private suspend fun fetchMovieBrowseResult(query: LibraryBrowseQuery): PagedResult<Movie> {
         val normalizedSearch = query.searchQuery.trim()
+        val presentationSettings = moviePresentationSettingsFlow.first()
         if (normalizedSearch.length >= MIN_SEARCH_QUERY_LENGTH && supportsFastMovieSearchBrowse(query)) {
-            return fetchFastMovieSearchBrowseResult(query, normalizedSearch)
+            return fetchFastMovieSearchBrowseResult(query, normalizedSearch, presentationSettings)
         }
 
         if (normalizedSearch.length >= MIN_SEARCH_QUERY_LENGTH) {
@@ -898,7 +1062,7 @@ class MovieRepositoryImpl @Inject constructor(
                 favoriteIds = favoriteIds,
                 inProgressIds = inProgressIds,
                 watchCounts = watchCounts
-            )
+            ).let { results -> buildPresentedMovies(results, presentationSettings) }
             val items = filteredResults.drop(query.offset).take(query.limit)
 
             return PagedResult(
@@ -910,7 +1074,7 @@ class MovieRepositoryImpl @Inject constructor(
             )
         }
 
-        val totalCount = movieBrowseTotalCount(query).first()
+        val rawTotalCount = movieBrowseTotalCount(query).first()
         val favoriteIds = favoriteDao.getAllByType(query.providerId, ContentType.MOVIE.name)
             .first()
             .asSequence()
@@ -918,7 +1082,8 @@ class MovieRepositoryImpl @Inject constructor(
             .map { it.contentId }
             .toSet()
 
-        val items = if (supportsCursorBrowse(query)) {
+        val canUseCursorWindow = presentationSettings.duplicateHandlingMode == VodDuplicateHandlingMode.SHOW_ALL && supportsCursorBrowse(query)
+        val items = if (canUseCursorWindow) {
             fetchMovieCursorWindow(query, favoriteIds)
         } else {
             val movies = movieBrowseSource(query).first()
@@ -940,7 +1105,36 @@ class MovieRepositoryImpl @Inject constructor(
                 favoriteIds = favoriteIds,
                 inProgressIds = inProgressIds,
                 watchCounts = watchCounts
-            ).drop(query.offset).take(query.limit)
+            ).let { results -> buildPresentedMovies(results, presentationSettings) }
+                .drop(query.offset)
+                .take(query.limit)
+        }
+
+        val totalCount = if (presentationSettings.duplicateHandlingMode == VodDuplicateHandlingMode.SHOW_ALL) {
+            rawTotalCount
+        } else {
+            val movies = movieBrowseSource(query).first()
+            val history = playbackHistoryDao.getByProvider(query.providerId).first()
+            val inProgressIds = history
+                .asSequence()
+                .filter { it.contentType == ContentType.MOVIE }
+                .filter { it.resumePositionMs > 0L && (it.totalDurationMs <= 0L || !moviePlaybackComplete(it.resumePositionMs, it.totalDurationMs)) }
+                .map { it.contentId }
+                .toSet()
+            val watchCounts = history
+                .asSequence()
+                .filter { it.contentType == ContentType.MOVIE }
+                .associate { it.contentId to it.watchCount }
+            buildPresentedMovies(
+                applyMovieBrowseQuery(
+                    movies = movies,
+                    query = query,
+                    favoriteIds = favoriteIds,
+                    inProgressIds = inProgressIds,
+                    watchCounts = watchCounts
+                ),
+                presentationSettings
+            ).size
         }
 
         val hasMoreRemote = query.categoryId?.let { categoryId ->
@@ -963,7 +1157,8 @@ class MovieRepositoryImpl @Inject constructor(
 
     private suspend fun fetchFastMovieSearchBrowseResult(
         query: LibraryBrowseQuery,
-        normalizedSearch: String
+        normalizedSearch: String,
+        presentationSettings: MoviePresentationSettings
     ): PagedResult<Movie> {
         val ftsQuery = normalizedSearch.toFtsPrefixQuery() ?: return PagedResult(
             items = emptyList(),
@@ -1000,10 +1195,11 @@ class MovieRepositoryImpl @Inject constructor(
             .filter { it.groupId == null }
             .map { it.contentId }
             .toSet()
-        val items = rows
+        val rawItems = rows
             .take(query.limit)
             .map { it.toDomain() }
             .map { movie -> if (movie.id in favoriteIds) movie.copy(isFavorite = true) else movie }
+        val items = buildPresentedMovies(rawItems, presentationSettings)
 
         return PagedResult(
             items = items,
@@ -1487,6 +1683,9 @@ class MovieRepositoryImpl @Inject constructor(
             provider.serverUrl,
             provider.username,
             provider.password,
+            provider.httpUserAgent,
+            provider.httpHeaders,
+            provider.allowedOutputFormatsJson,
             enableBase64TextCompatibility.toString()
         ).joinToString("\u0000")
         return requireNotNull(
@@ -1522,6 +1721,8 @@ class MovieRepositoryImpl @Inject constructor(
             authMode = provider.stalkerAuthMode,
             username = provider.username,
             password = credentialCrypto.decryptIfNeeded(provider.password),
+            httpUserAgent = provider.httpUserAgent,
+            httpHeaders = provider.httpHeaders,
             portalFingerprintHint = provider.stalkerPortalFingerprint,
             magPresetHint = provider.stalkerMagPreset,
             bootstrapRecipeHint = provider.stalkerLastBootstrapRecipe,
@@ -1537,7 +1738,8 @@ class MovieRepositoryImpl @Inject constructor(
             serialNumber = provider.stalkerSerialNumber,
             deviceId = provider.stalkerDeviceId,
             deviceId2 = provider.stalkerDeviceId2,
-            signature = provider.stalkerSignature
+            signature = provider.stalkerSignature,
+            stalkerAdvancedOptionsJson = provider.stalkerAdvancedOptionsJson
         )
     }
 

@@ -24,6 +24,7 @@ import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.StreamType
 import com.streamvault.domain.repository.ChannelRepository
+import com.streamvault.player.playback.applyUnsafeTlsBypass
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.util.concurrent.ConcurrentHashMap
 import okhttp3.OkHttpClient
 import javax.inject.Inject
 
@@ -42,6 +46,8 @@ class StreamVaultTvInputService : TvInputService() {
 
     @Inject
     lateinit var okHttpClient: OkHttpClient
+
+    private val playbackClients = ConcurrentHashMap<PlaybackClientKey, OkHttpClient>()
 
     override fun onCreateSession(inputId: String): Session = StreamVaultSession(this)
 
@@ -127,7 +133,7 @@ class StreamVaultTvInputService : TvInputService() {
         }
 
         private fun buildHttpDataSource(streamInfo: StreamInfo): DataSource.Factory {
-            return OkHttpDataSource.Factory(okHttpClient).apply {
+            return OkHttpDataSource.Factory(okHttpClient.forPlayback(streamInfo)).apply {
                 setUserAgent(streamInfo.userAgent ?: DEFAULT_USER_AGENT)
                 setDefaultRequestProperties(streamInfo.headers)
             }
@@ -174,6 +180,40 @@ class StreamVaultTvInputService : TvInputService() {
     private data class ChannelRef(
         val providerId: Long,
         val channelId: Long
+    )
+
+    private fun OkHttpClient.forPlayback(streamInfo: StreamInfo): OkHttpClient {
+        val proxy = streamInfo.httpProxy()
+        if (!streamInfo.allowInvalidSsl && proxy == null) {
+            return this
+        }
+        val key = PlaybackClientKey(
+            allowInvalidSsl = streamInfo.allowInvalidSsl,
+            proxyHost = streamInfo.proxyHost.trim(),
+            proxyPort = streamInfo.proxyPort
+        )
+        return playbackClients.computeIfAbsent(key) {
+            newBuilder()
+                .apply {
+                    if (streamInfo.allowInvalidSsl) {
+                        applyUnsafeTlsBypass()
+                    }
+                    proxy?.let { proxy(it) }
+                }
+                .build()
+        }
+    }
+
+    private fun StreamInfo.httpProxy(): Proxy? {
+        val host = proxyHost.trim().takeIf { it.isNotBlank() } ?: return null
+        val port = proxyPort ?: return null
+        return Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port))
+    }
+
+    private data class PlaybackClientKey(
+        val allowInvalidSsl: Boolean,
+        val proxyHost: String,
+        val proxyPort: Int?
     )
 
     private companion object {

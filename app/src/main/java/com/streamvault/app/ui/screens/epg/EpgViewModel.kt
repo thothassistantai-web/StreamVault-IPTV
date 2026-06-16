@@ -414,6 +414,7 @@ class EpgViewModel @Inject constructor(
                     engine.stop()
                     engine.setDecoderMode(preferencesRepository.playerDecoderMode.first())
                     engine.setSurfaceMode(preferencesRepository.playerSurfaceMode.first())
+                    engine.setPlaybackBufferMode(preferencesRepository.playerPlaybackBufferMode.first())
                     engine.prepare(preparedStreamInfo)
                     engine.setVolume(1f)
                     engine.play()
@@ -753,6 +754,14 @@ class EpgViewModel @Inject constructor(
     }
 
     fun scheduleRecording(channel: Channel, program: Program, recurrence: RecordingRecurrence = RecordingRecurrence.NONE) {
+        // When the program is airing now, capture starts immediately. Free the provider connection
+        // the guide preview is holding, or on single-connection Xtream accounts the capture would
+        // be a second connection and get a 403. Recording from the guide means "record without
+        // watching", so dropping the preview is intended; it only restarts on an explicit click.
+        // Future programs schedule for later, so leave the preview running.
+        if (program.startTime <= System.currentTimeMillis()) {
+            clearPreview()
+        }
         viewModelScope.launch {
             val command = ScheduleRecordingCommand(
                 contentType = ContentType.LIVE,
@@ -1487,6 +1496,7 @@ class EpgViewModel @Inject constructor(
             com.streamvault.domain.model.ProviderType.XTREAM_CODES -> "Xtream Codes"
             com.streamvault.domain.model.ProviderType.M3U -> "M3U Playlist"
             com.streamvault.domain.model.ProviderType.STALKER_PORTAL -> "Stalker/MAG Portal"
+            com.streamvault.domain.model.ProviderType.JELLYFIN -> "Jellyfin"
         }
     }
 
@@ -1505,6 +1515,12 @@ class EpgViewModel @Inject constructor(
                     "Portal guide falls back to on-demand Stalker data when XMLTV is unavailable."
                 } else {
                     "Guide combines optional XMLTV with on-demand Stalker portal data."
+                }
+            com.streamvault.domain.model.ProviderType.JELLYFIN ->
+                if (provider.epgUrl.isBlank()) {
+                    "Jellyfin replay depends on the server guide data being populated."
+                } else {
+                    "Jellyfin replay combines server guide data with optional XMLTV import."
                 }
         }
     }

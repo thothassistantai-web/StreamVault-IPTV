@@ -6,6 +6,7 @@ import com.streamvault.domain.model.LibraryBrowseQuery
 import com.streamvault.domain.model.PagedResult
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.Series
+import com.streamvault.domain.model.SeriesDetailPresentationHint
 import com.streamvault.domain.model.StreamInfo
 import kotlinx.coroutines.flow.Flow
 
@@ -25,7 +26,11 @@ interface SeriesRepository {
     fun searchSeries(providerId: Long, query: String): Flow<List<Series>>
     suspend fun getSeriesById(seriesId: Long): Series?
     suspend fun getEpisodeById(episodeId: Long): Episode?
-    suspend fun getSeriesDetails(providerId: Long, seriesId: Long): Result<Series>
+    suspend fun getSeriesDetails(
+        providerId: Long,
+        seriesId: Long,
+        knownPresentation: SeriesDetailPresentationHint? = null
+    ): Result<Series>
     suspend fun getEpisodeStreamInfo(episode: Episode): Result<StreamInfo>
     suspend fun refreshSeries(providerId: Long): Result<Unit>
 }

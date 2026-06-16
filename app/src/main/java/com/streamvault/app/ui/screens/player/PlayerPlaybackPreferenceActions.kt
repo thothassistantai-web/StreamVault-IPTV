@@ -3,10 +3,12 @@ package com.streamvault.app.ui.screens.player
 import androidx.lifecycle.viewModelScope
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.LiveChannelObservedQuality
+import com.streamvault.domain.model.VodVariantObservation
 import com.streamvault.domain.model.VideoFormat
 import com.streamvault.player.AUDIO_VIDEO_OFFSET_MAX_MS
 import com.streamvault.player.AUDIO_VIDEO_OFFSET_MIN_MS
 import com.streamvault.player.PlaybackState
+import com.streamvault.player.PlayerError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -186,6 +188,57 @@ fun PlayerViewModel.recordLiveVariantObservation(playbackState: PlaybackState, v
                 lastObservedFrameRate = videoFormat.frameRate,
                 successCount = (existing?.successCount ?: 0) + 1,
                 lastSuccessfulAt = System.currentTimeMillis()
+            )
+        )
+    }
+}
+
+fun PlayerViewModel.recordMovieVariantSuccessObservation() {
+    if (currentContentType != ContentType.MOVIE) return
+    val rawMovieId = currentContentId.takeIf { it > 0L } ?: return
+    val signature = "success|$prepareRequestVersion|$rawMovieId"
+    if (signature == lastRecordedVodVariantObservationSignature) return
+    lastRecordedVodVariantObservationSignature = signature
+
+    viewModelScope.launch {
+        val existing = preferencesRepository.vodVariantObservations.first()[rawMovieId]
+        preferencesRepository.recordVodVariantObservation(
+            rawItemId = rawMovieId,
+            observation = VodVariantObservation(
+                successCount = (existing?.successCount ?: 0) + 1,
+                failureCount = existing?.failureCount ?: 0,
+                lastSuccessfulAt = System.currentTimeMillis(),
+                lastFailedAt = existing?.lastFailedAt ?: 0L
+            )
+        )
+    }
+}
+
+fun PlayerViewModel.recordMovieVariantFailureObservation(error: PlayerError) {
+    if (currentContentType != ContentType.MOVIE) return
+    val rawMovieId = currentContentId.takeIf { it > 0L } ?: return
+    val signature = buildString {
+        append("failure|")
+        append(prepareRequestVersion)
+        append('|')
+        append(rawMovieId)
+        append('|')
+        append(error::class.java.simpleName)
+        append('|')
+        append(error.message)
+    }
+    if (signature == lastRecordedVodVariantObservationSignature) return
+    lastRecordedVodVariantObservationSignature = signature
+
+    viewModelScope.launch {
+        val existing = preferencesRepository.vodVariantObservations.first()[rawMovieId]
+        preferencesRepository.recordVodVariantObservation(
+            rawItemId = rawMovieId,
+            observation = VodVariantObservation(
+                successCount = existing?.successCount ?: 0,
+                failureCount = (existing?.failureCount ?: 0) + 1,
+                lastSuccessfulAt = existing?.lastSuccessfulAt ?: 0L,
+                lastFailedAt = System.currentTimeMillis()
             )
         )
     }

@@ -5,6 +5,7 @@ import android.util.Log
 import com.streamvault.data.local.dao.*
 import com.streamvault.data.local.entity.*
 import com.streamvault.data.mapper.*
+import com.streamvault.data.remote.jellyfin.JellyfinProvider
 import com.streamvault.data.remote.http.toGenericRequestProfile
 import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.stalker.StalkerPlaybackMode
@@ -16,6 +17,8 @@ import com.streamvault.data.remote.xtream.XtreamStreamUrlResolver
 import com.streamvault.data.security.CredentialCrypto
 import com.streamvault.data.sync.ContentCachePolicy
 import com.streamvault.data.sync.SyncManager
+import com.streamvault.data.util.SeriesPresentationSettings
+import com.streamvault.data.util.buildPresentedSeries
 import com.streamvault.domain.model.*
 import com.streamvault.domain.model.Result.Success
 import com.streamvault.domain.repository.PlaybackHistoryRepository
@@ -64,7 +67,8 @@ class SeriesRepositoryImpl @Inject constructor(
     private val xtreamContentIndexDao: XtreamContentIndexDao,
     private val xtreamIndexJobDao: XtreamIndexJobDao,
     private val syncManager: SyncManager,
-    private val seriesCategoryHydrationDao: SeriesCategoryHydrationDao
+    private val seriesCategoryHydrationDao: SeriesCategoryHydrationDao,
+    private val jellyfinProvider: JellyfinProvider
 ) : SeriesRepository {
     private companion object {
         const val TAG = "SeriesRepository"
@@ -81,6 +85,7 @@ class SeriesRepositoryImpl @Inject constructor(
         const val XTREAM_DETAIL_HYDRATION_TIMEOUT_MILLIS = 8_000L
         const val CACHE_STATE_SUMMARY_ONLY = "SUMMARY_ONLY"
         const val CACHE_STATE_DETAIL_HYDRATED = "DETAIL_HYDRATED"
+        val DETAIL_YEAR_REGEX = Regex("""(19|20)\d{2}""")
     }
 
     private data class CachedXtreamProvider(
@@ -112,6 +117,19 @@ class SeriesRepositoryImpl @Inject constructor(
     private val repositoryScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO.limitedParallelism(XTREAM_CATEGORY_HYDRATION_CONCURRENCY)
     )
+    private val seriesPresentationSettingsFlow: Flow<SeriesPresentationSettings> = combine(
+        preferencesRepository.vodDuplicateHandlingMode,
+        preferencesRepository.vodVariantPreferenceMode,
+        preferencesRepository.vodVariantSelections,
+        preferencesRepository.vodVariantObservations
+    ) { duplicateHandlingMode, preferenceMode, preferredVariants, observations ->
+        SeriesPresentationSettings(
+            duplicateHandlingMode = duplicateHandlingMode,
+            preferenceMode = preferenceMode,
+            preferredVariants = preferredVariants,
+            observations = observations
+        )
+    }
 
     override fun getSeries(providerId: Long): Flow<List<Series>> =
         combine(
@@ -124,6 +142,9 @@ class SeriesRepositoryImpl @Inject constructor(
                 entities
             }
         }.map { list -> list.map { it.toDomain() } }
+            .combine(seriesPresentationSettingsFlow) { list, settings ->
+                buildPresentedSeries(list, settings)
+            }
 
     override fun getSeriesByCategory(providerId: Long, categoryId: Long): Flow<List<Series>> =
         flow {
@@ -139,6 +160,9 @@ class SeriesRepositoryImpl @Inject constructor(
                         entities
                     }
                 }.map { list -> list.map { it.toDomain() } }
+                    .combine(seriesPresentationSettingsFlow) { list, settings ->
+                        buildPresentedSeries(list, settings)
+                    }
             )
         }
 
@@ -160,6 +184,9 @@ class SeriesRepositoryImpl @Inject constructor(
                     entities
                 }
             }.map { list -> list.map { it.toDomain() } }
+                .combine(seriesPresentationSettingsFlow) { list, settings ->
+                    buildPresentedSeries(list, settings)
+                }
         )
     }
 
@@ -177,6 +204,9 @@ class SeriesRepositoryImpl @Inject constructor(
                         entities
                     }
                 }.map { list -> list.map { it.toDomain() } }
+                    .combine(seriesPresentationSettingsFlow) { list, settings ->
+                        buildPresentedSeries(list, settings).take(limit)
+                    }
             )
         }
 
@@ -227,8 +257,13 @@ class SeriesRepositoryImpl @Inject constructor(
                             (cat.categoryId as Long?) to items.map { it.toDomain() }
                         }
                 }
-                combine(categoryGroupFlows) { pairs ->
-                    pairs.associate { it.first to it.second }
+                combine(
+                    combine(categoryGroupFlows) { pairs ->
+                        pairs.associate { it.first to it.second }
+                    },
+                    seriesPresentationSettingsFlow
+                ) { previews, settings ->
+                    previews.mapValues { (_, items) -> buildPresentedSeries(items, settings).take(limitPerCategory) }
                 }.collect { previews ->
                     send(previews)
                 }
@@ -246,6 +281,9 @@ class SeriesRepositoryImpl @Inject constructor(
                 entities
             }
         }.map { list -> list.map { it.toDomain() } }
+            .combine(seriesPresentationSettingsFlow) { list, settings ->
+                buildPresentedSeries(list, settings).take(limit)
+            }
 
     override fun getFreshPreview(providerId: Long, limit: Int): Flow<List<Series>> =
         combine(
@@ -258,6 +296,9 @@ class SeriesRepositoryImpl @Inject constructor(
                 entities
             }
         }.map { list -> list.map { it.toDomain() } }
+            .combine(seriesPresentationSettingsFlow) { list, settings ->
+                buildPresentedSeries(list, settings).take(limit)
+            }
 
     override fun getSeriesByIds(ids: List<Long>): Flow<List<Series>> =
         seriesDao.getByIds(ids).map { entities -> entities.map { it.toDomain() } }
@@ -318,6 +359,8 @@ class SeriesRepositoryImpl @Inject constructor(
             }.combine(favoriteDao.getAllByType(providerId, ContentType.SERIES.name)) { series, favorites ->
                 val favoriteIds = favorites.map { it.contentId }.toSet()
                 series.map { if (it.id in favoriteIds) it.copy(isFavorite = true) else it }
+            }.combine(seriesPresentationSettingsFlow) { series, settings ->
+                buildPresentedSeries(series, settings)
             }
         }
 
@@ -327,7 +370,11 @@ class SeriesRepositoryImpl @Inject constructor(
     override suspend fun getEpisodeById(episodeId: Long): Episode? =
         episodeDao.getById(episodeId)?.toDomain()
 
-    override suspend fun getSeriesDetails(providerId: Long, seriesId: Long): Result<Series> {
+    override suspend fun getSeriesDetails(
+        providerId: Long,
+        seriesId: Long,
+        knownPresentation: SeriesDetailPresentationHint?
+    ): Result<Series> {
         val seriesEntity = seriesDao.getById(seriesId)
             ?: seriesDao.getBySeriesId(providerId, seriesId)
             ?: return Result.error("Series not found")
@@ -336,11 +383,11 @@ class SeriesRepositoryImpl @Inject constructor(
             ?: return Result.error("Provider not found")
 
         if (seriesEntity.seriesId <= 0L) {
-            return Result.success(buildSeriesWithPersistedEpisodes(seriesEntity))
+            return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
         }
 
         if (provider.type == ProviderType.XTREAM_CODES && seriesEntity.hasFreshXtreamDetails()) {
-            return Result.success(buildSeriesWithPersistedEpisodes(seriesEntity))
+            return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
         }
 
         val remoteResult = try {
@@ -354,12 +401,39 @@ class SeriesRepositoryImpl @Inject constructor(
                         remoteId = seriesEntity.providerSeriesId?.takeIf { it.isNotBlank() } ?: seriesEntity.seriesId.toString(),
                         errorState = "DETAIL_FAILED_TIMEOUT"
                     )
-                    return Result.success(buildSeriesWithPersistedEpisodes(seriesEntity))
+                    return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
                 }
                 ProviderType.STALKER_PORTAL -> createStalkerProvider(providerId, provider).getSeriesInfo(
                     seriesEntity.providerSeriesId?.takeIf { it.isNotBlank() } ?: seriesEntity.seriesId.toString()
                 )
-                ProviderType.M3U -> return Result.success(buildSeriesWithPersistedEpisodes(seriesEntity))
+                ProviderType.M3U -> return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
+                ProviderType.JELLYFIN -> {
+                    val remoteId = seriesEntity.providerSeriesId?.takeIf { it.isNotBlank() }
+                        ?: return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
+                    val decryptedPassword = credentialCrypto.decryptIfNeeded(provider.password)
+                    when (val episodesResult = jellyfinProvider.fetchEpisodes(
+                        provider = com.streamvault.domain.model.Provider(
+                            id = providerId, name = "Jellyfin", type = ProviderType.JELLYFIN,
+                            serverUrl = provider.serverUrl, username = provider.username,
+                            password = decryptedPassword
+                        ),
+                        seriesRemoteId = remoteId,
+                        seriesLocalId = seriesEntity.id
+                    )) {
+                        is com.streamvault.domain.model.Result.Success -> {
+                            if (episodesResult.data.isNotEmpty()) {
+                                episodeDao.replaceAll(seriesEntity.id, providerId, episodesResult.data)
+                            }
+                            return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
+                        }
+                        is com.streamvault.domain.model.Result.Error -> {
+                            Log.w(TAG, "Failed to fetch Jellyfin episodes: ${episodesResult.message}")
+                            return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
+                        }
+                        is com.streamvault.domain.model.Result.Loading -> {}
+                    }
+                    return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
+                }
             }
         } catch (e: Exception) {
             if (provider.type == ProviderType.XTREAM_CODES) {
@@ -369,7 +443,7 @@ class SeriesRepositoryImpl @Inject constructor(
                     remoteId = seriesEntity.providerSeriesId?.takeIf { it.isNotBlank() } ?: seriesEntity.seriesId.toString(),
                     errorState = "DETAIL_FAILED_RETRYABLE"
                 )
-                return Result.success(buildSeriesWithPersistedEpisodes(seriesEntity))
+                return Result.success(attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation))
             }
             return Result.error(e.message ?: "Failed to access provider credentials", e)
         }
@@ -498,7 +572,10 @@ class SeriesRepositoryImpl @Inject constructor(
                 }
 
                 Result.success(
-                    persistedSeries.toDomain().copy(seasons = mergedSeasons)
+                    attachSeriesPresentation(
+                        persistedSeries.toDomain().copy(seasons = mergedSeasons),
+                        knownPresentation
+                    )
                 )
             }
             is Result.Error -> {
@@ -510,7 +587,7 @@ class SeriesRepositoryImpl @Inject constructor(
                         errorState = "DETAIL_FAILED_RETRYABLE"
                     )
                 }
-                val localSeries = buildSeriesWithPersistedEpisodes(seriesEntity)
+                val localSeries = attachSeriesPresentation(buildSeriesWithPersistedEpisodes(seriesEntity), knownPresentation)
                 Result.success(localSeries)
             }
             is Result.Loading -> Result.error("Unexpected loading state")
@@ -532,6 +609,9 @@ class SeriesRepositoryImpl @Inject constructor(
                     title = episode.title,
                     headers = resolvedStream.headers,
                     userAgent = resolvedStream.userAgent,
+                    allowInvalidSsl = resolvedStream.allowInvalidSsl,
+                    proxyHost = resolvedStream.proxyHost,
+                    proxyPort = resolvedStream.proxyPort,
                     streamType = StreamType.fromContainerExtension(ext),
                     containerExtension = ext,
                     expirationTime = resolvedStream.expirationTime
@@ -560,6 +640,84 @@ class SeriesRepositoryImpl @Inject constructor(
             }
         return seriesEntity.toDomain().copy(seasons = seasons)
     }
+
+    private suspend fun attachSeriesPresentation(
+        series: Series,
+        knownPresentation: SeriesDetailPresentationHint? = null
+    ): Series {
+        val settings = seriesPresentationSettingsFlow.first()
+        if (settings.duplicateHandlingMode == VodDuplicateHandlingMode.SHOW_ALL) {
+            return series
+        }
+        knownPresentation
+            ?.takeIf { hint ->
+                hint.providerId == series.providerId && hint.variants.any { variant -> variant.rawSeriesId == series.id }
+            }
+            ?.let { hint ->
+                return attachPresentedSeries(
+                    series = series,
+                    logicalGroupId = hint.logicalGroupId,
+                    variants = hint.variants,
+                    duplicateConfidence = hint.duplicateConfidence
+                )
+            }
+        val groupedSeries = buildPresentedSeries(
+            series = loadSeriesPresentationCandidates(series).map { it.toDomain() },
+            settings = settings
+        ).firstOrNull { presented ->
+            presented.id == series.id || presented.variants.any { variant -> variant.rawSeriesId == series.id }
+        } ?: return series
+        return attachPresentedSeries(
+            series = series,
+            logicalGroupId = groupedSeries.logicalGroupId,
+            variants = groupedSeries.variants,
+            duplicateConfidence = groupedSeries.duplicateConfidence,
+            fallbackVariantLabel = groupedSeries.variantLabel
+        )
+    }
+
+    private suspend fun loadSeriesPresentationCandidates(series: Series): List<SeriesEntity> {
+        series.tmdbId?.takeIf { it > 0L }?.let { tmdbId ->
+            val tmdbMatches = seriesDao.getByProviderAndTmdbIdSync(series.providerId, tmdbId)
+            if (tmdbMatches.isNotEmpty()) {
+                return tmdbMatches
+            }
+        }
+
+        val displayYear = seriesDisplayYearForDetail(series)
+        if (displayYear != null) {
+            val narrowed = (
+                seriesDao.getByProviderAndReleaseYearPrefixSync(series.providerId, "$displayYear%") +
+                    listOfNotNull(seriesDao.getById(series.id))
+                ).distinctBy { it.id }
+            if (narrowed.isNotEmpty()) {
+                return narrowed
+            }
+        }
+
+        return listOfNotNull(seriesDao.getById(series.id))
+    }
+
+    private fun attachPresentedSeries(
+        series: Series,
+        logicalGroupId: String?,
+        variants: List<VodSeriesVariant>,
+        duplicateConfidence: VodDuplicateConfidence,
+        fallbackVariantLabel: String? = null
+    ): Series {
+        val selectedVariant = variants.firstOrNull { it.rawSeriesId == series.id }
+        return series.copy(
+            logicalGroupId = logicalGroupId ?: "",
+            selectedVariantId = series.id,
+            variants = variants,
+            duplicateConfidence = duplicateConfidence,
+            variantLabel = selectedVariant?.label ?: fallbackVariantLabel
+        )
+    }
+
+    private fun seriesDisplayYearForDetail(series: Series): Int? =
+        series.releaseDate?.filter(Char::isDigit)?.take(4)?.toIntOrNull()
+            ?: DETAIL_YEAR_REGEX.find(series.name)?.value?.toIntOrNull()
 
     private fun seriesBrowseSource(query: LibraryBrowseQuery): Flow<List<Series>> {
         val normalizedSearch = query.searchQuery.trim()
@@ -832,8 +990,9 @@ class SeriesRepositoryImpl @Inject constructor(
 
     private suspend fun fetchSeriesBrowseResult(query: LibraryBrowseQuery): PagedResult<Series> {
         val normalizedSearch = query.searchQuery.trim()
+        val presentationSettings = seriesPresentationSettingsFlow.first()
         if (normalizedSearch.length >= MIN_SEARCH_QUERY_LENGTH && supportsFastSeriesSearchBrowse(query)) {
-            return fetchFastSeriesSearchBrowseResult(query, normalizedSearch)
+            return fetchFastSeriesSearchBrowseResult(query, normalizedSearch, presentationSettings)
         }
 
         if (normalizedSearch.length >= MIN_SEARCH_QUERY_LENGTH) {
@@ -874,7 +1033,7 @@ class SeriesRepositoryImpl @Inject constructor(
                 inProgressIds = inProgressIds,
                 completedSeriesIds = completedSeriesIds,
                 watchCounts = watchCounts
-            )
+            ).let { results -> buildPresentedSeries(results, presentationSettings) }
             val items = filteredResults.drop(query.offset).take(query.limit)
 
             return PagedResult(
@@ -886,7 +1045,7 @@ class SeriesRepositoryImpl @Inject constructor(
             )
         }
 
-        val totalCount = seriesBrowseTotalCount(query).first()
+        val rawTotalCount = seriesBrowseTotalCount(query).first()
         val favoriteIds = favoriteDao.getAllByType(query.providerId, ContentType.SERIES.name)
             .first()
             .asSequence()
@@ -894,7 +1053,9 @@ class SeriesRepositoryImpl @Inject constructor(
             .map { it.contentId }
             .toSet()
 
-        val items = if (supportsCursorBrowse(query)) {
+        val canUseCursorWindow = presentationSettings.duplicateHandlingMode == VodDuplicateHandlingMode.SHOW_ALL &&
+            supportsCursorBrowse(query)
+        val items = if (canUseCursorWindow) {
             fetchSeriesCursorWindow(query, favoriteIds)
         } else {
             val series = seriesBrowseSource(query).first()
@@ -929,7 +1090,49 @@ class SeriesRepositoryImpl @Inject constructor(
                 inProgressIds = inProgressIds,
                 completedSeriesIds = completedSeriesIds,
                 watchCounts = watchCounts
-            ).drop(query.offset).take(query.limit)
+            ).let { results -> buildPresentedSeries(results, presentationSettings) }
+                .drop(query.offset)
+                .take(query.limit)
+        }
+
+        val totalCount = if (presentationSettings.duplicateHandlingMode == VodDuplicateHandlingMode.SHOW_ALL) {
+            rawTotalCount
+        } else {
+            val series = seriesBrowseSource(query).first()
+            val history = playbackHistoryDao.getByProvider(query.providerId).first()
+            val inProgressIds = history
+                .asSequence()
+                .filter { it.contentType == ContentType.SERIES || it.contentType == ContentType.SERIES_EPISODE }
+                .filter {
+                    it.resumePositionMs > 0L && (
+                        it.totalDurationMs <= 0L ||
+                            it.resumePositionMs < (it.totalDurationMs * 0.95f).toLong()
+                        )
+                }
+                .mapNotNull { it.seriesId ?: it.contentId }
+                .toSet()
+            val completedSeriesIds = history
+                .asSequence()
+                .filter { it.contentType == ContentType.SERIES_EPISODE }
+                .filter { it.totalDurationMs > 0L && it.resumePositionMs >= (it.totalDurationMs * 0.95f).toLong() }
+                .mapNotNull { it.seriesId }
+                .toSet()
+            val watchCounts = history
+                .asSequence()
+                .filter { it.contentType == ContentType.SERIES || it.contentType == ContentType.SERIES_EPISODE }
+                .groupBy { it.seriesId ?: it.contentId }
+                .mapValues { (_, entries) -> entries.maxOf { it.watchCount } }
+            buildPresentedSeries(
+                applySeriesBrowseQuery(
+                    series = series,
+                    query = query,
+                    favoriteIds = favoriteIds,
+                    inProgressIds = inProgressIds,
+                    completedSeriesIds = completedSeriesIds,
+                    watchCounts = watchCounts
+                ),
+                presentationSettings
+            ).size
         }
 
         val hasMoreRemote = query.categoryId?.let { categoryId ->
@@ -952,7 +1155,8 @@ class SeriesRepositoryImpl @Inject constructor(
 
     private suspend fun fetchFastSeriesSearchBrowseResult(
         query: LibraryBrowseQuery,
-        normalizedSearch: String
+        normalizedSearch: String,
+        presentationSettings: SeriesPresentationSettings
     ): PagedResult<Series> {
         val ftsQuery = normalizedSearch.toFtsPrefixQuery() ?: return PagedResult(
             items = emptyList(),
@@ -993,6 +1197,7 @@ class SeriesRepositoryImpl @Inject constructor(
             .take(query.limit)
             .map { it.toDomain() }
             .map { series -> if (series.id in favoriteIds) series.copy(isFavorite = true) else series }
+            .let { rawItems -> buildPresentedSeries(rawItems, presentationSettings) }
 
         return PagedResult(
             items = items,
@@ -1458,6 +1663,9 @@ class SeriesRepositoryImpl @Inject constructor(
             provider.serverUrl,
             provider.username,
             provider.password,
+            provider.httpUserAgent,
+            provider.httpHeaders,
+            provider.allowedOutputFormatsJson,
             enableBase64TextCompatibility.toString()
         ).joinToString("\u0000")
         return requireNotNull(
@@ -1493,6 +1701,8 @@ class SeriesRepositoryImpl @Inject constructor(
             authMode = provider.stalkerAuthMode,
             username = provider.username,
             password = credentialCrypto.decryptIfNeeded(provider.password),
+            httpUserAgent = provider.httpUserAgent,
+            httpHeaders = provider.httpHeaders,
             portalFingerprintHint = provider.stalkerPortalFingerprint,
             magPresetHint = provider.stalkerMagPreset,
             bootstrapRecipeHint = provider.stalkerLastBootstrapRecipe,
@@ -1508,7 +1718,8 @@ class SeriesRepositoryImpl @Inject constructor(
             serialNumber = provider.stalkerSerialNumber,
             deviceId = provider.stalkerDeviceId,
             deviceId2 = provider.stalkerDeviceId2,
-            signature = provider.stalkerSignature
+            signature = provider.stalkerSignature,
+            stalkerAdvancedOptionsJson = provider.stalkerAdvancedOptionsJson
         )
     }
 }

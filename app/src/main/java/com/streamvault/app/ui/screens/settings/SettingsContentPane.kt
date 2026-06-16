@@ -23,7 +23,10 @@ internal fun SettingsContentPane(
     onEditProvider: (Provider) -> Unit,
     onNavigateToParentalControl: (Long) -> Unit,
     onChooseRecordingFolder: () -> Unit,
+    onUseUsbRecordingStorage: (() -> Unit)?,
     onCreateBackup: () -> Unit,
+    onCreateBackupUsb: (() -> Unit)?,
+    onRestoreBackupUsb: (() -> Unit)?,
     onShareBackup: () -> Unit,
     onViewCrashReport: () -> Unit,
     onShareCrashReport: () -> Unit,
@@ -59,6 +62,7 @@ internal fun SettingsContentPane(
                 viewModel = viewModel,
                 timeshiftDepthLabel = screenLabels.timeshiftDepthLabel,
                 decoderModeLabel = screenLabels.decoderModeLabel,
+                playbackBufferModeLabel = screenLabels.playbackBufferModeLabel,
                 audioOutputPreferenceLabel = screenLabels.audioOutputPreferenceLabel,
                 externalPlaybackModeLabel = screenLabels.externalPlaybackModeLabel,
                 surfaceModeLabel = screenLabels.surfaceModeLabel,
@@ -75,6 +79,7 @@ internal fun SettingsContentPane(
                 subtitleSizeLabel = screenLabels.subtitleSizeLabel,
                 subtitleTextColorLabel = screenLabels.subtitleTextColorLabel,
                 subtitleBackgroundLabel = screenLabels.subtitleBackgroundLabel,
+                liveTranslationEndpointLabel = screenLabels.liveTranslationEndpointLabel,
                 wifiQualityLabel = screenLabels.wifiQualityLabel,
                 ethernetQualityLabel = screenLabels.ethernetQualityLabel,
                 lastSpeedTestLabel = screenLabels.lastSpeedTestLabel,
@@ -82,6 +87,7 @@ internal fun SettingsContentPane(
                 speedTestRecommendationLabel = screenLabels.speedTestRecommendationLabel,
                 onShowTimeshiftDepthDialogChange = { dialogState.showTimeshiftDepthDialog = it },
                 onShowDecoderModeDialogChange = { dialogState.showDecoderModeDialog = it },
+                onShowPlaybackBufferModeDialogChange = { dialogState.showPlaybackBufferModeDialog = it },
                 onShowAudioOutputPreferenceDialogChange = { dialogState.showAudioOutputPreferenceDialog = it },
                 onShowExternalPlaybackModeDialogChange = { dialogState.showExternalPlaybackModeDialog = it },
                 onShowSurfaceModeDialogChange = { dialogState.showSurfaceModeDialog = it },
@@ -98,6 +104,7 @@ internal fun SettingsContentPane(
                 onShowSubtitleSizeDialogChange = { dialogState.showSubtitleSizeDialog = it },
                 onShowSubtitleTextColorDialogChange = { dialogState.showSubtitleTextColorDialog = it },
                 onShowSubtitleBackgroundDialogChange = { dialogState.showSubtitleBackgroundDialog = it },
+                onShowLiveTranslationEndpointDialogChange = { dialogState.showLiveTranslationEndpointDialog = it },
                 onShowWifiQualityDialogChange = { dialogState.showWifiQualityDialog = it },
                 onShowEthernetQualityDialogChange = { dialogState.showEthernetQualityDialog = it }
             )
@@ -107,6 +114,8 @@ internal fun SettingsContentPane(
         viewModel = viewModel,
         context = context,
         appLandingDestinationLabel = screenLabels.appLandingDestinationLabel,
+        topNavigationSummaryLabel = screenLabels.topNavigationSummaryLabel,
+        homeDashboardSummaryLabel = screenLabels.homeDashboardSummaryLabel,
         guideDefaultCategoryLabel = screenLabels.guideDefaultCategoryLabel,
         timeFormatLabel = screenLabels.timeFormatLabel,
         appLanguageLabel = screenLabels.appLanguageLabel,
@@ -117,10 +126,14 @@ internal fun SettingsContentPane(
         onShowLiveChannelGroupingDialogChange = { dialogState.showLiveChannelGroupingDialog = it },
         onShowGroupedChannelLabelDialogChange = { dialogState.showGroupedChannelLabelDialog = it },
         onShowLiveVariantPreferenceDialogChange = { dialogState.showLiveVariantPreferenceDialog = it },
+        onShowTopNavigationDialogChange = { dialogState.showTopNavigationDialog = it },
+        onShowHomeDashboardDialogChange = { dialogState.showHomeDashboardDialog = it },
         onShowLandingScreenDialogChange = { dialogState.showLandingScreenDialog = it },
         onShowGuideDefaultCategoryDialogChange = { dialogState.showGuideDefaultCategoryDialog = it },
         onShowTimeFormatDialogChange = { dialogState.showTimeFormatDialog = it },
                 onShowVodViewModeDialogChange = { dialogState.showVodViewModeDialog = it },
+                onShowVodDuplicateHandlingDialogChange = { dialogState.showVodDuplicateHandlingDialog = it },
+                onShowVodVariantPreferenceDialogChange = { dialogState.showVodVariantPreferenceDialog = it },
                 onCategorySortDialogTypeChange = { dialogState.categorySortDialogType = it },
                 onShowLanguageDialogChange = { dialogState.showLanguageDialog = it },
                 onRemoteShortcutDialogTargetChange = {
@@ -142,6 +155,7 @@ internal fun SettingsContentPane(
                 uiState = uiState,
                 viewModel = viewModel,
                 onChooseFolder = onChooseRecordingFolder,
+                onUseUsbStorage = onUseUsbRecordingStorage,
                 onShowRecordingPatternDialogChange = { dialogState.showRecordingPatternDialog = it },
                 onShowRecordingRetentionDialogChange = { dialogState.showRecordingRetentionDialog = it },
                 onShowRecordingConcurrencyDialogChange = { dialogState.showRecordingConcurrencyDialog = it },
@@ -152,7 +166,9 @@ internal fun SettingsContentPane(
             settingsBackupSection(
                 onCreateBackup = onCreateBackup,
                 onShareBackup = onShareBackup,
-                onRestoreBackup = onRestoreBackup
+                onRestoreBackup = onRestoreBackup,
+                onCreateBackupUsb = onCreateBackupUsb,
+                onRestoreBackupUsb = onRestoreBackupUsb
             )
             settingsDriveBackupSection(
                 uiState = uiState,

@@ -34,8 +34,10 @@ import com.streamvault.domain.manager.DriveBackupSyncManager
 import com.streamvault.domain.manager.ParentalControlManager
 import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.model.Category
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.AppTimeFormat
+import com.streamvault.domain.model.AppTopLevelDestination
 import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.ContentType
@@ -46,7 +48,10 @@ import com.streamvault.domain.model.CombinedM3uProfile
 import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.AudioOutputPreference
 import com.streamvault.domain.model.LiveChannelGroupingMode
+import com.streamvault.domain.model.LiveStreamFormatMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
+import com.streamvault.domain.model.PlaybackBufferMode
+import com.streamvault.domain.model.VodDuplicateHandlingMode
 import com.streamvault.domain.model.VodHttpProtocolMode
 import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.RecordingItem
@@ -58,6 +63,7 @@ import com.streamvault.domain.model.RemoteShortcutSelection
 import com.streamvault.domain.model.EpgResolutionSummary
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.VirtualCategoryIds
+import com.streamvault.domain.model.VodVariantPreferenceMode
 import com.streamvault.domain.usecase.ExportBackup
 import com.streamvault.domain.usecase.ExportBackupCommand
 import com.streamvault.domain.usecase.ExportBackupResult
@@ -125,6 +131,12 @@ class SettingsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    val playerLiveStreamFormatMode: StateFlow<LiveStreamFormatMode> =
+        preferencesRepository.playerLiveStreamFormatMode.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = LiveStreamFormatMode.AUTO
+        )
     private val activeProviderIdFlow = providerRepository.getActiveProvider().map { it?.id }
     private val appUpdateActions = SettingsAppUpdateActions(
         appContext = application,
@@ -426,7 +438,49 @@ class SettingsViewModel @Inject constructor(
 
     fun setAppLandingDestination(destination: AppLandingDestination) {
         viewModelScope.launch {
-            preferencesRepository.setAppLandingDestination(destination)
+            preferencesRepository.setAppLandingDestination(
+                AppTopLevelDestination.resolveLandingDestination(
+                    preferred = destination,
+                    destinations = _uiState.value.appTopLevelDestinations
+                )
+            )
+        }
+    }
+
+    fun setAppTopLevelDestinations(destinations: List<AppTopLevelDestination>) {
+        viewModelScope.launch {
+            val normalized = AppTopLevelDestination.normalizeForStorage(destinations)
+            val currentLanding = _uiState.value.appLandingDestination
+            val resolvedLanding = AppTopLevelDestination.resolveLandingDestination(
+                preferred = currentLanding,
+                destinations = normalized
+            )
+            preferencesRepository.setAppTopLevelDestinations(normalized)
+            if (resolvedLanding != currentLanding) {
+                preferencesRepository.setAppLandingDestination(resolvedLanding)
+                _uiState.update {
+                    it.copy(
+                        userMessage = appContext.getString(
+                            R.string.settings_top_navigation_default_updated,
+                            appContext.getString(resolvedLanding.labelResId())
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun setAppHomeDashboardShelves(shelves: List<AppHomeDashboardShelf>) {
+        viewModelScope.launch {
+            preferencesRepository.setAppHomeDashboardShelves(
+                AppHomeDashboardShelf.normalizeForStorage(shelves)
+            )
+        }
+    }
+
+    fun resetAppHomeDashboardShelves() {
+        viewModelScope.launch {
+            preferencesRepository.setAppHomeDashboardShelves(AppHomeDashboardShelf.defaultOrder)
         }
     }
 
@@ -538,6 +592,18 @@ class SettingsViewModel @Inject constructor(
     fun setVodInfiniteScroll(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setVodInfiniteScroll(enabled)
+        }
+    }
+
+    fun setVodDuplicateHandlingMode(mode: VodDuplicateHandlingMode) {
+        viewModelScope.launch {
+            preferencesRepository.setVodDuplicateHandlingMode(mode)
+        }
+    }
+
+    fun setVodVariantPreferenceMode(mode: VodVariantPreferenceMode) {
+        viewModelScope.launch {
+            preferencesRepository.setVodVariantPreferenceMode(mode)
         }
     }
 
@@ -673,6 +739,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setPlayerLiveTranslationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerLiveTranslationEnabled(enabled)
+        }
+    }
+
+    fun setPlayerLiveTranslationEndpoint(endpoint: String) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerLiveTranslationEndpoint(endpoint)
+        }
+    }
+
     fun setPlayerTimeshiftDepthMinutes(minutes: Int) {
         viewModelScope.launch {
             preferencesRepository.setPlayerTimeshiftDepthMinutes(minutes)
@@ -721,6 +799,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setPlayerPlaybackBufferMode(mode: PlaybackBufferMode) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerPlaybackBufferMode(mode)
+        }
+    }
+
     fun setPlayerAudioOutputPreference(preference: AudioOutputPreference) {
         viewModelScope.launch {
             preferencesRepository.setPlayerAudioOutputPreference(preference)
@@ -743,6 +827,12 @@ class SettingsViewModel @Inject constructor(
     fun setPlayerSurfaceMode(mode: com.streamvault.domain.model.PlayerSurfaceMode) {
         viewModelScope.launch {
             preferencesRepository.setPlayerSurfaceMode(mode)
+        }
+    }
+
+    fun setPlayerLiveStreamFormatMode(mode: LiveStreamFormatMode) {
+        viewModelScope.launch {
+            preferencesRepository.setPlayerLiveStreamFormatMode(mode)
         }
     }
 
@@ -926,6 +1016,17 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(userMessage = message) }
     }
 
+    private fun AppLandingDestination.labelResId(): Int = when (this) {
+        AppLandingDestination.HOME -> R.string.nav_home
+        AppLandingDestination.LIVE_TV -> R.string.nav_live_tv
+        AppLandingDestination.MOVIES -> R.string.nav_movies
+        AppLandingDestination.SERIES -> R.string.nav_series
+        AppLandingDestination.GUIDE -> R.string.nav_epg
+        AppLandingDestination.DOWNLOADS -> R.string.nav_downloads
+        AppLandingDestination.PLUGINS -> R.string.nav_plugins
+        AppLandingDestination.SETTINGS -> R.string.nav_settings
+    }
+
     fun refreshProvider(
         providerId: Long,
         syncMode: SettingsProviderSyncMode = SettingsProviderSyncMode.SYNC_NOW
@@ -1049,6 +1150,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updateRecordingFolder(treeUri: String?, displayName: String?) {
         recordingActions.updateRecordingFolder(viewModelScope, treeUri, displayName)
+    }
+
+    fun useUsbRecordingStorage(localDirectory: String) {
+        recordingActions.updateRecordingLocalDirectory(viewModelScope, localDirectory)
     }
 
     fun updateRecordingFileNamePattern(pattern: String) {

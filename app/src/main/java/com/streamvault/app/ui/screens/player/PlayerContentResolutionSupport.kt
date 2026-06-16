@@ -89,22 +89,10 @@ internal suspend fun resolvePlayerPlaybackStreamInfo(
                 channelRepository.getChannel(internalContentId)?.let { channel ->
                     fallbackStreamId = channel.streamId.takeIf { it > 0L }
                         ?: channel.epgChannelId?.toLongOrNull()
-                    val streamInfoResult = if (shouldUseStoredLiveStreamInfo(logicalUrl, channel.streamUrl)) {
-                        channelRepository.getStreamInfo(channel)
-                    } else {
-                        Result.success(null)
-                    }
-                    if (streamInfoResult.isSuccess) {
-                        streamInfoResult.getOrNull()?.let { resolved ->
+                    if (shouldUseStoredLiveStreamInfo(logicalUrl, channel.streamUrl)) {
+                        channelRepository.getStreamInfo(channel).getOrNull()?.let { resolved ->
                             return PlayerPlaybackStreamResolution(
                                 streamInfo = resolved.copy(title = resolved.title ?: currentTitle)
-                            )
-                        }
-                    } else {
-                        (streamInfoResult as? Result.Error)?.message?.let { errorMsg ->
-                            return PlayerPlaybackStreamResolution(
-                                streamInfo = null,
-                                resolutionFailureMessage = errorMsg
                             )
                         }
                     }
@@ -182,6 +170,9 @@ internal suspend fun resolvePlayerPlaybackStreamInfo(
                     title = currentTitle,
                     headers = resolved.headers,
                     userAgent = resolved.userAgent,
+                    allowInvalidSsl = resolved.allowInvalidSsl,
+                    proxyHost = resolved.proxyHost,
+                    proxyPort = resolved.proxyPort,
                     streamType = StreamType.fromContainerExtension(ext),
                     containerExtension = ext,
                     expirationTime = resolved.expirationTime

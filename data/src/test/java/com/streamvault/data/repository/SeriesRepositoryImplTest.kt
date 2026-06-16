@@ -18,6 +18,7 @@ import com.streamvault.data.local.entity.SeriesBrowseEntity
 import com.streamvault.data.local.entity.ProviderEntity
 import com.streamvault.data.local.entity.XtreamIndexJobEntity
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.data.remote.jellyfin.JellyfinProvider
 import com.streamvault.data.remote.dto.XtreamSeason
 import com.streamvault.data.remote.dto.XtreamSeriesInfoResponse
 import com.streamvault.data.remote.stalker.StalkerCategoryRecord
@@ -45,6 +46,12 @@ import com.streamvault.domain.model.PlaybackHistory
 import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.Result
+import com.streamvault.domain.model.SeriesDetailPresentationHint
+import com.streamvault.domain.model.VodDuplicateConfidence
+import com.streamvault.domain.model.VodDuplicateHandlingMode
+import com.streamvault.domain.model.VodSeriesVariant
+import com.streamvault.domain.model.VodVariantObservation
+import com.streamvault.domain.model.VodVariantPreferenceMode
 import com.streamvault.domain.repository.PlaybackHistoryRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -78,6 +85,7 @@ class SeriesRepositoryImplTest {
     private val preferencesRepository: PreferencesRepository = mock()
     private val xtreamStreamUrlResolver: XtreamStreamUrlResolver = mock()
     private val seriesCategoryHydrationDao: SeriesCategoryHydrationDao = mock()
+    private val jellyfinProvider: JellyfinProvider = mock()
     private val xtreamContentIndexDao: XtreamContentIndexDao = mock()
     private val xtreamIndexJobDao: XtreamIndexJobDao = mock()
     private val syncManager: SyncManager = mock()
@@ -177,6 +185,134 @@ class SeriesRepositoryImplTest {
         assertThat(result.getOrNull()?.name).isEqualTo("Cached Series")
         verify(xtreamApiService, never()).getSeriesInfo(any(), any())
         verify(xtreamContentIndexDao, never()).markDetailHydrated(any(), any(), any(), any(), anyOrNull(), any())
+    }
+
+    @Test
+    fun `getSeriesDetails with duplicate handling uses narrow tmdb candidates instead of full provider scan`() = runTest {
+        val hydratedAt = System.currentTimeMillis()
+        val rawSeries = SeriesEntity(
+            id = 99L,
+            seriesId = 301L,
+            providerSeriesId = "301",
+            name = "Drama HD",
+            providerId = 7L,
+            releaseDate = "2024-01-01",
+            rating = 7.1f,
+            tmdbId = 777L,
+            cacheState = "DETAIL_HYDRATED",
+            detailHydratedAt = hydratedAt
+        )
+        val alternateSeries = rawSeries.copy(
+            id = 100L,
+            seriesId = 302L,
+            providerSeriesId = "302",
+            name = "Drama 4K",
+            lastModified = 50L
+        )
+        whenever(seriesDao.getById(99L)).thenReturn(rawSeries)
+        whenever(seriesDao.getByProviderAndTmdbIdSync(7L, 777L)).thenReturn(listOf(rawSeries, alternateSeries))
+        whenever(providerDao.getById(7L)).thenReturn(
+            ProviderEntity(
+                id = 7L,
+                name = "Xtream",
+                type = ProviderType.XTREAM_CODES,
+                serverUrl = "http://example.com",
+                username = "user",
+                password = "pass",
+                status = ProviderStatus.ACTIVE
+            )
+        )
+        whenever(episodeDao.getBySeriesSync(99L)).thenReturn(emptyList())
+
+        val result = createRepository(
+            duplicateHandlingMode = VodDuplicateHandlingMode.SMART,
+            variantPreferenceMode = VodVariantPreferenceMode.BEST_QUALITY
+        ).getSeriesDetails(7L, 99L)
+
+        assertThat(result.getOrNull()?.selectedVariantId).isEqualTo(99L)
+        assertThat(result.getOrNull()?.variants?.map { it.rawSeriesId }).containsExactly(100L, 99L).inOrder()
+        verify(seriesDao).getByProviderAndTmdbIdSync(7L, 777L)
+        verify(seriesDao, never()).getByProviderSync(7L)
+    }
+
+    @Test
+    fun `getSeriesDetails with known presentation reuses handed off variants without candidate lookup`() = runTest {
+        val hydratedAt = System.currentTimeMillis()
+        val rawSeries = SeriesEntity(
+            id = 99L,
+            seriesId = 301L,
+            providerSeriesId = "301",
+            name = "Drama HD",
+            providerId = 7L,
+            releaseDate = "2024-01-01",
+            rating = 7.1f,
+            tmdbId = 777L,
+            cacheState = "DETAIL_HYDRATED",
+            detailHydratedAt = hydratedAt
+        )
+        whenever(seriesDao.getById(99L)).thenReturn(rawSeries)
+        whenever(providerDao.getById(7L)).thenReturn(
+            ProviderEntity(
+                id = 7L,
+                name = "Xtream",
+                type = ProviderType.XTREAM_CODES,
+                serverUrl = "http://example.com",
+                username = "user",
+                password = "pass",
+                status = ProviderStatus.ACTIVE
+            )
+        )
+        whenever(episodeDao.getBySeriesSync(99L)).thenReturn(emptyList())
+
+        val knownPresentation = SeriesDetailPresentationHint(
+            providerId = 7L,
+            logicalGroupId = "series:777",
+            variants = listOf(
+                VodSeriesVariant(
+                    rawSeriesId = 100L,
+                    name = "Drama 4K",
+                    seriesId = 302L,
+                    providerSeriesId = "302",
+                    releaseDate = "2024-01-01",
+                    tmdbId = 777L,
+                    episodeRunTime = null,
+                    rating = 7.1f,
+                    lastModified = 50L,
+                    qualityScore = 4,
+                    recencyScore = 50L,
+                    reliabilityScore = 0,
+                    label = "4K"
+                ),
+                VodSeriesVariant(
+                    rawSeriesId = 99L,
+                    name = "Drama HD",
+                    seriesId = 301L,
+                    providerSeriesId = "301",
+                    releaseDate = "2024-01-01",
+                    tmdbId = 777L,
+                    episodeRunTime = null,
+                    rating = 7.1f,
+                    lastModified = 0L,
+                    qualityScore = 2,
+                    recencyScore = 0L,
+                    reliabilityScore = 0,
+                    label = "HD"
+                )
+            ),
+            duplicateConfidence = VodDuplicateConfidence.EXACT
+        )
+
+        val result = createRepository(
+            duplicateHandlingMode = VodDuplicateHandlingMode.SMART,
+            variantPreferenceMode = VodVariantPreferenceMode.BEST_QUALITY
+        ).getSeriesDetails(7L, 99L, knownPresentation)
+
+        assertThat(result.getOrNull()?.selectedVariantId).isEqualTo(99L)
+        assertThat(result.getOrNull()?.logicalGroupId).isEqualTo("series:777")
+        assertThat(result.getOrNull()?.variants?.map { it.rawSeriesId }).containsExactly(100L, 99L).inOrder()
+        verify(seriesDao, never()).getByProviderAndTmdbIdSync(any(), any())
+        verify(seriesDao, never()).getByProviderAndReleaseYearPrefixSync(any(), any())
+        verify(seriesDao, never()).getByProviderSync(any())
     }
 
     @Test
@@ -757,22 +893,127 @@ class SeriesRepositoryImplTest {
         verify(seriesDao, never()).searchFallback(eq(7L), any(), any())
     }
 
-    private fun createRepository() = SeriesRepositoryImpl(
-        seriesDao = seriesDao,
-        episodeDao = episodeDao,
-        categoryDao = categoryDao,
-        favoriteDao = favoriteDao,
-        playbackHistoryDao = playbackHistoryDao,
-        playbackHistoryRepository = playbackHistoryRepository,
-        providerDao = providerDao,
-        stalkerApiService = stalkerApiService,
-        xtreamApiService = xtreamApiService,
-        credentialCrypto = credentialCrypto,
-        preferencesRepository = preferencesRepository,
-        xtreamStreamUrlResolver = xtreamStreamUrlResolver,
-        xtreamContentIndexDao = xtreamContentIndexDao,
-        xtreamIndexJobDao = xtreamIndexJobDao,
-        syncManager = syncManager,
-        seriesCategoryHydrationDao = seriesCategoryHydrationDao
-    )
+    @Test
+    fun `browseSeries groups duplicate series when duplicate handling is enabled`() = runTest {
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
+        whenever(seriesDao.getCount(7L)).thenReturn(flowOf(2))
+        whenever(seriesDao.getByProviderPage(7L, 100, 0)).thenReturn(
+            flowOf(
+                listOf(
+                    SeriesBrowseEntity(
+                        id = 17L,
+                        seriesId = 1700L,
+                        providerSeriesId = "1700",
+                        name = "Drama HD",
+                        providerId = 7L,
+                        releaseDate = "2024-01-01",
+                        tmdbId = 5000L,
+                        lastModified = 10L
+                    ),
+                    SeriesBrowseEntity(
+                        id = 18L,
+                        seriesId = 1800L,
+                        providerSeriesId = "1800",
+                        name = "Drama 4K",
+                        providerId = 7L,
+                        releaseDate = "2024-02-01",
+                        tmdbId = 5000L,
+                        lastModified = 20L
+                    )
+                )
+            )
+        )
+        whenever(favoriteDao.getAllByType(7L, ContentType.SERIES.name)).thenReturn(flowOf(emptyList()))
+        whenever(playbackHistoryDao.getByProvider(7L)).thenReturn(flowOf(emptyList()))
+
+        val result = createRepository(
+            duplicateHandlingMode = VodDuplicateHandlingMode.SMART,
+            variantPreferenceMode = VodVariantPreferenceMode.BEST_QUALITY
+        ).browseSeries(
+            LibraryBrowseQuery(
+                providerId = 7L,
+                sortBy = LibrarySortBy.LIBRARY,
+                offset = 0,
+                limit = 20
+            )
+        ).first()
+
+        assertThat(result.totalCount).isEqualTo(1)
+        assertThat(result.items).hasSize(1)
+        assertThat(result.items.single().selectedVariantId).isEqualTo(18L)
+        assertThat(result.items.single().variants.map { it.rawSeriesId }).containsExactly(18L, 17L).inOrder()
+        verify(seriesDao, never()).getFreshCursorPage(any(), any())
+    }
+
+    @Test
+    fun `searchSeries groups duplicate results when duplicate handling is enabled`() = runTest {
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
+        whenever(seriesDao.search(eq(7L), any(), eq(200))).thenReturn(
+            flowOf(
+                listOf(
+                    SeriesBrowseEntity(
+                        id = 17L,
+                        seriesId = 1700L,
+                        providerSeriesId = "1700",
+                        name = "Drama HD",
+                        providerId = 7L,
+                        releaseDate = "2024-01-01",
+                        tmdbId = 5000L,
+                        lastModified = 10L
+                    ),
+                    SeriesBrowseEntity(
+                        id = 18L,
+                        seriesId = 1800L,
+                        providerSeriesId = "1800",
+                        name = "Drama 4K",
+                        providerId = 7L,
+                        releaseDate = "2024-02-01",
+                        tmdbId = 5000L,
+                        lastModified = 20L
+                    )
+                )
+            )
+        )
+        whenever(favoriteDao.getAllByType(7L, ContentType.SERIES.name)).thenReturn(flowOf(emptyList()))
+
+        val result = createRepository(
+            duplicateHandlingMode = VodDuplicateHandlingMode.SMART,
+            variantPreferenceMode = VodVariantPreferenceMode.BEST_QUALITY
+        ).searchSeries(7L, "drama").first()
+
+        assertThat(result).hasSize(1)
+        assertThat(result.single().selectedVariantId).isEqualTo(18L)
+        assertThat(result.single().variants.map { it.rawSeriesId }).containsExactly(18L, 17L).inOrder()
+    }
+
+    private fun createRepository(
+        duplicateHandlingMode: VodDuplicateHandlingMode = VodDuplicateHandlingMode.SHOW_ALL,
+        variantPreferenceMode: VodVariantPreferenceMode = VodVariantPreferenceMode.BALANCED,
+        preferredVariants: Map<String, Long> = emptyMap(),
+        variantObservations: Map<Long, VodVariantObservation> = emptyMap()
+    ): SeriesRepositoryImpl {
+        whenever(preferencesRepository.vodDuplicateHandlingMode).thenReturn(flowOf(duplicateHandlingMode))
+        whenever(preferencesRepository.vodVariantPreferenceMode).thenReturn(flowOf(variantPreferenceMode))
+        whenever(preferencesRepository.vodVariantSelections).thenReturn(flowOf(preferredVariants))
+        whenever(preferencesRepository.vodVariantObservations).thenReturn(flowOf(variantObservations))
+        return SeriesRepositoryImpl(
+            seriesDao = seriesDao,
+            episodeDao = episodeDao,
+            categoryDao = categoryDao,
+            favoriteDao = favoriteDao,
+            playbackHistoryDao = playbackHistoryDao,
+            playbackHistoryRepository = playbackHistoryRepository,
+            providerDao = providerDao,
+            stalkerApiService = stalkerApiService,
+            xtreamApiService = xtreamApiService,
+            credentialCrypto = credentialCrypto,
+            preferencesRepository = preferencesRepository,
+            xtreamStreamUrlResolver = xtreamStreamUrlResolver,
+            xtreamContentIndexDao = xtreamContentIndexDao,
+            xtreamIndexJobDao = xtreamIndexJobDao,
+            syncManager = syncManager,
+            seriesCategoryHydrationDao = seriesCategoryHydrationDao,
+            jellyfinProvider = jellyfinProvider
+        )
+    }
 }

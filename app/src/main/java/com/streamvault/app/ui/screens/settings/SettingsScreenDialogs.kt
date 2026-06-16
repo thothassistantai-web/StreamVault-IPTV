@@ -146,10 +146,36 @@ internal fun SettingsScreenDialogs(
         )
     }
 
+    if (dialogState.showVodDuplicateHandlingDialog) {
+        VodDuplicateHandlingModeDialog(
+            selectedMode = uiState.vodDuplicateHandlingMode,
+            onDismiss = { dialogState.showVodDuplicateHandlingDialog = false },
+            onModeSelected = { mode ->
+                viewModel.setVodDuplicateHandlingMode(mode)
+                dialogState.showVodDuplicateHandlingDialog = false
+            }
+        )
+    }
+
+    if (dialogState.showVodVariantPreferenceDialog) {
+        VodVariantPreferenceModeDialog(
+            selectedMode = uiState.vodVariantPreferenceMode,
+            onDismiss = { dialogState.showVodVariantPreferenceDialog = false },
+            onModeSelected = { mode ->
+                viewModel.setVodVariantPreferenceMode(mode)
+                dialogState.showVodVariantPreferenceDialog = false
+            }
+        )
+    }
+
     SettingsPreferenceDialogs(
         uiState = uiState,
         viewModel = viewModel,
         context = context,
+        showTopNavigationDialog = dialogState.showTopNavigationDialog,
+        onShowTopNavigationDialogChange = { dialogState.showTopNavigationDialog = it },
+        showHomeDashboardDialog = dialogState.showHomeDashboardDialog,
+        onShowHomeDashboardDialogChange = { dialogState.showHomeDashboardDialog = it },
         showLandingScreenDialog = dialogState.showLandingScreenDialog,
         onShowLandingScreenDialogChange = { dialogState.showLandingScreenDialog = it },
         showGuideDefaultCategoryDialog = dialogState.showGuideDefaultCategoryDialog,
@@ -162,6 +188,8 @@ internal fun SettingsScreenDialogs(
         onShowAudioVideoOffsetDialogChange = { dialogState.showAudioVideoOffsetDialog = it },
         showDecoderModeDialog = dialogState.showDecoderModeDialog,
         onShowDecoderModeDialogChange = { dialogState.showDecoderModeDialog = it },
+        showPlaybackBufferModeDialog = dialogState.showPlaybackBufferModeDialog,
+        onShowPlaybackBufferModeDialogChange = { dialogState.showPlaybackBufferModeDialog = it },
         showAudioOutputPreferenceDialog = dialogState.showAudioOutputPreferenceDialog,
         onShowAudioOutputPreferenceDialogChange = { dialogState.showAudioOutputPreferenceDialog = it },
         showSurfaceModeDialog = dialogState.showSurfaceModeDialog,
@@ -192,6 +220,8 @@ internal fun SettingsScreenDialogs(
         onShowSubtitleTextColorDialogChange = { dialogState.showSubtitleTextColorDialog = it },
         showSubtitleBackgroundDialog = dialogState.showSubtitleBackgroundDialog,
         onShowSubtitleBackgroundDialogChange = { dialogState.showSubtitleBackgroundDialog = it },
+        showLiveTranslationEndpointDialog = dialogState.showLiveTranslationEndpointDialog,
+        onShowLiveTranslationEndpointDialogChange = { dialogState.showLiveTranslationEndpointDialog = it },
         showWifiQualityDialog = dialogState.showWifiQualityDialog,
         onShowWifiQualityDialogChange = { dialogState.showWifiQualityDialog = it },
         showEthernetQualityDialog = dialogState.showEthernetQualityDialog,

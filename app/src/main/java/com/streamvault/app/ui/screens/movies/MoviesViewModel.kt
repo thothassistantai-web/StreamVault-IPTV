@@ -29,9 +29,7 @@ import com.streamvault.app.ui.screens.vod.createVodGroup
 import com.streamvault.app.ui.screens.vod.incrementVodSelectedCategoryLoadLimit
 import com.streamvault.app.ui.screens.vod.buildVodPreviewCatalog
 import com.streamvault.app.ui.screens.vod.buildVodSearchCatalog
-import com.streamvault.app.ui.screens.vod.loadVodDialogSelection
 import com.streamvault.app.ui.screens.vod.loadVodReorderItems
-import com.streamvault.app.ui.screens.vod.markVodFavorites
 import com.streamvault.app.ui.screens.vod.matchesVodGroupMembership
 import com.streamvault.app.ui.screens.vod.moveVodItemDown
 import com.streamvault.app.ui.screens.vod.moveVodItemUp
@@ -444,32 +442,20 @@ class MoviesViewModel @Inject constructor(
                         emptyList()
                     } else {
                         movieRepository.getMoviesByIds(favoriteIds).first().orderByIds(favoriteIds)
-                    }.let { movies ->
-                        markVodFavorites(movies, globalFavoriteIds, Movie::id) { movie, isFavorite ->
-                            movie.copy(isFavorite = isFavorite)
-                        }
-                    }
+                    }.markMovieFavorites(globalFavoriteIds)
                     val continuePreview = if (continueIds.isEmpty()) {
                         emptyList()
                     } else {
                         movieRepository.getMoviesByIds(continueIds).first().orderByIds(continueIds)
-                    }.let { movies ->
-                        markVodFavorites(movies, globalFavoriteIds, Movie::id) { movie, isFavorite ->
-                            movie.copy(isFavorite = isFavorite)
-                        }
-                    }
+                    }.markMovieFavorites(globalFavoriteIds)
 
                     _uiState.update {
                         it.copy(
                             libraryLensRows = mapOf(
                                 MovieLibraryLens.FAVORITES to favoritePreview,
                                 MovieLibraryLens.CONTINUE to continuePreview,
-                                MovieLibraryLens.TOP_RATED to markVodFavorites(dependencies.topRated, globalFavoriteIds, Movie::id) { movie, isFavorite ->
-                                    movie.copy(isFavorite = isFavorite)
-                                },
-                                MovieLibraryLens.FRESH to markVodFavorites(dependencies.fresh, globalFavoriteIds, Movie::id) { movie, isFavorite ->
-                                    movie.copy(isFavorite = isFavorite)
-                                }
+                                MovieLibraryLens.TOP_RATED to dependencies.topRated.markMovieFavorites(globalFavoriteIds),
+                                MovieLibraryLens.FRESH to dependencies.fresh.markMovieFavorites(globalFavoriteIds)
                             ).filterValues { rows -> rows.isNotEmpty() }
                         )
                     }
@@ -630,21 +616,19 @@ class MoviesViewModel @Inject constructor(
 
     fun onShowDialog(movie: Movie) {
         viewModelScope.launch {
-            val dialogSelection = loadVodDialogSelection(
-                item = movie,
-                providerId = movie.providerId,
-                itemId = movie.id,
-                contentType = ContentType.MOVIE,
-                favoriteRepository = favoriteRepository,
-                copyWithFavorite = { currentMovie, isFavorite ->
-                    currentMovie.copy(isFavorite = isFavorite)
-                }
-            )
+            val rawMovieIds = movie.rawMovieIdsForActions()
+            val memberships = rawMovieIds
+                .flatMap { rawMovieId -> favoriteRepository.getGroupMemberships(movie.providerId, rawMovieId, ContentType.MOVIE) }
+                .map { groupId -> -kotlin.math.abs(groupId) }
+                .distinct()
+            val isFavorite = rawMovieIds.any { rawMovieId ->
+                favoriteRepository.isFavorite(movie.providerId, rawMovieId, ContentType.MOVIE)
+            }
             _uiState.update {
                 it.copy(
                     showDialog = true,
-                    selectedMovieForDialog = dialogSelection.selectedItem,
-                    dialogGroupMemberships = dialogSelection.groupMemberships
+                    selectedMovieForDialog = movie.copy(isFavorite = isFavorite),
+                    dialogGroupMemberships = memberships
                 )
             }
         }
@@ -656,14 +640,16 @@ class MoviesViewModel @Inject constructor(
 
     fun addFavorite(movie: Movie) {
         viewModelScope.launch {
-            setVodFavorite(movie.providerId, movie.id, ContentType.MOVIE, true, favoriteRepository)
+            setVodFavorite(movie.providerId, movie.selectedRawMovieId(), ContentType.MOVIE, true, favoriteRepository)
             _uiState.update { it.copy(selectedMovieForDialog = movie.copy(isFavorite = true)) }
         }
     }
 
     fun removeFavorite(movie: Movie) {
         viewModelScope.launch {
-            setVodFavorite(movie.providerId, movie.id, ContentType.MOVIE, false, favoriteRepository)
+            movie.rawMovieIdsForActions().forEach { rawMovieId ->
+                setVodFavorite(movie.providerId, rawMovieId, ContentType.MOVIE, false, favoriteRepository)
+            }
             _uiState.update { it.copy(selectedMovieForDialog = movie.copy(isFavorite = false)) }
         }
     }
@@ -672,7 +658,7 @@ class MoviesViewModel @Inject constructor(
         viewModelScope.launch {
             val memberships = updateVodGroupMembership(
                 providerId = movie.providerId,
-                itemId = movie.id,
+                itemId = movie.selectedRawMovieId(),
                 groupId = group.id,
                 contentType = ContentType.MOVIE,
                 shouldBeMember = true,
@@ -684,14 +670,20 @@ class MoviesViewModel @Inject constructor(
 
     fun removeFromGroup(movie: Movie, group: Category) {
         viewModelScope.launch {
-            val memberships = updateVodGroupMembership(
-                providerId = movie.providerId,
-                itemId = movie.id,
-                groupId = group.id,
-                contentType = ContentType.MOVIE,
-                shouldBeMember = false,
-                favoriteRepository = favoriteRepository
-            )
+            movie.rawMovieIdsForActions().forEach { rawMovieId ->
+                updateVodGroupMembership(
+                    providerId = movie.providerId,
+                    itemId = rawMovieId,
+                    groupId = group.id,
+                    contentType = ContentType.MOVIE,
+                    shouldBeMember = false,
+                    favoriteRepository = favoriteRepository
+                )
+            }
+            val memberships = movie.rawMovieIdsForActions()
+                .flatMap { rawMovieId -> favoriteRepository.getGroupMemberships(movie.providerId, rawMovieId, ContentType.MOVIE) }
+                .map { groupId -> -kotlin.math.abs(groupId) }
+                .distinct()
             _uiState.update { it.copy(dialogGroupMemberships = memberships) }
         }
     }
@@ -712,7 +704,7 @@ class MoviesViewModel @Inject constructor(
                     val memberships = if (selectedMovie != null) {
                         updateVodGroupMembership(
                             providerId = selectedMovie.providerId,
-                            itemId = selectedMovie.id,
+                            itemId = selectedMovie.selectedRawMovieId(),
                             groupId = result.data.id,
                             contentType = ContentType.MOVIE,
                             shouldBeMember = true,
@@ -948,7 +940,7 @@ class MoviesViewModel @Inject constructor(
             hiddenProviderCategoryIds = params.hiddenCategoryIds,
             loadItemsByIds = { ids -> movieRepository.getMoviesByIds(ids).first() },
             providerPreviews = providerPreviews,
-            itemId = Movie::id,
+            itemIds = { movie -> movie.rawMovieIdsForActions() },
             itemCategoryId = Movie::categoryId,
             copyWithFavorite = { movie, isFavorite -> movie.copy(isFavorite = isFavorite) }
         )
@@ -974,7 +966,7 @@ class MoviesViewModel @Inject constructor(
             customCategories = customCategories,
             providerCategories = providerCategories,
             hiddenProviderCategoryIds = hiddenCategoryIds,
-            itemId = Movie::id,
+            itemIds = { movie -> movie.rawMovieIdsForActions() },
             itemCategoryId = Movie::categoryId,
             itemCategoryName = Movie::categoryName,
             copyWithFavorite = { movie, isFavorite -> movie.copy(isFavorite = isFavorite) },
@@ -1120,9 +1112,7 @@ class MoviesViewModel @Inject constructor(
             }
         }
 
-        val enrichedItems = markVodFavorites(selectedItems, globalFavoriteIds, Movie::id) { movie, isFavorite ->
-            movie.copy(isFavorite = isFavorite)
-        }
+        val enrichedItems = selectedItems.markMovieFavorites(globalFavoriteIds)
         return SelectedMovieCategorySnapshot(
             items = enrichedItems,
             loadedCount = enrichedItems.size,
@@ -1145,6 +1135,15 @@ class MoviesViewModel @Inject constructor(
         val movieMap = associateBy { it.id }
         return ids.mapNotNull { movieMap[it] }
     }
+
+    private fun List<Movie>.markMovieFavorites(globalFavoriteIds: Set<Long>): List<Movie> = map { movie ->
+        movie.copy(isFavorite = movie.rawMovieIdsForActions().any { rawMovieId -> rawMovieId in globalFavoriteIds })
+    }
+
+    private fun Movie.selectedRawMovieId(): Long = selectedVariantId ?: id
+
+    private fun Movie.rawMovieIdsForActions(): List<Long> =
+        variants.map { it.rawMovieId }.ifEmpty { listOf(selectedRawMovieId()) }
 
     private fun applyLocalBrowseToMovies(
         items: List<Movie>,

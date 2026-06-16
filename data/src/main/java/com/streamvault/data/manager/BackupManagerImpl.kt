@@ -32,6 +32,8 @@ import com.streamvault.domain.manager.RecordingScheduleImportSummary
 import com.streamvault.domain.manager.ProtectedCategoryBackup
 import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.manager.ScheduledRecordingBackup
+import com.streamvault.domain.model.AppTopLevelDestination
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.RecordingRecurrence
 import com.streamvault.domain.model.RecordingRequest
@@ -85,6 +87,14 @@ class BackupManagerImpl @Inject constructor(
                 put("parentalPinSalt", parentalPinBackup?.saltBase64 ?: "")
                 put("appLanguage", preferencesRepository.appLanguage.first())
                 put("appLandingDestination", preferencesRepository.appLandingDestination.first().storageValue)
+                put(
+                    "appTopLevelDestinations",
+                    preferencesRepository.appTopLevelDestinations.first().joinToString(",") { it.storageValue }
+                )
+                put(
+                    "appHomeDashboardShelves",
+                    preferencesRepository.appHomeDashboardShelves.first().joinToString(",") { it.storageValue }
+                )
                 put("liveTvCategoryFilters", preferencesRepository.liveTvCategoryFilters.first().joinToString("\n"))
                 put("liveTvQuickFilterVisibility", preferencesRepository.liveTvQuickFilterVisibility.first() ?: "always")
                 put("playerMediaSessionEnabled", preferencesRepository.playerMediaSessionEnabled.first().toString())
@@ -92,6 +102,7 @@ class BackupManagerImpl @Inject constructor(
                 put("playerAudioOutputPreference", preferencesRepository.playerAudioOutputPreference.first().name)
                 put("playerCompatibilityMemoryEnabled", preferencesRepository.playerCompatibilityMemoryEnabled.first().toString())
                 put("playerSurfaceMode", preferencesRepository.playerSurfaceMode.first().name)
+                put("playerLiveStreamFormatMode", preferencesRepository.playerLiveStreamFormatMode.first().name)
                 put("playerVodHttpProtocolMode", preferencesRepository.playerVodHttpProtocolMode.first().name)
                 put("playerPlaybackSpeed", preferencesRepository.playerPlaybackSpeed.first().toString())
                 put("playerAudioVideoSyncEnabled", preferencesRepository.playerAudioVideoSyncEnabled.first().toString())
@@ -559,6 +570,21 @@ class BackupManagerImpl @Inject constructor(
                 com.streamvault.domain.model.AppLandingDestination.fromStorage(savedDestination)
             )
         }
+        prefs["appTopLevelDestinations"]?.let { encoded ->
+            val destinations = encoded
+                .split(',')
+                .mapNotNull { token -> AppTopLevelDestination.fromStorage(token.trim()) }
+            if (destinations.isNotEmpty()) {
+                preferencesRepository.setAppTopLevelDestinations(destinations)
+            }
+        }
+        if (prefs.containsKey("appHomeDashboardShelves")) {
+            val shelves = prefs["appHomeDashboardShelves"]
+                .orEmpty()
+                .split(',')
+                .mapNotNull { token -> AppHomeDashboardShelf.fromStorage(token.trim()) }
+            preferencesRepository.setAppHomeDashboardShelves(shelves)
+        }
         prefs["liveTvCategoryFilters"]?.let { preferencesRepository.setLiveTvCategoryFilters(it.split('\n')) }
         prefs["liveTvQuickFilterVisibility"]?.takeIf { it.isNotBlank() }
             ?.let { preferencesRepository.setLiveTvQuickFilterVisibility(it) }
@@ -585,6 +611,13 @@ class BackupManagerImpl @Inject constructor(
                 .firstOrNull { entry -> entry.name == savedMode }
             if (surfaceMode != null) {
                 preferencesRepository.setPlayerSurfaceMode(surfaceMode)
+            }
+        }
+        prefs["playerLiveStreamFormatMode"]?.takeIf { it.isNotBlank() }?.let { savedMode ->
+            val formatMode = com.streamvault.domain.model.LiveStreamFormatMode.entries
+                .firstOrNull { entry -> entry.name == savedMode }
+            if (formatMode != null) {
+                preferencesRepository.setPlayerLiveStreamFormatMode(formatMode)
             }
         }
         (prefs["playerVodHttpProtocolMode"] ?: prefs["playerMovieHttpProtocolMode"])?.takeIf { it.isNotBlank() }?.let { savedMode ->

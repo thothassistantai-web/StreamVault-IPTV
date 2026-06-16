@@ -10,11 +10,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -23,12 +29,14 @@ import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.theme.OnBackground
 import com.streamvault.app.ui.theme.OnSurface
 import com.streamvault.app.ui.theme.Primary
+import com.streamvault.domain.model.LiveStreamFormatMode
 
 internal fun LazyListScope.settingsPlaybackSection(
     uiState: SettingsUiState,
     viewModel: SettingsViewModel,
     timeshiftDepthLabel: String,
     decoderModeLabel: String,
+    playbackBufferModeLabel: String,
     audioOutputPreferenceLabel: String,
     externalPlaybackModeLabel: String,
     surfaceModeLabel: String,
@@ -45,6 +53,7 @@ internal fun LazyListScope.settingsPlaybackSection(
     subtitleSizeLabel: String,
     subtitleTextColorLabel: String,
     subtitleBackgroundLabel: String,
+    liveTranslationEndpointLabel: String,
     wifiQualityLabel: String,
     ethernetQualityLabel: String,
     lastSpeedTestLabel: String,
@@ -52,6 +61,7 @@ internal fun LazyListScope.settingsPlaybackSection(
     speedTestRecommendationLabel: String,
     onShowTimeshiftDepthDialogChange: (Boolean) -> Unit,
     onShowDecoderModeDialogChange: (Boolean) -> Unit,
+    onShowPlaybackBufferModeDialogChange: (Boolean) -> Unit,
     onShowAudioOutputPreferenceDialogChange: (Boolean) -> Unit,
     onShowExternalPlaybackModeDialogChange: (Boolean) -> Unit,
     onShowSurfaceModeDialogChange: (Boolean) -> Unit,
@@ -68,10 +78,38 @@ internal fun LazyListScope.settingsPlaybackSection(
     onShowSubtitleSizeDialogChange: (Boolean) -> Unit,
     onShowSubtitleTextColorDialogChange: (Boolean) -> Unit,
     onShowSubtitleBackgroundDialogChange: (Boolean) -> Unit,
+    onShowLiveTranslationEndpointDialogChange: (Boolean) -> Unit,
     onShowWifiQualityDialogChange: (Boolean) -> Unit,
     onShowEthernetQualityDialogChange: (Boolean) -> Unit
 ) {
     item {
+        val liveStreamFormatMode by viewModel.playerLiveStreamFormatMode.collectAsStateWithLifecycle()
+        var showLiveStreamFormatDialog by rememberSaveable { mutableStateOf(false) }
+        val liveStreamFormatOptions = remember {
+            listOf(
+                LiveStreamFormatMode.AUTO,
+                LiveStreamFormatMode.HLS,
+                LiveStreamFormatMode.MPEG_TS
+            )
+        }
+        if (showLiveStreamFormatDialog) {
+            PremiumSelectionDialog(
+                title = "Live stream format",
+                onDismiss = { showLiveStreamFormatDialog = false }
+            ) {
+                liveStreamFormatOptions.forEachIndexed { index, mode ->
+                    LevelOption(
+                        level = index,
+                        text = formatLiveStreamFormatModeLabel(mode),
+                        currentLevel = if (liveStreamFormatMode == mode) index else -1,
+                        onSelect = {
+                            viewModel.setPlayerLiveStreamFormatMode(mode)
+                            showLiveStreamFormatDialog = false
+                        }
+                    )
+                }
+            }
+        }
         TvClickableSurface(
             onClick = { viewModel.setPreventStandbyDuringPlayback(!uiState.preventStandbyDuringPlayback) },
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
@@ -170,6 +208,34 @@ internal fun LazyListScope.settingsPlaybackSection(
         }
         HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
         TvClickableSurface(
+            onClick = { viewModel.setPlayerLiveTranslationEnabled(!uiState.playerLiveTranslationEnabled) },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = Primary.copy(alpha = 0.15f)
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.settings_live_translation_enabled), style = MaterialTheme.typography.bodyMedium, color = OnSurface)
+                    Text(text = stringResource(R.string.settings_live_translation_enabled_subtitle), style = MaterialTheme.typography.bodySmall, color = OnBackground.copy(alpha = 0.6f))
+                }
+                Switch(checked = uiState.playerLiveTranslationEnabled, onCheckedChange = { viewModel.setPlayerLiveTranslationEnabled(it) })
+            }
+        }
+        ClickableSettingsRow(
+            label = stringResource(R.string.settings_live_translation_endpoint),
+            value = liveTranslationEndpointLabel,
+            onClick = { onShowLiveTranslationEndpointDialogChange(true) }
+        )
+        HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
+        TvClickableSurface(
             onClick = { viewModel.setPlayerTimeshiftEnabled(!uiState.playerTimeshiftEnabled) },
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
             colors = ClickableSurfaceDefaults.colors(
@@ -207,6 +273,11 @@ internal fun LazyListScope.settingsPlaybackSection(
             color = OnBackground.copy(alpha = 0.6f),
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
+        ClickableSettingsRow(
+            label = "Live stream format",
+            value = formatLiveStreamFormatModeLabel(liveStreamFormatMode),
+            onClick = { showLiveStreamFormatDialog = true }
+        )
         HorizontalDivider(color = Color.White.copy(alpha = 0.07f), modifier = Modifier.padding(vertical = 4.dp))
         TvClickableSurface(
             onClick = { viewModel.setZapAutoRevert(!uiState.zapAutoRevert) },
@@ -234,6 +305,11 @@ internal fun LazyListScope.settingsPlaybackSection(
             label = stringResource(R.string.settings_decoder_mode),
             value = decoderModeLabel,
             onClick = { onShowDecoderModeDialogChange(true) }
+        )
+        ClickableSettingsRow(
+            label = stringResource(R.string.settings_live_buffer_size),
+            value = playbackBufferModeLabel,
+            onClick = { onShowPlaybackBufferModeDialogChange(true) }
         )
         ClickableSettingsRow(
             label = stringResource(R.string.settings_audio_output_mode),

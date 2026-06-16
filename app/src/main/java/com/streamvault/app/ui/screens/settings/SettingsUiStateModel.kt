@@ -10,7 +10,9 @@ import com.streamvault.domain.manager.DriveSignInRequest
 import com.streamvault.domain.manager.DriveSyncStatus
 import com.streamvault.domain.manager.ProviderCredentials
 import com.streamvault.domain.model.ActiveLiveSource
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.AppLandingDestination
+import com.streamvault.domain.model.AppTopLevelDestination
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.AudioOutputPreference
 import com.streamvault.domain.model.Category
@@ -23,6 +25,8 @@ import com.streamvault.domain.model.EpgResolutionSummary
 import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
+import com.streamvault.domain.model.PlaybackBufferMode
+import com.streamvault.domain.model.VodDuplicateHandlingMode
 import com.streamvault.domain.model.VodHttpProtocolMode
 import com.streamvault.domain.model.ExternalPlaybackMode
 import com.streamvault.domain.model.PlayerSurfaceMode
@@ -30,6 +34,7 @@ import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.RecordingItem
 import com.streamvault.domain.model.RecordingStorageState
 import com.streamvault.domain.model.RemoteShortcutPreferences
+import com.streamvault.domain.model.VodVariantPreferenceMode
 
 data class CrashReportUiModel(
     val timestamp: String = "",
@@ -61,11 +66,14 @@ data class SettingsUiState(
     val hasParentalPin: Boolean = false,
     val appLanguage: String = "system",
     val appLandingDestination: AppLandingDestination = AppLandingDestination.HOME,
+    val appTopLevelDestinations: List<AppTopLevelDestination> = AppTopLevelDestination.defaultOrder,
+    val appHomeDashboardShelves: List<AppHomeDashboardShelf> = AppHomeDashboardShelf.defaultOrder,
     val appTimeFormat: AppTimeFormat = AppTimeFormat.SYSTEM,
     val preferredAudioLanguage: String = "auto",
     val playerMediaSessionEnabled: Boolean = true,
     val playerFastRetryOnTransientFailures: Boolean = false,
     val playerDecoderMode: DecoderMode = DecoderMode.AUTO,
+    val playerPlaybackBufferMode: PlaybackBufferMode = PlaybackBufferMode.AUTO,
     val playerAudioOutputPreference: AudioOutputPreference = AudioOutputPreference.AUTO,
     val playerCompatibilityMemoryEnabled: Boolean = true,
     val playerSurfaceMode: PlayerSurfaceMode = PlayerSurfaceMode.AUTO,
@@ -83,6 +91,8 @@ data class SettingsUiState(
     val subtitleTextScale: Float = 1f,
     val subtitleTextColor: Int = 0xFFFFFFFF.toInt(),
     val subtitleBackgroundColor: Int = 0x80000000.toInt(),
+    val playerLiveTranslationEnabled: Boolean = false,
+    val playerLiveTranslationEndpoint: String = "http://10.0.2.2:8765",
     val wifiMaxVideoHeight: Int? = null,
     val ethernetMaxVideoHeight: Int? = null,
     val playerTimeshiftEnabled: Boolean = false,
@@ -127,6 +137,8 @@ data class SettingsUiState(
     val liveVariantPreferenceMode: LiveVariantPreferenceMode = LiveVariantPreferenceMode.BALANCED,
     val vodViewMode: VodViewMode = VodViewMode.MODERN,
     val vodInfiniteScroll: Boolean = true,
+    val vodDuplicateHandlingMode: VodDuplicateHandlingMode = VodDuplicateHandlingMode.SHOW_ALL,
+    val vodVariantPreferenceMode: VodVariantPreferenceMode = VodVariantPreferenceMode.BALANCED,
     val guideDefaultCategoryId: Long = com.streamvault.domain.model.VirtualCategoryIds.FAVORITES,
     val guideDefaultCategoryOptions: List<Category> = emptyList(),
     val preventStandbyDuringPlayback: Boolean = true,

@@ -7,6 +7,9 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import com.streamvault.app.BuildConfig
 import com.streamvault.data.local.StreamVaultDatabase
 import com.streamvault.data.local.dao.*
+import com.streamvault.data.remote.jellyfin.JellyfinProvider
+import com.google.gson.Gson
+import okhttp3.OkHttpClient
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -97,11 +100,15 @@ object DatabaseModule {
                 StreamVaultDatabase.MIGRATION_56_57,
                 StreamVaultDatabase.MIGRATION_57_58,
                 StreamVaultDatabase.MIGRATION_58_59,
-                StreamVaultDatabase.MIGRATION_59_60
+                StreamVaultDatabase.MIGRATION_59_60,
+                StreamVaultDatabase.MIGRATION_60_61
             )
             // NOTE: fallbackToDestructiveMigration() intentionally removed.
             // All future schema changes MUST add a corresponding Migration in StreamVaultDatabase.
             .build()
+
+    @Provides @Singleton
+    fun provideJellyfinProvider(okHttpClient: OkHttpClient, gson: Gson): JellyfinProvider = JellyfinProvider(okHttpClient, gson)
 
     @Provides fun provideProviderDao(db: StreamVaultDatabase): ProviderDao = db.providerDao()
     @Provides fun provideChannelDao(db: StreamVaultDatabase): ChannelDao = db.channelDao()

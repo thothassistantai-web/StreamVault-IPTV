@@ -49,6 +49,23 @@ class PlayerDataSourceFactoryProviderTest {
     }
 
     @Test
+    fun `effective playback request properties keep non user agent headers intact`() {
+        val headers = effectivePlaybackRequestProperties(
+            headers = mapOf(
+                "Cookie" to "mac=00%3A11",
+                "X-User-Agent" to "Model: MAG322; Link: Ethernet"
+            ),
+            userAgent = "StalkerAgent/1.0"
+        )
+
+        assertThat(headers).containsExactly(
+            "Cookie", "mac=00%3A11",
+            "X-User-Agent", "Model: MAG322; Link: Ethernet",
+            "User-Agent", "StalkerAgent/1.0"
+        )
+    }
+
+    @Test
     fun `mpeg ts live keeps okhttp data source`() {
         assertThat(shouldUsePlatformHttpDataSource(ResolvedStreamType.MPEG_TS_LIVE)).isFalse()
     }

@@ -36,12 +36,18 @@ import com.streamvault.domain.model.LibraryBrowseQuery
 import com.streamvault.domain.model.LibraryFilterBy
 import com.streamvault.domain.model.LibraryFilterType
 import com.streamvault.domain.model.LibrarySortBy
+import com.streamvault.domain.model.MovieDetailPresentationHint
 import com.streamvault.domain.model.PlaybackHistory
 import com.streamvault.domain.model.ProviderStatus
 import com.streamvault.domain.model.ProviderType
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.SyncMetadata
+import com.streamvault.domain.model.VodDuplicateConfidence
+import com.streamvault.domain.model.VodDuplicateHandlingMode
+import com.streamvault.domain.model.VodMovieVariant
 import com.streamvault.domain.model.VodSyncMode
+import com.streamvault.domain.model.VodVariantObservation
+import com.streamvault.domain.model.VodVariantPreferenceMode
 import com.streamvault.domain.repository.PlaybackHistoryRepository
 import com.streamvault.domain.repository.SyncMetadataRepository
 import kotlinx.coroutines.flow.first
@@ -304,6 +310,139 @@ class MovieRepositoryImplTest {
         assertThat(result.getOrNull()?.name).isEqualTo("Cached Movie")
         verify(xtreamApiService, never()).getVodInfo(any(), any())
         verify(xtreamContentIndexDao, never()).markDetailHydrated(any(), any(), any(), any(), anyOrNull(), any())
+    }
+
+    @Test
+    fun `getMovieDetails with duplicate handling uses narrow tmdb candidates instead of full provider scan`() = runTest {
+        val hydratedAt = System.currentTimeMillis()
+        val rawMovie = movieRecord(
+            id = 99L,
+            name = "Cached Movie HD",
+            genre = "Drama",
+            categoryId = 42L,
+            rating = 7.1f
+        ).copy(
+            tmdbId = 777L,
+            year = "2024",
+            cacheState = "DETAIL_HYDRATED",
+            detailHydratedAt = hydratedAt
+        )
+        val alternateMovie = movieRecord(
+            id = 100L,
+            name = "Cached Movie 4K",
+            genre = "Drama",
+            categoryId = 42L,
+            rating = 7.1f
+        ).copy(
+            tmdbId = 777L,
+            year = "2024"
+        )
+        whenever(movieDao.getById(99L)).thenReturn(rawMovie)
+        whenever(movieDao.getByProviderAndTmdbIdSync(7L, 777L)).thenReturn(listOf(rawMovie, alternateMovie))
+        whenever(providerDao.getById(7L)).thenReturn(
+            ProviderEntity(
+                id = 7L,
+                name = "Xtream",
+                type = ProviderType.XTREAM_CODES,
+                serverUrl = "http://example.com",
+                username = "user",
+                password = "pass",
+                status = ProviderStatus.ACTIVE
+            )
+        )
+
+        val result = createRepository(
+            duplicateHandlingMode = VodDuplicateHandlingMode.SMART,
+            variantPreferenceMode = VodVariantPreferenceMode.BEST_QUALITY
+        ).getMovieDetails(7L, 99L)
+
+        assertThat(result.getOrNull()?.selectedVariantId).isEqualTo(99L)
+        assertThat(result.getOrNull()?.variants?.map { it.rawMovieId }).containsExactly(99L, 100L)
+        verify(movieDao).getByProviderAndTmdbIdSync(7L, 777L)
+        verify(movieDao, never()).getByProvider(7L)
+        verify(movieDao, never()).getByProviderSync(7L)
+    }
+
+    @Test
+    fun `getMovieDetails reuses known presentation hint instead of loading duplicate candidates`() = runTest {
+        val hydratedAt = System.currentTimeMillis()
+        val rawMovie = movieRecord(
+            id = 99L,
+            name = "Cached Movie HD",
+            genre = "Drama",
+            categoryId = 42L,
+            rating = 7.1f
+        ).copy(
+            tmdbId = 777L,
+            year = "2024",
+            cacheState = "DETAIL_HYDRATED",
+            detailHydratedAt = hydratedAt
+        )
+        whenever(movieDao.getById(99L)).thenReturn(rawMovie)
+        whenever(providerDao.getById(7L)).thenReturn(
+            ProviderEntity(
+                id = 7L,
+                name = "Xtream",
+                type = ProviderType.XTREAM_CODES,
+                serverUrl = "http://example.com",
+                username = "user",
+                password = "pass",
+                status = ProviderStatus.ACTIVE
+            )
+        )
+
+        val result = createRepository(
+            duplicateHandlingMode = VodDuplicateHandlingMode.SMART,
+            variantPreferenceMode = VodVariantPreferenceMode.BEST_QUALITY
+        ).getMovieDetails(
+            7L,
+            99L,
+            MovieDetailPresentationHint(
+                providerId = 7L,
+                logicalGroupId = "movie:7:tmdb:777",
+                variants = listOf(
+                    VodMovieVariant(
+                        rawMovieId = 100L,
+                        name = "Cached Movie 4K",
+                        streamUrl = "https://example.com/100.m3u8",
+                        streamId = 100L,
+                        containerExtension = null,
+                        releaseDate = "2024-01-01",
+                        year = "2024",
+                        durationSeconds = 0,
+                        rating = 7.1f,
+                        addedAt = 0L,
+                        qualityScore = 2160,
+                        recencyScore = 20240101L,
+                        reliabilityScore = 0,
+                        label = "4K 2024"
+                    ),
+                    VodMovieVariant(
+                        rawMovieId = 99L,
+                        name = "Cached Movie HD",
+                        streamUrl = "https://example.com/99.m3u8",
+                        streamId = 99L,
+                        containerExtension = null,
+                        releaseDate = "2024-01-01",
+                        year = "2024",
+                        durationSeconds = 0,
+                        rating = 7.1f,
+                        addedAt = 0L,
+                        qualityScore = 1080,
+                        recencyScore = 20240101L,
+                        reliabilityScore = 0,
+                        label = "1080p 2024"
+                    )
+                ),
+                duplicateConfidence = VodDuplicateConfidence.EXACT
+            )
+        )
+
+        assertThat(result.getOrNull()?.selectedVariantId).isEqualTo(99L)
+        assertThat(result.getOrNull()?.variants?.map { it.rawMovieId }).containsExactly(100L, 99L).inOrder()
+        verify(movieDao, never()).getByProviderAndTmdbIdSync(any(), any())
+        verify(movieDao, never()).getByProviderAndYearSync(any(), any())
+        verify(movieDao, never()).getByProviderAndReleaseYearPrefixSync(any(), any())
     }
 
     @Test
@@ -571,6 +710,99 @@ class MovieRepositoryImplTest {
     }
 
     @Test
+    fun `getMoviesByCategory show all preserves raw movie variants`() = runTest {
+        val hdVersion = movieEntity(
+            id = 101L,
+            name = "Arrival HD",
+            genre = "Sci-Fi",
+            categoryId = 42L,
+            rating = 7.9f
+        ).copy(releaseDate = "2016-11-11", year = "2016")
+        val fhdVersion = movieEntity(
+            id = 102L,
+            name = "Arrival FHD",
+            genre = "Sci-Fi",
+            categoryId = 42L,
+            rating = 7.9f
+        ).copy(releaseDate = "2016-11-11", year = "2016")
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
+        whenever(preferencesRepository.xtreamBase64TextCompatibility).thenReturn(flowOf(false))
+        whenever(movieDao.getCountByCategory(7L, 42L)).thenReturn(flowOf(2))
+        whenever(movieDao.getByCategory(7L, 42L)).thenReturn(flowOf(listOf(hdVersion, fhdVersion)))
+
+        val result = createRepository().getMoviesByCategory(7L, 42L).first()
+
+        assertThat(result.map { it.id }).containsExactly(101L, 102L).inOrder()
+        assertThat(result.all { it.variants.isEmpty() }).isTrue()
+    }
+
+    @Test
+    fun `getMoviesByCategory smart groups same movie variants and prefers latest`() = runTest {
+        val hdVersion = movieEntity(
+            id = 101L,
+            name = "Arrival HD",
+            genre = "Sci-Fi",
+            categoryId = 42L,
+            rating = 7.9f
+        ).copy(releaseDate = "2016-11-11", year = "2016", addedAt = 1_000L)
+        val fhdVersion = movieEntity(
+            id = 102L,
+            name = "Arrival FHD",
+            genre = "Sci-Fi",
+            categoryId = 42L,
+            rating = 7.9f
+        ).copy(releaseDate = "2016-11-11", year = "2016", addedAt = 2_000L)
+        val remake = movieEntity(
+            id = 103L,
+            name = "Arrival",
+            genre = "Sci-Fi",
+            categoryId = 42L,
+            rating = 6.5f
+        ).copy(releaseDate = "2024-01-01", year = "2024", addedAt = 3_000L)
+        whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
+        whenever(preferencesRepository.xtreamBase64TextCompatibility).thenReturn(flowOf(false))
+        whenever(movieDao.getCountByCategory(7L, 42L)).thenReturn(flowOf(3))
+        whenever(movieDao.getByCategory(7L, 42L)).thenReturn(flowOf(listOf(remake, fhdVersion, hdVersion)))
+
+        val result = createRepository(
+            duplicateHandlingMode = VodDuplicateHandlingMode.SMART,
+            variantPreferenceMode = VodVariantPreferenceMode.FORCE_LATEST
+        ).getMoviesByCategory(7L, 42L).first()
+
+        assertThat(result.map { it.id }).containsExactly(103L, 102L).inOrder()
+        val groupedArrival = result.single { it.id == 102L }
+        assertThat(groupedArrival.variants.map { it.rawMovieId }).containsExactly(102L, 101L).inOrder()
+        assertThat(groupedArrival.selectedVariantId).isEqualTo(102L)
+    }
+
+    @Test
+    fun `getMoviesByIds stays raw when vod grouping is enabled`() = runTest {
+        val hdVersion = movieEntity(
+            id = 101L,
+            name = "Arrival HD",
+            genre = "Sci-Fi",
+            categoryId = 42L,
+            rating = 7.9f
+        ).copy(releaseDate = "2016-11-11", year = "2016")
+        val fhdVersion = movieEntity(
+            id = 102L,
+            name = "Arrival FHD",
+            genre = "Sci-Fi",
+            categoryId = 42L,
+            rating = 7.9f
+        ).copy(releaseDate = "2016-11-11", year = "2016")
+        whenever(movieDao.getByIds(listOf(101L, 102L))).thenReturn(flowOf(listOf(hdVersion, fhdVersion)))
+
+        val result = createRepository(
+            duplicateHandlingMode = VodDuplicateHandlingMode.SMART,
+            variantPreferenceMode = VodVariantPreferenceMode.FORCE_LATEST
+        ).getMoviesByIds(listOf(101L, 102L)).first()
+
+        assertThat(result.map { it.id }).containsExactly(101L, 102L).inOrder()
+        assertThat(result.all { it.variants.isEmpty() }).isTrue()
+    }
+
+    @Test
     fun `browseMovies search uses bounded page query`() = runTest {
         whenever(preferencesRepository.parentalControlLevel).thenReturn(flowOf(0))
         whenever(movieDao.searchPage(eq(7L), any(), any(), any(), any(), any(), any())).thenReturn(
@@ -710,25 +942,36 @@ class MovieRepositoryImplTest {
         verify(movieDao, never()).getByProviderCursorPage(any(), any())
     }
 
-    private fun createRepository() = MovieRepositoryImpl(
-        movieDao = movieDao,
-        categoryDao = categoryDao,
-        providerDao = providerDao,
-        stalkerApiService = stalkerApiService,
-        xtreamApiService = xtreamApiService,
-        credentialCrypto = credentialCrypto,
-        preferencesRepository = preferencesRepository,
-        favoriteDao = favoriteDao,
-        playbackHistoryDao = playbackHistoryDao,
-        playbackHistoryRepository = playbackHistoryRepository,
-        xtreamStreamUrlResolver = xtreamStreamUrlResolver,
-        movieCategoryHydrationDao = movieCategoryHydrationDao,
-        syncMetadataRepository = syncMetadataRepository,
-        xtreamContentIndexDao = xtreamContentIndexDao,
-        xtreamIndexJobDao = xtreamIndexJobDao,
-        syncManager = syncManager,
-        transactionRunner = transactionRunner
-    )
+    private fun createRepository(
+        duplicateHandlingMode: VodDuplicateHandlingMode = VodDuplicateHandlingMode.SHOW_ALL,
+        variantPreferenceMode: VodVariantPreferenceMode = VodVariantPreferenceMode.BALANCED,
+        preferredVariants: Map<String, Long> = emptyMap(),
+        variantObservations: Map<Long, VodVariantObservation> = emptyMap()
+    ): MovieRepositoryImpl {
+        whenever(preferencesRepository.vodDuplicateHandlingMode).thenReturn(flowOf(duplicateHandlingMode))
+        whenever(preferencesRepository.vodVariantPreferenceMode).thenReturn(flowOf(variantPreferenceMode))
+        whenever(preferencesRepository.vodVariantSelections).thenReturn(flowOf(preferredVariants))
+        whenever(preferencesRepository.vodVariantObservations).thenReturn(flowOf(variantObservations))
+        return MovieRepositoryImpl(
+            movieDao = movieDao,
+            categoryDao = categoryDao,
+            providerDao = providerDao,
+            stalkerApiService = stalkerApiService,
+            xtreamApiService = xtreamApiService,
+            credentialCrypto = credentialCrypto,
+            preferencesRepository = preferencesRepository,
+            favoriteDao = favoriteDao,
+            playbackHistoryDao = playbackHistoryDao,
+            playbackHistoryRepository = playbackHistoryRepository,
+            xtreamStreamUrlResolver = xtreamStreamUrlResolver,
+            movieCategoryHydrationDao = movieCategoryHydrationDao,
+            syncMetadataRepository = syncMetadataRepository,
+            xtreamContentIndexDao = xtreamContentIndexDao,
+            xtreamIndexJobDao = xtreamIndexJobDao,
+            syncManager = syncManager,
+            transactionRunner = transactionRunner
+        )
+    }
 
     private fun movieEntity(
         id: Long,

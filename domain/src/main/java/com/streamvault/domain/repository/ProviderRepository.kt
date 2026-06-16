@@ -51,6 +51,8 @@ interface ProviderRepository {
         authMode: StalkerAuthMode = StalkerAuthMode.AUTO,
         username: String = "",
         password: String = "",
+        httpUserAgent: String = "",
+        httpHeaders: String = "",
         deviceProfile: String = "",
         timezone: String = "",
         locale: String = "",
@@ -58,7 +60,23 @@ interface ProviderRepository {
         deviceId: String = "",
         deviceId2: String = "",
         signature: String = "",
+        stalkerAdvancedOptionsJson: String = "",
         epgSyncMode: ProviderEpgSyncMode = ProviderEpgSyncMode.BACKGROUND,
+        onProgress: ((String) -> Unit)? = null,
+        id: Long? = null
+    ): Result<Provider>
+    suspend fun loginJellyfin(
+        serverUrl: String,
+        username: String,
+        password: String,
+        name: String,
+        onProgress: ((String) -> Unit)? = null,
+        id: Long? = null
+    ): Result<Provider>
+    suspend fun loginJellyfinQuickConnect(
+        serverUrl: String,
+        name: String,
+        onCode: ((String) -> Unit)? = null,
         onProgress: ((String) -> Unit)? = null,
         id: Long? = null
     ): Result<Provider>

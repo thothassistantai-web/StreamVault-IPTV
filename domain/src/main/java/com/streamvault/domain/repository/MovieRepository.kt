@@ -2,10 +2,12 @@ package com.streamvault.domain.repository
 
 import com.streamvault.domain.model.Category
 import com.streamvault.domain.model.LibraryBrowseQuery
+import com.streamvault.domain.model.MovieDetailPresentationHint
 import com.streamvault.domain.model.Movie
 import com.streamvault.domain.model.PagedResult
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.model.StreamInfo
+import com.streamvault.domain.model.VodMovieVariant
 import kotlinx.coroutines.flow.Flow
 
 interface MovieRepository {
@@ -25,7 +27,12 @@ interface MovieRepository {
     fun browseMovies(query: LibraryBrowseQuery): Flow<PagedResult<Movie>>
     fun searchMovies(providerId: Long, query: String): Flow<List<Movie>>
     suspend fun getMovie(movieId: Long): Movie?
-    suspend fun getMovieDetails(providerId: Long, movieId: Long): Result<Movie>
+    suspend fun getMovieVariants(movieId: Long): List<VodMovieVariant> = emptyList()
+    suspend fun getMovieDetails(
+        providerId: Long,
+        movieId: Long,
+        knownPresentation: MovieDetailPresentationHint? = null
+    ): Result<Movie>
     suspend fun getStreamInfo(movie: Movie): Result<StreamInfo>
     suspend fun refreshMovies(providerId: Long): Result<Unit>
     suspend fun getWatchProgress(movieId: Long): Long? = null

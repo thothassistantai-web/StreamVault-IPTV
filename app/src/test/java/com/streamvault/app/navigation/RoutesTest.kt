@@ -2,6 +2,7 @@ package com.streamvault.app.navigation
 
 import com.google.common.truth.Truth.assertThat
 import com.streamvault.domain.model.AppLandingDestination
+import com.streamvault.domain.model.AppTopLevelDestination
 import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Episode
 import com.streamvault.domain.model.Movie
@@ -134,6 +135,29 @@ class RoutesTest {
         assertThat(AppLandingDestination.DOWNLOADS.toAppRoute()).isEqualTo(Routes.DOWNLOADS)
         assertThat(AppLandingDestination.PLUGINS.toAppRoute()).isEqualTo(Routes.PLUGINS)
         assertThat(AppLandingDestination.SETTINGS.toAppRoute()).isEqualTo(Routes.SETTINGS)
+    }
+
+    @Test
+    fun `top level destinations map to routes including search`() {
+        assertThat(AppTopLevelDestination.HOME.toAppRoute()).isEqualTo(Routes.HOME)
+        assertThat(AppTopLevelDestination.LIVE_TV.toAppRoute()).isEqualTo(Routes.LIVE_TV)
+        assertThat(AppTopLevelDestination.MOVIES.toAppRoute()).isEqualTo(Routes.MOVIES)
+        assertThat(AppTopLevelDestination.SERIES.toAppRoute()).isEqualTo(Routes.SERIES)
+        assertThat(AppTopLevelDestination.DOWNLOADS.toAppRoute()).isEqualTo(Routes.DOWNLOADS)
+        assertThat(AppTopLevelDestination.GUIDE.toAppRoute()).isEqualTo(Routes.EPG)
+        assertThat(AppTopLevelDestination.SEARCH.toAppRoute()).isEqualTo(Routes.SEARCH)
+        assertThat(AppTopLevelDestination.PLUGINS.toAppRoute()).isEqualTo(Routes.PLUGINS)
+        assertThat(AppTopLevelDestination.SETTINGS.toAppRoute()).isEqualTo(Routes.SETTINGS)
+    }
+
+    @Test
+    fun `top level destinations resolve landing to a visible fallback`() {
+        val resolved = AppTopLevelDestination.resolveLandingDestination(
+            preferred = AppLandingDestination.MOVIES,
+            destinations = listOf(AppTopLevelDestination.HOME, AppTopLevelDestination.SETTINGS)
+        )
+
+        assertThat(resolved).isEqualTo(AppLandingDestination.HOME)
     }
 
     @Test

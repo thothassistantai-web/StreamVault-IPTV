@@ -29,7 +29,6 @@ import com.streamvault.app.ui.screens.vod.createVodGroup
 import com.streamvault.app.ui.screens.vod.incrementVodSelectedCategoryLoadLimit
 import com.streamvault.app.ui.screens.vod.buildVodPreviewCatalog
 import com.streamvault.app.ui.screens.vod.buildVodSearchCatalog
-import com.streamvault.app.ui.screens.vod.loadVodDialogSelection
 import com.streamvault.app.ui.screens.vod.loadVodReorderItems
 import com.streamvault.app.ui.screens.vod.markVodFavorites
 import com.streamvault.app.ui.screens.vod.matchesVodGroupMembership
@@ -449,32 +448,20 @@ class SeriesViewModel @Inject constructor(
                         emptyList()
                     } else {
                         seriesRepository.getSeriesByIds(favoriteIds).first().orderByIds(favoriteIds)
-                    }.let { series ->
-                        markVodFavorites(series, globalFavoriteIds, Series::id) { item, isFavorite ->
-                            item.copy(isFavorite = isFavorite)
-                        }
-                    }
+                    }.markSeriesFavorites(globalFavoriteIds)
                     val continuePreview = if (continueIds.isEmpty()) {
                         emptyList()
                     } else {
                         seriesRepository.getSeriesByIds(continueIds).first().orderByIds(continueIds)
-                    }.let { series ->
-                        markVodFavorites(series, globalFavoriteIds, Series::id) { item, isFavorite ->
-                            item.copy(isFavorite = isFavorite)
-                        }
-                    }
+                    }.markSeriesFavorites(globalFavoriteIds)
 
                     _uiState.update {
                         it.copy(
                             libraryLensRows = mapOf(
                                 SeriesLibraryLens.FAVORITES to favoritePreview,
                                 SeriesLibraryLens.CONTINUE to continuePreview,
-                                SeriesLibraryLens.TOP_RATED to markVodFavorites(dependencies.topRated, globalFavoriteIds, Series::id) { item, isFavorite ->
-                                    item.copy(isFavorite = isFavorite)
-                                },
-                                SeriesLibraryLens.FRESH to markVodFavorites(dependencies.fresh, globalFavoriteIds, Series::id) { item, isFavorite ->
-                                    item.copy(isFavorite = isFavorite)
-                                }
+                                SeriesLibraryLens.TOP_RATED to dependencies.topRated.markSeriesFavorites(globalFavoriteIds),
+                                SeriesLibraryLens.FRESH to dependencies.fresh.markSeriesFavorites(globalFavoriteIds)
                             ).filterValues { rows -> rows.isNotEmpty() }
                         )
                     }
@@ -635,21 +622,19 @@ class SeriesViewModel @Inject constructor(
 
     fun onShowDialog(series: Series) {
         viewModelScope.launch {
-            val dialogSelection = loadVodDialogSelection(
-                item = series,
-                providerId = series.providerId,
-                itemId = series.id,
-                contentType = ContentType.SERIES,
-                favoriteRepository = favoriteRepository,
-                copyWithFavorite = { currentSeries, isFavorite ->
-                    currentSeries.copy(isFavorite = isFavorite)
-                }
-            )
+            val rawSeriesIds = series.rawSeriesIdsForActions()
+            val memberships = rawSeriesIds
+                .flatMap { rawSeriesId -> favoriteRepository.getGroupMemberships(series.providerId, rawSeriesId, ContentType.SERIES) }
+                .map { groupId -> -kotlin.math.abs(groupId) }
+                .distinct()
+            val isFavorite = rawSeriesIds.any { rawSeriesId ->
+                favoriteRepository.isFavorite(series.providerId, rawSeriesId, ContentType.SERIES)
+            }
             _uiState.update {
                 it.copy(
                     showDialog = true,
-                    selectedSeriesForDialog = dialogSelection.selectedItem,
-                    dialogGroupMemberships = dialogSelection.groupMemberships
+                    selectedSeriesForDialog = series.copy(isFavorite = isFavorite),
+                    dialogGroupMemberships = memberships
                 )
             }
         }
@@ -661,14 +646,16 @@ class SeriesViewModel @Inject constructor(
 
     fun addFavorite(series: Series) {
         viewModelScope.launch {
-            setVodFavorite(series.providerId, series.id, ContentType.SERIES, true, favoriteRepository)
+            setVodFavorite(series.providerId, series.selectedRawSeriesId(), ContentType.SERIES, true, favoriteRepository)
             _uiState.update { it.copy(selectedSeriesForDialog = series.copy(isFavorite = true)) }
         }
     }
 
     fun removeFavorite(series: Series) {
         viewModelScope.launch {
-            setVodFavorite(series.providerId, series.id, ContentType.SERIES, false, favoriteRepository)
+            series.rawSeriesIdsForActions().forEach { rawSeriesId ->
+                setVodFavorite(series.providerId, rawSeriesId, ContentType.SERIES, false, favoriteRepository)
+            }
             _uiState.update { it.copy(selectedSeriesForDialog = series.copy(isFavorite = false)) }
         }
     }
@@ -677,7 +664,7 @@ class SeriesViewModel @Inject constructor(
         viewModelScope.launch {
             val memberships = updateVodGroupMembership(
                 providerId = series.providerId,
-                itemId = series.id,
+                itemId = series.selectedRawSeriesId(),
                 groupId = group.id,
                 contentType = ContentType.SERIES,
                 shouldBeMember = true,
@@ -689,14 +676,20 @@ class SeriesViewModel @Inject constructor(
 
     fun removeFromGroup(series: Series, group: Category) {
         viewModelScope.launch {
-            val memberships = updateVodGroupMembership(
-                providerId = series.providerId,
-                itemId = series.id,
-                groupId = group.id,
-                contentType = ContentType.SERIES,
-                shouldBeMember = false,
-                favoriteRepository = favoriteRepository
-            )
+            series.rawSeriesIdsForActions().forEach { rawSeriesId ->
+                updateVodGroupMembership(
+                    providerId = series.providerId,
+                    itemId = rawSeriesId,
+                    groupId = group.id,
+                    contentType = ContentType.SERIES,
+                    shouldBeMember = false,
+                    favoriteRepository = favoriteRepository
+                )
+            }
+            val memberships = series.rawSeriesIdsForActions()
+                .flatMap { rawSeriesId -> favoriteRepository.getGroupMemberships(series.providerId, rawSeriesId, ContentType.SERIES) }
+                .map { groupId -> -kotlin.math.abs(groupId) }
+                .distinct()
             _uiState.update { it.copy(dialogGroupMemberships = memberships) }
         }
     }
@@ -717,7 +710,7 @@ class SeriesViewModel @Inject constructor(
                     val memberships = if (selectedSeries != null) {
                         updateVodGroupMembership(
                             providerId = selectedSeries.providerId,
-                            itemId = selectedSeries.id,
+                            itemId = selectedSeries.selectedRawSeriesId(),
                             groupId = result.data.id,
                             contentType = ContentType.SERIES,
                             shouldBeMember = true,
@@ -953,7 +946,7 @@ class SeriesViewModel @Inject constructor(
             hiddenProviderCategoryIds = params.hiddenCategoryIds,
             loadItemsByIds = { ids -> seriesRepository.getSeriesByIds(ids).first() },
             providerPreviews = providerPreviews,
-            itemId = Series::id,
+            itemIds = { series -> series.rawSeriesIdsForActions() },
             itemCategoryId = Series::categoryId,
             copyWithFavorite = { series, isFavorite -> series.copy(isFavorite = isFavorite) }
         )
@@ -979,7 +972,7 @@ class SeriesViewModel @Inject constructor(
             customCategories = customCategories,
             providerCategories = providerCategories,
             hiddenProviderCategoryIds = hiddenCategoryIds,
-            itemId = Series::id,
+            itemIds = { series -> series.rawSeriesIdsForActions() },
             itemCategoryId = Series::categoryId,
             itemCategoryName = Series::categoryName,
             copyWithFavorite = { series, isFavorite -> series.copy(isFavorite = isFavorite) },
@@ -1127,9 +1120,7 @@ class SeriesViewModel @Inject constructor(
             }
         }
 
-        val enrichedItems = markVodFavorites(selectedItems, globalFavoriteIds, Series::id) { item, isFavorite ->
-            item.copy(isFavorite = isFavorite)
-        }
+        val enrichedItems = selectedItems.markSeriesFavorites(globalFavoriteIds)
         return SelectedSeriesCategorySnapshot(
             items = enrichedItems,
             loadedCount = enrichedItems.size,
@@ -1152,6 +1143,15 @@ class SeriesViewModel @Inject constructor(
         val seriesMap = associateBy { it.id }
         return ids.mapNotNull { seriesMap[it] }
     }
+
+    private fun List<Series>.markSeriesFavorites(globalFavoriteIds: Set<Long>): List<Series> = map { series ->
+        series.copy(isFavorite = series.rawSeriesIdsForActions().any { rawSeriesId -> rawSeriesId in globalFavoriteIds })
+    }
+
+    private fun Series.selectedRawSeriesId(): Long = selectedVariantId ?: id
+
+    private fun Series.rawSeriesIdsForActions(): List<Long> =
+        variants.map { it.rawSeriesId }.ifEmpty { listOf(selectedRawSeriesId()) }
 
     private fun applyLocalBrowseToSeries(
         items: List<Series>,

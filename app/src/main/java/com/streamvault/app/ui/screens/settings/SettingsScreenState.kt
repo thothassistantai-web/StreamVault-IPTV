@@ -8,20 +8,27 @@ import com.streamvault.app.MainActivity
 import com.streamvault.app.R
 import com.streamvault.app.ui.time.createDateTimeFormat
 import com.streamvault.app.util.OfficialBuildStatus
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.AppLandingDestination
+import com.streamvault.domain.model.AppTopLevelDestination
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.AudioOutputPreference
+import com.streamvault.domain.model.LiveStreamFormatMode
+import com.streamvault.domain.model.PlaybackBufferMode
 import com.streamvault.domain.model.VodHttpProtocolMode
 
 internal data class SettingsScreenLabels(
     val buildVerificationLabel: String,
     val appLanguageLabel: String,
     val appLandingDestinationLabel: String,
+    val topNavigationSummaryLabel: String,
+    val homeDashboardSummaryLabel: String,
     val timeFormatLabel: String,
     val preferredAudioLanguageLabel: String,
     val playbackSpeedLabel: String,
     val audioVideoOffsetLabel: String,
     val decoderModeLabel: String,
+    val playbackBufferModeLabel: String,
     val audioOutputPreferenceLabel: String,
     val surfaceModeLabel: String,
     val vodHttpProtocolLabel: String,
@@ -32,6 +39,7 @@ internal data class SettingsScreenLabels(
     val subtitleSizeLabel: String,
     val subtitleTextColorLabel: String,
     val subtitleBackgroundLabel: String,
+    val liveTranslationEndpointLabel: String,
     val wifiQualityLabel: String,
     val ethernetQualityLabel: String,
     val timeshiftDepthLabel: String,
@@ -60,6 +68,12 @@ internal fun rememberSettingsScreenLabels(
     val appLandingDestinationLabel = remember(uiState.appLandingDestination, context) {
         formatAppLandingDestinationLabel(uiState.appLandingDestination, context)
     }
+    val topNavigationSummaryLabel = remember(uiState.appTopLevelDestinations, context) {
+        formatTopNavigationSummaryLabel(uiState.appTopLevelDestinations, context)
+    }
+    val homeDashboardSummaryLabel = remember(uiState.appHomeDashboardShelves, context) {
+        formatHomeDashboardSummaryLabel(uiState.appHomeDashboardShelves, context)
+    }
     val timeFormatLabel = remember(uiState.appTimeFormat, context) {
         formatAppTimeFormatLabel(uiState.appTimeFormat, context)
     }
@@ -75,6 +89,9 @@ internal fun rememberSettingsScreenLabels(
     }
     val decoderModeLabel = remember(uiState.playerDecoderMode, context) {
         formatDecoderModeLabel(uiState.playerDecoderMode, context)
+    }
+    val playbackBufferModeLabel = remember(uiState.playerPlaybackBufferMode, context) {
+        formatPlaybackBufferModeLabel(uiState.playerPlaybackBufferMode, context)
     }
     val audioOutputPreferenceLabel = remember(uiState.playerAudioOutputPreference, context) {
         formatAudioOutputPreferenceLabel(uiState.playerAudioOutputPreference, context)
@@ -105,6 +122,9 @@ internal fun rememberSettingsScreenLabels(
     }
     val subtitleBackgroundLabel = remember(uiState.subtitleBackgroundColor, context) {
         formatSubtitleColorLabel(uiState.subtitleBackgroundColor, subtitleBackgroundColorOptions(context))
+    }
+    val liveTranslationEndpointLabel = remember(uiState.playerLiveTranslationEndpoint) {
+        uiState.playerLiveTranslationEndpoint
     }
     val wifiQualityLabel = remember(uiState.wifiMaxVideoHeight, context) {
         formatQualityCapLabel(uiState.wifiMaxVideoHeight, context.getString(R.string.settings_quality_cap_auto))
@@ -162,11 +182,14 @@ internal fun rememberSettingsScreenLabels(
         buildVerificationLabel = buildVerificationLabel,
         appLanguageLabel = appLanguageLabel,
         appLandingDestinationLabel = appLandingDestinationLabel,
+        topNavigationSummaryLabel = topNavigationSummaryLabel,
+        homeDashboardSummaryLabel = homeDashboardSummaryLabel,
         timeFormatLabel = timeFormatLabel,
         preferredAudioLanguageLabel = preferredAudioLanguageLabel,
         playbackSpeedLabel = playbackSpeedLabel,
         audioVideoOffsetLabel = audioVideoOffsetLabel,
         decoderModeLabel = decoderModeLabel,
+        playbackBufferModeLabel = playbackBufferModeLabel,
         audioOutputPreferenceLabel = audioOutputPreferenceLabel,
         surfaceModeLabel = surfaceModeLabel,
         vodHttpProtocolLabel = vodHttpProtocolLabel,
@@ -177,6 +200,7 @@ internal fun rememberSettingsScreenLabels(
         subtitleSizeLabel = subtitleSizeLabel,
         subtitleTextColorLabel = subtitleTextColorLabel,
         subtitleBackgroundLabel = subtitleBackgroundLabel,
+        liveTranslationEndpointLabel = liveTranslationEndpointLabel,
         wifiQualityLabel = wifiQualityLabel,
         ethernetQualityLabel = ethernetQualityLabel,
         timeshiftDepthLabel = timeshiftDepthLabel,
@@ -216,6 +240,24 @@ private fun formatAppLandingDestinationLabel(
     }
 )
 
+private fun formatTopNavigationSummaryLabel(
+    destinations: List<AppTopLevelDestination>,
+    context: Context
+): String = context.resources.getQuantityString(
+    R.plurals.settings_top_navigation_count,
+    destinations.size,
+    destinations.size
+)
+
+private fun formatHomeDashboardSummaryLabel(
+    shelves: List<AppHomeDashboardShelf>,
+    context: Context
+): String = context.resources.getQuantityString(
+    R.plurals.settings_home_dashboard_count,
+    shelves.size,
+    shelves.size
+)
+
 private fun formatOfficialBuildStatusLabel(
     status: OfficialBuildStatus,
     context: Context
@@ -251,6 +293,22 @@ internal fun formatVodHttpProtocolModeLabel(
 ): String = when (mode) {
     VodHttpProtocolMode.COMPATIBILITY_HTTP1 -> context.getString(R.string.settings_vod_http_protocol_compatibility)
     VodHttpProtocolMode.AUTO -> context.getString(R.string.settings_vod_http_protocol_auto)
+}
+
+internal fun formatPlaybackBufferModeLabel(
+    mode: PlaybackBufferMode,
+    context: Context
+): String = when (mode) {
+    PlaybackBufferMode.AUTO -> context.getString(R.string.settings_live_buffer_auto)
+    PlaybackBufferMode.SMALL -> context.getString(R.string.settings_live_buffer_small)
+    PlaybackBufferMode.MEDIUM -> context.getString(R.string.settings_live_buffer_medium)
+    PlaybackBufferMode.LARGE -> context.getString(R.string.settings_live_buffer_large)
+}
+
+internal fun formatLiveStreamFormatModeLabel(mode: LiveStreamFormatMode): String = when (mode) {
+    LiveStreamFormatMode.AUTO -> "Auto"
+    LiveStreamFormatMode.HLS -> "HLS (m3u8)"
+    LiveStreamFormatMode.MPEG_TS -> "MPEG-TS (ts)"
 }
 
 private fun formatExternalPlaybackModeLabel(

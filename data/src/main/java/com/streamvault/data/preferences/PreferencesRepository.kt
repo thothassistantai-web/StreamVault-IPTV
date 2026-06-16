@@ -23,12 +23,19 @@ import com.streamvault.domain.model.CategorySortMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.ActiveLiveSource
+import com.streamvault.domain.model.AppHomeDashboardShelf
 import com.streamvault.domain.model.AppLandingDestination
 import com.streamvault.domain.model.AppTimeFormat
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveChannelObservedQuality
+import com.streamvault.domain.model.LiveStreamFormatMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
+import com.streamvault.domain.model.AppTopLevelDestination
+import com.streamvault.domain.model.PlaybackBufferMode
+import com.streamvault.domain.model.VodDuplicateHandlingMode
 import com.streamvault.domain.model.VodHttpProtocolMode
+import com.streamvault.domain.model.VodVariantObservation
+import com.streamvault.domain.model.VodVariantPreferenceMode
 import com.streamvault.domain.model.PlayerSurfaceMode
 import com.streamvault.domain.model.RemoteColorButton
 import com.streamvault.domain.model.RemoteShortcutPreferences
@@ -65,6 +72,10 @@ private fun sanitizePlaybackTimerMinutes(minutes: Int): Int = when (minutes) {
     else -> 120
 }
 
+internal fun parsePlaybackBufferModePreference(saved: String?): PlaybackBufferMode =
+    saved?.let { value -> PlaybackBufferMode.entries.firstOrNull { it.name == value } }
+        ?: PlaybackBufferMode.AUTO
+
 @Singleton
 class PreferencesRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -95,6 +106,8 @@ class PreferencesRepository @Inject constructor(
         val DEFAULT_CATEGORY_ID = longPreferencesKey("default_category_id")
         val APP_LANGUAGE = stringPreferencesKey("app_language")
         val APP_LANDING_DESTINATION = stringPreferencesKey("app_landing_destination")
+        val APP_TOP_LEVEL_DESTINATIONS = stringPreferencesKey("app_top_level_destinations")
+        val APP_HOME_DASHBOARD_SHELVES = stringPreferencesKey("app_home_dashboard_shelves")
         val APP_TIME_FORMAT = stringPreferencesKey("app_time_format")
         val LIVE_TV_CHANNEL_MODE = stringPreferencesKey("live_tv_channel_mode")
         val SHOW_LIVE_SOURCE_SWITCHER = booleanPreferencesKey("show_live_source_switcher")
@@ -110,6 +123,10 @@ class PreferencesRepository @Inject constructor(
         val LIVE_VARIANT_OBSERVATIONS = stringPreferencesKey("live_variant_observations")
         val VOD_VIEW_MODE = stringPreferencesKey("vod_view_mode")
         val VOD_INFINITE_SCROLL = booleanPreferencesKey("vod_infinite_scroll")
+        val VOD_DUPLICATE_HANDLING_MODE = stringPreferencesKey("vod_duplicate_handling_mode")
+        val VOD_VARIANT_PREFERENCE_MODE = stringPreferencesKey("vod_variant_preference_mode")
+        val VOD_VARIANT_SELECTIONS = stringPreferencesKey("vod_variant_selections")
+        val VOD_VARIANT_OBSERVATIONS = stringPreferencesKey("vod_variant_observations")
         val GUIDE_DENSITY = stringPreferencesKey("guide_density")
         val GUIDE_CHANNEL_MODE = stringPreferencesKey("guide_channel_mode")
         val GUIDE_DEFAULT_CATEGORY_ID = longPreferencesKey("guide_default_category_id")
@@ -130,6 +147,8 @@ class PreferencesRepository @Inject constructor(
         val PLAYER_FAST_RETRY_ON_TRANSIENT_FAILURES =
             booleanPreferencesKey("player_fast_retry_on_transient_failures")
         val PLAYER_DECODER_MODE = stringPreferencesKey("player_decoder_mode")
+        val PLAYER_PLAYBACK_BUFFER_MODE = stringPreferencesKey("player_playback_buffer_mode")
+        val PLAYER_LIVE_STREAM_FORMAT_MODE = stringPreferencesKey("player_live_stream_format_mode")
         val PLAYER_VOD_HTTP_PROTOCOL_MODE = stringPreferencesKey("player_vod_http_protocol_mode")
         val LEGACY_PLAYER_MOVIE_HTTP_PROTOCOL_MODE = stringPreferencesKey("player_movie_http_protocol_mode")
         val PLAYER_AUDIO_OUTPUT_PREFERENCE = stringPreferencesKey("player_audio_output_preference")
@@ -143,6 +162,8 @@ class PreferencesRepository @Inject constructor(
         val PLAYER_SUBTITLE_TEXT_SCALE = stringPreferencesKey("player_subtitle_text_scale")
         val PLAYER_SUBTITLE_TEXT_COLOR = intPreferencesKey("player_subtitle_text_color")
         val PLAYER_SUBTITLE_BACKGROUND_COLOR = intPreferencesKey("player_subtitle_background_color")
+        val PLAYER_LIVE_TRANSLATION_ENABLED = booleanPreferencesKey("player_live_translation_enabled")
+        val PLAYER_LIVE_TRANSLATION_ENDPOINT = stringPreferencesKey("player_live_translation_endpoint")
         val PLAYER_CONTROLS_TIMEOUT_SECONDS = intPreferencesKey("player_controls_timeout_seconds")
         val PLAYER_LIVE_OVERLAY_TIMEOUT_SECONDS = intPreferencesKey("player_live_overlay_timeout_seconds")
         val PLAYER_NOTICE_TIMEOUT_SECONDS = intPreferencesKey("player_notice_timeout_seconds")
@@ -292,10 +313,20 @@ class PreferencesRepository @Inject constructor(
             ?: DecoderMode.AUTO
     }
 
+    val playerPlaybackBufferMode: Flow<PlaybackBufferMode> = context.dataStore.data.map { preferences ->
+        parsePlaybackBufferModePreference(preferences[PreferencesKeys.PLAYER_PLAYBACK_BUFFER_MODE])
+    }
+
     val playerSurfaceMode: Flow<PlayerSurfaceMode> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.PLAYER_SURFACE_MODE]
             ?.let { saved -> PlayerSurfaceMode.entries.firstOrNull { it.name == saved } }
             ?: PlayerSurfaceMode.AUTO
+    }
+
+    val playerLiveStreamFormatMode: Flow<LiveStreamFormatMode> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PLAYER_LIVE_STREAM_FORMAT_MODE]
+            ?.let { saved -> LiveStreamFormatMode.entries.firstOrNull { it.name == saved } }
+            ?: LiveStreamFormatMode.AUTO
     }
 
     val playerVodHttpProtocolMode: Flow<VodHttpProtocolMode> = context.dataStore.data.map { preferences ->
@@ -359,6 +390,17 @@ class PreferencesRepository @Inject constructor(
 
     val playerSubtitleBackgroundColor: Flow<Int> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.PLAYER_SUBTITLE_BACKGROUND_COLOR] ?: 0x80000000.toInt()
+    }
+
+    val playerLiveTranslationEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PLAYER_LIVE_TRANSLATION_ENABLED] ?: false
+    }
+
+    val playerLiveTranslationEndpoint: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.PLAYER_LIVE_TRANSLATION_ENDPOINT]
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: "http://10.0.2.2:8765"
     }
 
     val playerControlsTimeoutSeconds: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -845,6 +887,12 @@ class PreferencesRepository @Inject constructor(
         }
     }
 
+    suspend fun setPlayerPlaybackBufferMode(mode: PlaybackBufferMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYER_PLAYBACK_BUFFER_MODE] = mode.name
+        }
+    }
+
     suspend fun setPlayerAudioOutputPreference(preference: AudioOutputPreference) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PLAYER_AUDIO_OUTPUT_PREFERENCE] = preference.name
@@ -860,6 +908,12 @@ class PreferencesRepository @Inject constructor(
     suspend fun setPlayerSurfaceMode(mode: PlayerSurfaceMode) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PLAYER_SURFACE_MODE] = mode.name
+        }
+    }
+
+    suspend fun setPlayerLiveStreamFormatMode(mode: LiveStreamFormatMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYER_LIVE_STREAM_FORMAT_MODE] = mode.name
         }
     }
 
@@ -923,6 +977,23 @@ class PreferencesRepository @Inject constructor(
     suspend fun setPlayerSubtitleBackgroundColor(colorArgb: Int) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PLAYER_SUBTITLE_BACKGROUND_COLOR] = colorArgb
+        }
+    }
+
+    suspend fun setPlayerLiveTranslationEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYER_LIVE_TRANSLATION_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setPlayerLiveTranslationEndpoint(endpoint: String) {
+        context.dataStore.edit { preferences ->
+            val normalized = endpoint.trim()
+            if (normalized.isBlank()) {
+                preferences.remove(PreferencesKeys.PLAYER_LIVE_TRANSLATION_ENDPOINT)
+            } else {
+                preferences[PreferencesKeys.PLAYER_LIVE_TRANSLATION_ENDPOINT] = normalized
+            }
         }
     }
 
@@ -1233,9 +1304,31 @@ class PreferencesRepository @Inject constructor(
         AppLandingDestination.fromStorage(preferences[PreferencesKeys.APP_LANDING_DESTINATION])
     }
 
+    val appTopLevelDestinations: Flow<List<AppTopLevelDestination>> = context.dataStore.data.map { preferences ->
+        decodeAppTopLevelDestinations(preferences[PreferencesKeys.APP_TOP_LEVEL_DESTINATIONS])
+    }
+
+    val appHomeDashboardShelves: Flow<List<AppHomeDashboardShelf>> = context.dataStore.data.map { preferences ->
+        decodeAppHomeDashboardShelves(preferences[PreferencesKeys.APP_HOME_DASHBOARD_SHELVES])
+    }
+
     suspend fun setAppLandingDestination(destination: AppLandingDestination) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.APP_LANDING_DESTINATION] = destination.storageValue
+        }
+    }
+
+    suspend fun setAppTopLevelDestinations(destinations: List<AppTopLevelDestination>) {
+        val normalized = AppTopLevelDestination.normalizeForStorage(destinations)
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_TOP_LEVEL_DESTINATIONS] = encodeAppTopLevelDestinations(normalized)
+        }
+    }
+
+    suspend fun setAppHomeDashboardShelves(shelves: List<AppHomeDashboardShelf>) {
+        val normalized = AppHomeDashboardShelf.normalizeForStorage(shelves)
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.APP_HOME_DASHBOARD_SHELVES] = encodeAppHomeDashboardShelves(normalized)
         }
     }
 
@@ -1414,6 +1507,65 @@ class PreferencesRepository @Inject constructor(
             val updated = decodeLiveVariantObservations(preferences[PreferencesKeys.LIVE_VARIANT_OBSERVATIONS]).toMutableMap()
             updated[rawChannelId] = observedQuality
             preferences[PreferencesKeys.LIVE_VARIANT_OBSERVATIONS] = encodeLiveVariantObservations(updated)
+        }
+    }
+
+    val vodDuplicateHandlingMode: Flow<VodDuplicateHandlingMode> = context.dataStore.data.map { preferences ->
+        VodDuplicateHandlingMode.fromStorage(preferences[PreferencesKeys.VOD_DUPLICATE_HANDLING_MODE])
+    }
+
+    suspend fun setVodDuplicateHandlingMode(mode: VodDuplicateHandlingMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.VOD_DUPLICATE_HANDLING_MODE] = mode.storageValue
+        }
+    }
+
+    val vodVariantPreferenceMode: Flow<VodVariantPreferenceMode> = context.dataStore.data.map { preferences ->
+        VodVariantPreferenceMode.fromStorage(preferences[PreferencesKeys.VOD_VARIANT_PREFERENCE_MODE])
+    }
+
+    suspend fun setVodVariantPreferenceMode(mode: VodVariantPreferenceMode) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.VOD_VARIANT_PREFERENCE_MODE] = mode.storageValue
+        }
+    }
+
+    val vodVariantSelections: Flow<Map<String, Long>> = context.dataStore.data.map { preferences ->
+        decodeVodVariantSelections(preferences[PreferencesKeys.VOD_VARIANT_SELECTIONS])
+    }
+
+    suspend fun setPreferredVodVariant(providerId: Long, logicalGroupId: String, rawItemId: Long) {
+        if (providerId <= 0L || logicalGroupId.isBlank() || rawItemId <= 0L) return
+        context.dataStore.edit { preferences ->
+            val updated = decodeVodVariantSelections(preferences[PreferencesKeys.VOD_VARIANT_SELECTIONS]).toMutableMap()
+            updated[vodVariantSelectionKey(providerId, logicalGroupId)] = rawItemId
+            preferences[PreferencesKeys.VOD_VARIANT_SELECTIONS] = encodeVodVariantSelections(updated)
+        }
+    }
+
+    suspend fun clearPreferredVodVariant(providerId: Long, logicalGroupId: String) {
+        if (providerId <= 0L || logicalGroupId.isBlank()) return
+        context.dataStore.edit { preferences ->
+            val updated = decodeVodVariantSelections(preferences[PreferencesKeys.VOD_VARIANT_SELECTIONS]).toMutableMap()
+            updated.remove(vodVariantSelectionKey(providerId, logicalGroupId))
+            if (updated.isEmpty()) {
+                preferences.remove(PreferencesKeys.VOD_VARIANT_SELECTIONS)
+            } else {
+                preferences[PreferencesKeys.VOD_VARIANT_SELECTIONS] = encodeVodVariantSelections(updated)
+            }
+        }
+    }
+
+    val vodVariantObservations: Flow<Map<Long, VodVariantObservation>> = context.dataStore.data.map { preferences ->
+        decodeVodVariantObservations(preferences[PreferencesKeys.VOD_VARIANT_OBSERVATIONS])
+    }
+
+    suspend fun recordVodVariantObservation(rawItemId: Long, observation: VodVariantObservation) {
+        if (rawItemId <= 0L) return
+        context.dataStore.edit { preferences ->
+            val updated = decodeVodVariantObservations(preferences[PreferencesKeys.VOD_VARIANT_OBSERVATIONS]).toMutableMap()
+            updated[rawItemId] = observation
+            preferences[PreferencesKeys.VOD_VARIANT_OBSERVATIONS] = encodeVodVariantObservations(updated)
         }
     }
 
@@ -1842,10 +1994,54 @@ class PreferencesRepository @Inject constructor(
     private fun liveVariantSelectionKey(providerId: Long, logicalGroupId: String): String =
         "${providerId}|${logicalGroupId.trim()}"
 
+    private fun vodVariantSelectionKey(providerId: Long, logicalGroupId: String): String =
+        "${providerId}|${logicalGroupId.trim()}"
+
     private fun encodeLiveVariantSelections(values: Map<String, Long>): String =
         values.entries
             .sortedBy { it.key }
             .joinToString("\n") { (key, rawChannelId) -> "$key=$rawChannelId" }
+
+    private fun encodeAppTopLevelDestinations(destinations: List<AppTopLevelDestination>): String =
+        AppTopLevelDestination.normalizeForStorage(destinations)
+            .joinToString(",") { it.storageValue }
+
+    private fun decodeAppTopLevelDestinations(encoded: String?): List<AppTopLevelDestination> {
+        val decoded = encoded
+            .orEmpty()
+            .split(',')
+            .asSequence()
+            .mapNotNull { token -> AppTopLevelDestination.fromStorage(token.trim()) }
+            .toList()
+        return if (decoded.isEmpty()) {
+            AppTopLevelDestination.defaultOrder
+        } else {
+            AppTopLevelDestination.normalizeForStorage(decoded)
+        }
+    }
+
+    private fun encodeAppHomeDashboardShelves(shelves: List<AppHomeDashboardShelf>): String =
+        AppHomeDashboardShelf.normalizeForStorage(shelves)
+            .joinToString(",") { it.storageValue }
+
+    private fun decodeAppHomeDashboardShelves(encoded: String?): List<AppHomeDashboardShelf> {
+        if (encoded == null) {
+            return AppHomeDashboardShelf.defaultOrder
+        }
+        if (encoded.isBlank()) {
+            return emptyList()
+        }
+        val decoded = encoded
+            .split(',')
+            .asSequence()
+            .mapNotNull { token -> AppHomeDashboardShelf.fromStorage(token.trim()) }
+            .toList()
+        return if (decoded.isEmpty()) {
+            AppHomeDashboardShelf.defaultOrder
+        } else {
+            AppHomeDashboardShelf.normalizeForStorage(decoded)
+        }
+    }
 
     private fun decodeLiveVariantSelections(encoded: String?): Map<String, Long> =
         encoded
@@ -1891,6 +2087,55 @@ class PreferencesRepository @Inject constructor(
                     lastObservedFrameRate = parts[4].toFloatOrNull() ?: 0f,
                     successCount = parts[5].toIntOrNull() ?: 0,
                     lastSuccessfulAt = parts[6].toLongOrNull() ?: 0L
+                )
+            }
+            .toMap()
+
+    private fun encodeVodVariantSelections(values: Map<String, Long>): String =
+        values.entries
+            .sortedBy { it.key }
+            .joinToString("\n") { (key, rawItemId) -> "$key=$rawItemId" }
+
+    private fun decodeVodVariantSelections(encoded: String?): Map<String, Long> =
+        encoded
+            .orEmpty()
+            .lineSequence()
+            .mapNotNull { line ->
+                val separator = line.indexOf('=')
+                if (separator <= 0) return@mapNotNull null
+                val key = line.substring(0, separator).trim()
+                val rawItemId = line.substring(separator + 1).trim().toLongOrNull() ?: return@mapNotNull null
+                key.takeIf { it.isNotBlank() }?.let { it to rawItemId }
+            }
+            .toMap()
+
+    private fun encodeVodVariantObservations(values: Map<Long, VodVariantObservation>): String =
+        values.entries
+            .sortedByDescending { maxOf(it.value.lastSuccessfulAt, it.value.lastFailedAt) }
+            .take(500)
+            .joinToString("\n") { (rawItemId, observation) ->
+                listOf(
+                    rawItemId,
+                    observation.successCount,
+                    observation.failureCount,
+                    observation.lastSuccessfulAt,
+                    observation.lastFailedAt
+                ).joinToString("|")
+            }
+
+    private fun decodeVodVariantObservations(encoded: String?): Map<Long, VodVariantObservation> =
+        encoded
+            .orEmpty()
+            .lineSequence()
+            .mapNotNull { line ->
+                val parts = line.split('|')
+                if (parts.size != 5) return@mapNotNull null
+                val rawItemId = parts[0].toLongOrNull() ?: return@mapNotNull null
+                rawItemId to VodVariantObservation(
+                    successCount = parts[1].toIntOrNull() ?: 0,
+                    failureCount = parts[2].toIntOrNull() ?: 0,
+                    lastSuccessfulAt = parts[3].toLongOrNull() ?: 0L,
+                    lastFailedAt = parts[4].toLongOrNull() ?: 0L
                 )
             }
             .toMap()

@@ -27,8 +27,10 @@ import com.streamvault.domain.provider.IptvProvider
 import com.streamvault.domain.util.ChannelNormalizer
 import java.io.IOException
 import java.net.URI
+import java.net.URLEncoder
 import java.util.Base64
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -36,6 +38,9 @@ data class StalkerPlaybackInfo(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     val userAgent: String? = null,
+    val allowInvalidSsl: Boolean = false,
+    val proxyHost: String = "",
+    val proxyPort: Int? = null,
     val playbackMode: StalkerPlaybackMode = StalkerPlaybackMode.DIRECT_URL,
     val endpointPreference: StalkerEndpointPreference = StalkerEndpointPreference.AUTO,
     val cookieMode: StalkerCookieMode = StalkerCookieMode.NONE,
@@ -59,6 +64,8 @@ class StalkerProvider(
     private val authMode: StalkerAuthMode = StalkerAuthMode.AUTO,
     private val username: String = "",
     private val password: String = "",
+    private val httpUserAgent: String = "",
+    private val httpHeaders: String = "",
     private val portalFingerprintHint: StalkerPortalFingerprint = StalkerPortalFingerprint.BASIC_MAC,
     private val magPresetHint: StalkerMagPreset = StalkerMagPreset.GENERIC_SAFE,
     private val bootstrapRecipeHint: StalkerBootstrapRecipe = StalkerBootstrapRecipe.GENERIC_SAFE,
@@ -73,11 +80,23 @@ class StalkerProvider(
     private val serialNumber: String = "",
     private val deviceId: String = "",
     private val deviceId2: String = "",
-    private val signature: String = ""
+    private val signature: String = "",
+    private val stalkerAdvancedOptionsJson: String = ""
 ) : IptvProvider {
-    private companion object {
+    internal companion object {
         private const val TAG = "StalkerProvider"
+        private const val DEFAULT_PLAYER_USER_AGENT = "Lavf53.32.100"
+        private val sharedAuthCache = ConcurrentHashMap<String, CachedAuth>()
+
+        fun clearSharedAuthCacheForTests() {
+            sharedAuthCache.clear()
+        }
     }
+
+    private data class CachedAuth(
+        val session: StalkerSession,
+        val profile: StalkerProviderProfile
+    )
 
     private data class CategorySeed(
         val id: Long,
@@ -95,6 +114,7 @@ class StalkerProvider(
             sessionCache = null
             accountProfileCache = null
             categoryCache.clear()
+            sharedAuthCache.remove(authCacheKey())
         }
     }
 
@@ -123,6 +143,7 @@ class StalkerProvider(
                         stalkerDeviceId = learnedDeviceProfile.deviceId,
                         stalkerDeviceId2 = learnedDeviceProfile.deviceId2,
                         stalkerSignature = learnedDeviceProfile.signature,
+                        stalkerAdvancedOptionsJson = stalkerAdvancedOptionsJson,
                         stalkerAuthMode = profile.effectiveAuthMode,
                         stalkerPortalProfile = profile.portalProfile,
                         stalkerPortalFingerprint = profile.portalFingerprint,
@@ -172,20 +193,14 @@ class StalkerProvider(
         }
 
     suspend fun streamLiveStreams(onChannel: suspend (Channel) -> Unit): Result<Int> {
-        return when (val authResult = ensureAuthenticated()) {
-            is Result.Success -> {
-                val (session, _) = authResult.data
-                val result = api.streamLiveStreams(session, currentDeviceProfile()) { item ->
-                    toChannel(item)?.let { channel -> onChannel(channel) }
-                }
-                when (result) {
-                    is Result.Success -> Result.success(result.data)
-                    is Result.Error -> Result.error(result.message, result.exception)
-                    is Result.Loading -> Result.error("Unexpected loading state")
-                }
+        return runWithAuthorizedSession { session, _ ->
+            when (val result = api.streamLiveStreams(session, currentDeviceProfile()) { item ->
+                toChannel(item)?.let { channel -> onChannel(channel) }
+            }) {
+                is Result.Success -> Result.success(result.data)
+                is Result.Error -> Result.error(result.message, result.exception)
+                is Result.Loading -> Result.error("Unexpected loading state")
             }
-            is Result.Error -> Result.error(authResult.message, authResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
         }
     }
 
@@ -273,47 +288,32 @@ class StalkerProvider(
     override suspend fun getSeriesInfo(seriesId: Long): Result<Series> = getSeriesInfo(seriesId.toString())
 
     suspend fun getSeriesInfo(providerSeriesId: String): Result<Series> {
-        return when (val authResult = ensureAuthenticated()) {
-            is Result.Success -> {
-                val (session, _) = authResult.data
-                when (val detailsResult = api.getSeriesDetails(session, currentDeviceProfile(), providerSeriesId)) {
-                    is Result.Success -> Result.success(detailsResult.data.toSeries())
-                    is Result.Error -> Result.error(detailsResult.message, detailsResult.exception)
-                    is Result.Loading -> Result.error("Unexpected loading state")
-                }
+        return runWithAuthorizedSession { session, _ ->
+            when (val detailsResult = api.getSeriesDetails(session, currentDeviceProfile(), providerSeriesId)) {
+                is Result.Success -> Result.success(detailsResult.data.toSeries())
+                is Result.Error -> Result.error(detailsResult.message, detailsResult.exception)
+                is Result.Loading -> Result.error("Unexpected loading state")
             }
-            is Result.Error -> Result.error(authResult.message, authResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
         }
     }
 
     override suspend fun getEpg(channelId: String): Result<List<Program>> {
-        return when (val authResult = ensureAuthenticated()) {
-            is Result.Success -> {
-                val (session, _) = authResult.data
-                when (val epgResult = api.getEpg(session, currentDeviceProfile(), channelId)) {
-                    is Result.Success -> Result.success(epgResult.data.map { it.toProgram() })
-                    is Result.Error -> Result.error(epgResult.message, epgResult.exception)
-                    is Result.Loading -> Result.error("Unexpected loading state")
-                }
+        return runWithAuthorizedSession { session, _ ->
+            when (val epgResult = api.getEpg(session, currentDeviceProfile(), channelId)) {
+                is Result.Success -> Result.success(epgResult.data.map { it.toProgram() })
+                is Result.Error -> Result.error(epgResult.message, epgResult.exception)
+                is Result.Loading -> Result.error("Unexpected loading state")
             }
-            is Result.Error -> Result.error(authResult.message, authResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
         }
     }
 
     suspend fun getBulkEpg(periodHours: Int = 6): Result<List<Program>> {
-        return when (val authResult = ensureAuthenticated()) {
-            is Result.Success -> {
-                val (session, _) = authResult.data
-                when (val epgResult = api.getBulkEpg(session, currentDeviceProfile(), periodHours)) {
-                    is Result.Success -> Result.success(epgResult.data.map { it.toProgram() })
-                    is Result.Error -> Result.error(epgResult.message, epgResult.exception)
-                    is Result.Loading -> Result.error("Unexpected loading state")
-                }
+        return runWithAuthorizedSession { session, _ ->
+            when (val epgResult = api.getBulkEpg(session, currentDeviceProfile(), periodHours)) {
+                is Result.Success -> Result.success(epgResult.data.map { it.toProgram() })
+                is Result.Error -> Result.error(epgResult.message, epgResult.exception)
+                is Result.Loading -> Result.error("Unexpected loading state")
             }
-            is Result.Error -> Result.error(authResult.message, authResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
         }
     }
 
@@ -326,15 +326,10 @@ class StalkerProvider(
         periodHours: Int = 6,
         onProgram: suspend (Program) -> Unit
     ): Result<Int> {
-        return when (val authResult = ensureAuthenticated()) {
-            is Result.Success -> {
-                val (session, _) = authResult.data
-                api.streamBulkEpg(session, currentDeviceProfile(), periodHours) { record ->
+        return runWithAuthorizedSession { session, _ ->
+            api.streamBulkEpg(session, currentDeviceProfile(), periodHours) { record ->
                     onProgram(record.toProgram())
                 }
-            }
-            is Result.Error -> Result.error(authResult.message, authResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
         }
     }
 
@@ -346,30 +341,20 @@ class StalkerProvider(
         periodHours: Int = 6,
         onProgram: suspend (Program) -> Unit
     ): Result<Int> {
-        return when (val authResult = ensureAuthenticated()) {
-            is Result.Success -> {
-                val (session, _) = authResult.data
-                api.streamEpg(session, currentDeviceProfile(), channelId, periodHours) { record ->
+        return runWithAuthorizedSession { session, _ ->
+            api.streamEpg(session, currentDeviceProfile(), channelId, periodHours) { record ->
                     onProgram(record.toProgram())
                 }
-            }
-            is Result.Error -> Result.error(authResult.message, authResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
         }
     }
 
     override suspend fun getShortEpg(channelId: String, limit: Int): Result<List<Program>> {
-        return when (val authResult = ensureAuthenticated()) {
-            is Result.Success -> {
-                val (session, _) = authResult.data
-                when (val epgResult = api.getShortEpg(session, currentDeviceProfile(), channelId, limit)) {
-                    is Result.Success -> Result.success(epgResult.data.map { it.toProgram() })
-                    is Result.Error -> Result.error(epgResult.message, epgResult.exception)
-                    is Result.Loading -> Result.error("Unexpected loading state")
-                }
+        return runWithAuthorizedSession { session, _ ->
+            when (val epgResult = api.getShortEpg(session, currentDeviceProfile(), channelId, limit)) {
+                is Result.Success -> Result.success(epgResult.data.map { it.toProgram() })
+                is Result.Error -> Result.error(epgResult.message, epgResult.exception)
+                is Result.Loading -> Result.error("Unexpected loading state")
             }
-            is Result.Error -> Result.error(authResult.message, authResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
         }
     }
 
@@ -464,7 +449,10 @@ class StalkerProvider(
                                 StalkerPlaybackInfo(
                                     url = candidate,
                                     headers = buildPlaybackHeaders(session, profile, candidate),
-                                    userAgent = profile.userAgent,
+                                    userAgent = resolvePlaybackUserAgent(profile),
+                                    allowInvalidSsl = true,
+                                    proxyHost = profile.advancedOptions.proxy?.host.orEmpty(),
+                                    proxyPort = profile.advancedOptions.proxy?.port,
                                     playbackMode = adapter.adapterMode,
                                     endpointPreference = effectiveArchiveEndpointPreference(
                                         kind = kind,
@@ -514,7 +502,10 @@ class StalkerProvider(
                                 StalkerPlaybackInfo(
                                     url = resolvedUrl,
                                     headers = buildPlaybackHeaders(session, profile, resolvedUrl),
-                                    userAgent = profile.userAgent,
+                                    userAgent = resolvePlaybackUserAgent(profile),
+                                    allowInvalidSsl = true,
+                                    proxyHost = profile.advancedOptions.proxy?.host.orEmpty(),
+                                    proxyPort = profile.advancedOptions.proxy?.port,
                                     playbackMode = adapter.adapterMode,
                                     endpointPreference = effectiveArchiveEndpointPreference(
                                         kind = kind,
@@ -552,7 +543,7 @@ class StalkerProvider(
                                 ?: cookieModeHint
                         ).allowsRebootstrap(descriptor, accountProfile)
                     } &&
-                    isLikelyAuthOrSessionFailure(lastError?.message.orEmpty(), lastError?.exception)
+                    isAuthorizationFailure(lastError?.message.orEmpty(), lastError?.exception)
                 if (needsRebootstrap) {
                     invalidateAuthentication()
                     return resolvePlaybackInfoInternal(
@@ -691,44 +682,39 @@ class StalkerProvider(
         type: ContentType,
         loader: suspend (StalkerSession, StalkerDeviceProfile) -> Result<List<StalkerCategoryRecord>>
     ): Result<List<Category>> {
-        return when (val authResult = ensureAuthenticated()) {
-            is Result.Success -> {
-                val (session, _) = authResult.data
-                when (val result = loader(session, currentDeviceProfile())) {
-                    is Result.Success -> {
-                        val categoryRecords = result.data.ifEmpty {
-                            when (type) {
-                                ContentType.MOVIE -> listOf(StalkerCategoryRecord(id = "*", name = "All Movies"))
-                                ContentType.SERIES -> listOf(StalkerCategoryRecord(id = "*", name = "All Series"))
-                                else -> emptyList()
-                            }
+        return runWithAuthorizedSession { session, _ ->
+            when (val result = loader(session, currentDeviceProfile())) {
+                is Result.Success -> {
+                    val categoryRecords = result.data.ifEmpty {
+                        when (type) {
+                            ContentType.MOVIE -> listOf(StalkerCategoryRecord(id = "*", name = "All Movies"))
+                            ContentType.SERIES -> listOf(StalkerCategoryRecord(id = "*", name = "All Series"))
+                            else -> emptyList()
                         }
-                        val categories = categoryRecords.map { record ->
-                            val id = syntheticCategoryId(type, record.id.ifBlank { record.name })
-                            CategorySeed(
-                                id = id,
-                                rawId = record.id,
-                                name = record.name
-                            )
-                        }
-                        categoryCache[type] = categories
-                        Result.success(
-                            categories.map { seed ->
-                                Category(
-                                    id = seed.id,
-                                    name = seed.name,
-                                    type = type,
-                                    isAdult = AdultContentClassifier.isAdultCategoryName(seed.name)
-                                )
-                            }
+                    }
+                    val categories = categoryRecords.map { record ->
+                        val id = syntheticCategoryId(type, record.id.ifBlank { record.name })
+                        CategorySeed(
+                            id = id,
+                            rawId = record.id,
+                            name = record.name
                         )
                     }
-                    is Result.Error -> Result.error(result.message, result.exception)
-                    is Result.Loading -> Result.error("Unexpected loading state")
+                    categoryCache[type] = categories
+                    Result.success(
+                        categories.map { seed ->
+                            Category(
+                                id = seed.id,
+                                name = seed.name,
+                                type = type,
+                                isAdult = AdultContentClassifier.isAdultCategoryName(seed.name)
+                            )
+                        }
+                    )
                 }
+                is Result.Error -> Result.error(result.message, result.exception)
+                is Result.Loading -> Result.error("Unexpected loading state")
             }
-            is Result.Error -> Result.error(authResult.message, authResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
         }
     }
 
@@ -737,14 +723,9 @@ class StalkerProvider(
         categoryId: Long?,
         loader: suspend (StalkerSession, StalkerDeviceProfile, String?) -> Result<List<StalkerItemRecord>>
     ): Result<List<StalkerItemRecord>> {
-        return when (val authResult = ensureAuthenticated()) {
-            is Result.Success -> {
-                val (session, _) = authResult.data
-                val rawCategoryId = resolveRawCategoryId(type, categoryId)
-                loader(session, currentDeviceProfile(), rawCategoryId)
-            }
-            is Result.Error -> Result.error(authResult.message, authResult.exception)
-            is Result.Loading -> Result.error("Unexpected loading state")
+        return runWithAuthorizedSession { session, _ ->
+            val rawCategoryId = resolveRawCategoryId(type, categoryId)
+            loader(session, currentDeviceProfile(), rawCategoryId)
         }
     }
 
@@ -753,11 +734,29 @@ class StalkerProvider(
         categoryId: Long?,
         loader: suspend (StalkerSession, StalkerDeviceProfile, String?) -> Result<StalkerPagedItems>
     ): Result<StalkerPagedItems> {
+        return runWithAuthorizedSession { session, _ ->
+            val rawCategoryId = resolveRawCategoryId(type, categoryId)
+            loader(session, currentDeviceProfile(), rawCategoryId)
+        }
+    }
+
+    private suspend fun <T> runWithAuthorizedSession(
+        retryOnAuthorizationFailure: Boolean = true,
+        block: suspend (StalkerSession, StalkerProviderProfile) -> Result<T>
+    ): Result<T> {
         return when (val authResult = ensureAuthenticated()) {
             is Result.Success -> {
-                val (session, _) = authResult.data
-                val rawCategoryId = resolveRawCategoryId(type, categoryId)
-                loader(session, currentDeviceProfile(), rawCategoryId)
+                val (session, profile) = authResult.data
+                when (val result = block(session, profile)) {
+                    is Result.Error ->
+                        if (retryOnAuthorizationFailure && isAuthorizationFailure(result.message, result.exception)) {
+                            invalidateAuthentication()
+                            runWithAuthorizedSession(false, block)
+                        } else {
+                            Result.error(result.message, result.exception)
+                        }
+                    else -> result
+                }
             }
             is Result.Error -> Result.error(authResult.message, authResult.exception)
             is Result.Loading -> Result.error("Unexpected loading state")
@@ -770,6 +769,11 @@ class StalkerProvider(
             val cachedProfile = accountProfileCache
             if (cachedSession != null && cachedProfile != null) {
                 return@withLock Result.success(cachedSession to cachedProfile)
+            }
+            sharedAuthCache[authCacheKey()]?.let { cachedAuth ->
+                sessionCache = cachedAuth.session
+                accountProfileCache = cachedAuth.profile
+                return@withLock Result.success(cachedAuth.session to cachedAuth.profile)
             }
 
             val profile = buildStalkerDeviceProfile(
@@ -784,18 +788,25 @@ class StalkerProvider(
                 playbackBackendHint = playbackBackendHint,
                 username = normalizedUsername(),
                 password = normalizedPassword(),
+                httpUserAgentOverride = httpUserAgent.trim(),
+                httpHeadersOverride = httpHeaders,
                 deviceProfile = normalizedDeviceProfile(),
                 timezone = normalizedTimezone(),
                 locale = normalizedLocale(),
                 serialNumberOverride = normalizedSerialNumber(),
                 deviceIdOverride = normalizedDeviceId(),
                 deviceId2Override = normalizedDeviceId2(),
-                signatureOverride = normalizedSignature()
+                signatureOverride = normalizedSignature(),
+                stalkerAdvancedOptionsJson = stalkerAdvancedOptionsJson
             )
             when (val authResult = api.authenticate(profile)) {
                 is Result.Success -> {
                     sessionCache = authResult.data.first
                     accountProfileCache = authResult.data.second
+                    sharedAuthCache[authCacheKey()] = CachedAuth(
+                        session = authResult.data.first,
+                        profile = authResult.data.second
+                    )
                     Result.success(authResult.data)
                 }
                 is Result.Error -> Result.error(authResult.message, authResult.exception)
@@ -816,13 +827,16 @@ class StalkerProvider(
             playbackBackendHint = playbackBackendHint,
             username = normalizedUsername(),
             password = normalizedPassword(),
+            httpUserAgentOverride = httpUserAgent.trim(),
+            httpHeadersOverride = httpHeaders,
             deviceProfile = normalizedDeviceProfile(),
             timezone = normalizedTimezone(),
             locale = normalizedLocale(),
             serialNumberOverride = normalizedSerialNumber(),
             deviceIdOverride = normalizedDeviceId(),
             deviceId2Override = normalizedDeviceId2(),
-            signatureOverride = normalizedSignature()
+            signatureOverride = normalizedSignature(),
+            stalkerAdvancedOptionsJson = stalkerAdvancedOptionsJson
         )
     }
 
@@ -839,13 +853,16 @@ class StalkerProvider(
             playbackBackendHint = profile.fingerprintEvidence.playbackBackendHint,
             username = normalizedUsername(),
             password = normalizedPassword(),
+            httpUserAgentOverride = httpUserAgent.trim(),
+            httpHeadersOverride = httpHeaders,
             deviceProfile = normalizedDeviceProfile(),
             timezone = normalizedTimezone(),
             locale = normalizedLocale(),
             serialNumberOverride = normalizedSerialNumber(),
             deviceIdOverride = normalizedDeviceId(),
             deviceId2Override = normalizedDeviceId2(),
-            signatureOverride = normalizedSignature()
+            signatureOverride = normalizedSignature(),
+            stalkerAdvancedOptionsJson = stalkerAdvancedOptionsJson
         )
     }
 
@@ -854,17 +871,62 @@ class StalkerProvider(
         profile: StalkerDeviceProfile,
         url: String
     ): Map<String, String> = buildMap {
+        val playerHeaderOverrides = parseStalkerHeaderOverrides(profile.advancedOptions.playerHeaders)
         val omitAuthorization = shouldOmitPlaybackAuthorization(url)
         val serverCookieHeader = api.currentCookieHeader(session)
             .ifBlank { session.serverCookieHeader }
         put("Referer", session.portalReferer)
         put("Accept", "*/*")
-        put("Accept-Encoding", "identity")
+        put("Connection", "keep-alive")
+        buildPlaybackHostHeader(url)?.let { host ->
+            put("Host", host)
+        }
         put("Cookie", buildPlaybackCookieHeader(serverCookieHeader, profile))
         put("X-User-Agent", profile.xUserAgent)
         session.token.takeIf { it.isNotBlank() && !omitAuthorization }?.let { token ->
             put("Authorization", "Bearer $token")
         }
+        profile.headerOverrides.forEach { (name, value) ->
+            if (value == null) {
+                remove(name)
+            } else if (name.equals("User-Agent", ignoreCase = true)) {
+                // Playback user agent is surfaced separately on StalkerPlaybackInfo.
+            } else {
+                put(name, value)
+            }
+        }
+        playerHeaderOverrides.forEach { (name, value) ->
+            if (value == null) {
+                remove(name)
+            } else if (name.equals("User-Agent", ignoreCase = true)) {
+                // Playback user agent is surfaced separately on StalkerPlaybackInfo.
+            } else {
+                put(name, value)
+            }
+        }
+    }
+
+    private fun resolvePlaybackUserAgent(profile: StalkerDeviceProfile): String? {
+        profile.advancedOptions.playerUserAgent.trim().takeIf { it.isNotBlank() }?.let { return it }
+        parseStalkerHeaderOverrides(profile.advancedOptions.playerHeaders).entries.firstOrNull { (name, _) ->
+            name.equals("User-Agent", ignoreCase = true)
+        }?.let { (_, value) -> return value }
+        profile.headerOverrides.entries.firstOrNull { (name, _) ->
+            name.equals("User-Agent", ignoreCase = true)
+        }?.let { (_, value) -> return value }
+        return profile.playerUserAgent.ifBlank { DEFAULT_PLAYER_USER_AGENT }
+    }
+
+    private fun buildPlaybackHostHeader(url: String): String? {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return null
+        val host = uri.host?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val isDefaultPort = when {
+            uri.port == -1 -> true
+            uri.scheme.equals("http", ignoreCase = true) && uri.port == 80 -> true
+            uri.scheme.equals("https", ignoreCase = true) && uri.port == 443 -> true
+            else -> false
+        }
+        return if (isDefaultPort) host else "$host:${uri.port}"
     }
 
     private fun shouldOmitPlaybackAuthorization(url: String): Boolean {
@@ -877,13 +939,9 @@ class StalkerProvider(
         profile: StalkerDeviceProfile
     ): String {
         val cookies = linkedMapOf(
-            "mac" to profile.macAddress,
-            "stb_lang" to profile.locale,
-            "timezone" to profile.timezone,
-            "sn" to profile.serialNumber,
-            "device_id" to profile.deviceId,
-            "device_id2" to profile.deviceId2,
-            "signature" to profile.signature
+            "mac" to encodeCookieValue(profile.macAddress),
+            "stb_lang" to encodeCookieValue(profile.locale),
+            "timezone" to encodeCookieValue(profile.timezone)
         )
         serverCookieHeader.split(';')
             .mapNotNull { part ->
@@ -895,6 +953,9 @@ class StalkerProvider(
         }
         return cookies.entries.joinToString("; ") { (key, value) -> "$key=$value" }
     }
+
+    private fun encodeCookieValue(value: String): String =
+        URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
 
     private fun derivePlaybackCookieMode(
         current: StalkerCookieMode,
@@ -1457,6 +1518,33 @@ class StalkerProvider(
     private fun normalizedSignature(): String =
         signature.trim().uppercase(Locale.ROOT)
 
+    private fun authCacheKey(): String = listOf(
+        providerId.toString(),
+        StalkerUrlFactory.normalizePortalUrl(portalUrl),
+        normalizedMacAddress(),
+        authMode.name,
+        normalizedUsername(),
+        normalizedPassword(),
+        httpUserAgent.trim(),
+        httpHeaders,
+        portalFingerprintHint.name,
+        magPresetHint.name,
+        bootstrapRecipeHint.name,
+        endpointPreferenceHint.name,
+        cookieModeHint.name,
+        playbackBackendHint.name,
+        portalProfileHint.name,
+        preferredPlaybackMode?.name.orEmpty(),
+        normalizedDeviceProfile(),
+        normalizedTimezone(),
+        normalizedLocale(),
+        normalizedSerialNumber(),
+        normalizedDeviceId(),
+        normalizedDeviceId2(),
+        normalizedSignature(),
+        stalkerAdvancedOptionsJson
+    ).joinToString(separator = "\u001f")
+
     private fun resolveProviderStatus(profile: StalkerProviderProfile): ProviderStatus {
         val normalizedStatus = profile.statusLabel?.trim()?.lowercase(Locale.ROOT).orEmpty()
         if (normalizedStatus in setOf("disabled", "blocked", "banned")) {
@@ -1475,27 +1563,11 @@ class StalkerProvider(
         return ProviderStatus.UNKNOWN
     }
 
-    private fun isLikelyAuthOrSessionFailure(message: String, exception: Throwable?): Boolean {
+    private fun isAuthorizationFailure(message: String, exception: Throwable?): Boolean {
         val normalizedMessage = message.lowercase(Locale.ROOT)
         val exceptionMessage = exception?.message?.lowercase(Locale.ROOT).orEmpty()
-        return normalizedMessage.contains("http 401") ||
-            normalizedMessage.contains("http 403") ||
-            normalizedMessage.contains("http 204") ||
-            normalizedMessage.contains("http 456") ||
-            normalizedMessage.contains("authorization") ||
-            normalizedMessage.contains("token") ||
-            normalizedMessage.contains("access denied") ||
-            normalizedMessage.contains("forbidden") ||
-            normalizedMessage.contains("temporary playback link") ||
-            normalizedMessage.contains("no content") ||
-            normalizedMessage.contains("empty temporary link") ||
-            exceptionMessage.contains("http 401") ||
-            exceptionMessage.contains("http 403") ||
-            exceptionMessage.contains("http 204") ||
-            exceptionMessage.contains("http 456") ||
-            exceptionMessage.contains("authorization") ||
-            exceptionMessage.contains("token") ||
-            exceptionMessage.contains("no content")
+        return normalizedMessage.contains("authorization failed") ||
+            exceptionMessage.contains("authorization failed")
     }
 
     private fun validateArchiveWindow(

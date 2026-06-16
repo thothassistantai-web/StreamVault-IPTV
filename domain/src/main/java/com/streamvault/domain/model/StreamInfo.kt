@@ -7,6 +7,9 @@ data class StreamInfo(
     val title: String? = null,
     val headers: Map<String, String> = emptyMap(),
     val userAgent: String? = null,
+    val allowInvalidSsl: Boolean = false,
+    val proxyHost: String = "",
+    val proxyPort: Int? = null,
     val streamType: StreamType = StreamType.UNKNOWN,
     val containerExtension: String? = null,
     val catchUpUrl: String? = null,
@@ -16,6 +19,7 @@ data class StreamInfo(
     init {
         require(url.isNotBlank()) { "StreamInfo url must not be blank" }
         expirationTime?.let { require(it >= 0) { "StreamInfo expirationTime must be non-negative" } }
+        proxyPort?.let { require(it in 1..65535) { "StreamInfo proxyPort must be between 1 and 65535" } }
     }
 }
 
@@ -80,4 +84,10 @@ enum class PlayerSurfaceMode {
 enum class VodHttpProtocolMode {
     COMPATIBILITY_HTTP1,
     AUTO
+}
+
+enum class LiveStreamFormatMode {
+    AUTO,
+    HLS,
+    MPEG_TS
 }

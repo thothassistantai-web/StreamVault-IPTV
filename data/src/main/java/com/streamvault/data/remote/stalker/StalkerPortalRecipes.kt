@@ -37,7 +37,7 @@ internal data class StalkerRecipeSpec(
 internal fun stalkerMagPresetSpec(preset: StalkerMagPreset): StalkerMagPresetSpec = when (preset) {
     StalkerMagPreset.GENERIC_SAFE -> StalkerMagPresetSpec(
         defaultDeviceProfile = "MAG250",
-        versionString = "ImageDescription: 0.2.18-r23-250; ImageDate: Wed Oct 31 15:22:54 EEST 2018; PORTAL version: 5.6.2; API Version: JS API version: 343; STB API version: 146; Player Engine version: 0x58c",
+        versionString = "ImageDescription: 0.2.18-r19-pub-250; ImageDate: Mon Jun 12 11:04:49 EEST 2017; PORTAL version: 5.6.10; API Version: JS API version: 343; STB API version: 146; Player Engine version: 0x23",
         imageVersion = "218",
         hwVersion = "1.7-BD-00",
         apiSignature = "262",

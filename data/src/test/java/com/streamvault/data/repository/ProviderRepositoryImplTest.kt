@@ -13,6 +13,7 @@ import com.streamvault.data.local.entity.CategoryEntity
 import com.streamvault.data.manager.recording.RecordingAlarmScheduler
 import com.streamvault.data.manager.reminder.ProgramReminderAlarmScheduler
 import com.streamvault.data.preferences.PreferencesRepository
+import com.streamvault.data.remote.jellyfin.JellyfinProvider
 import com.streamvault.data.remote.stalker.StalkerApiService
 import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.dto.XtreamAuthResponse
@@ -60,6 +61,7 @@ class ProviderRepositoryImplTest {
     private val syncMetadataRepository: SyncMetadataRepository = mock()
     private val recordingAlarmScheduler: RecordingAlarmScheduler = mock()
     private val programReminderAlarmScheduler: ProgramReminderAlarmScheduler = mock()
+    private val jellyfinProvider: JellyfinProvider = mock()
     private val transactionRunner = object : DatabaseTransactionRunner {
         override suspend fun <T> inTransaction(block: suspend () -> T): T = block()
     }
@@ -81,7 +83,8 @@ class ProviderRepositoryImplTest {
         syncMetadataRepository = syncMetadataRepository,
         transactionRunner = transactionRunner,
         recordingAlarmScheduler = recordingAlarmScheduler,
-        programReminderAlarmScheduler = programReminderAlarmScheduler
+        programReminderAlarmScheduler = programReminderAlarmScheduler,
+        jellyfinProvider = jellyfinProvider
     )
 
     private val repository = createRepository()

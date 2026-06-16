@@ -10,6 +10,7 @@ import com.streamvault.data.local.dao.CatalogSyncDao
 import com.streamvault.data.local.dao.ChannelStageCategorySummary
 import com.streamvault.data.local.dao.CategoryDao
 import com.streamvault.data.local.dao.ChannelDao
+import com.streamvault.data.local.dao.EpisodeDao
 import com.streamvault.data.local.dao.MovieCategoryHydrationDao
 import com.streamvault.data.local.dao.MovieDao
 import com.streamvault.data.local.dao.ProgramDao
@@ -46,6 +47,10 @@ import com.streamvault.data.remote.stalker.StalkerProgramRecord
 import com.streamvault.data.remote.stalker.StalkerProviderProfile
 import com.streamvault.data.remote.stalker.StalkerSession
 import com.streamvault.data.remote.stalker.StalkerApiService
+import com.streamvault.data.remote.stalker.StalkerAdvancedOptions
+import com.streamvault.data.remote.stalker.StalkerAdvancedOptionsCodec
+import com.streamvault.data.remote.stalker.StalkerDeviceProfile
+import com.streamvault.data.remote.jellyfin.JellyfinProvider
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.domain.model.ContentType
 import kotlinx.coroutines.CompletableDeferred
@@ -110,6 +115,8 @@ class SyncManagerTest {
         override fun getAll() = kotlinx.coroutines.flow.flowOf(listOfNotNull(provider))
         override suspend fun getAllSync(): List<ProviderEntity> = listOfNotNull(provider)
         override fun getActive() = kotlinx.coroutines.flow.flowOf(provider)
+        override fun getByTypeSync(type: ProviderType): List<ProviderEntity> =
+            listOfNotNull(provider).filter { it.type == type }
         override suspend fun insertDirect(provider: ProviderEntity) = this.provider?.id ?: 0L
         override suspend fun updateDirect(provider: ProviderEntity) = Unit
         override suspend fun insert(provider: ProviderEntity) = this.provider?.id ?: 0L
@@ -213,6 +220,7 @@ class SyncManagerTest {
     private val channelDao: ChannelDao = mock()
     private val movieDao: MovieDao = mock()
     private val seriesDao: SeriesDao = mock()
+    private val episodeDao: EpisodeDao = mock()
     private val programDao: ProgramDao = mock()
     private val categoryDao: CategoryDao = mock()
     private val catalogSyncDao: CatalogSyncDao = mock()
@@ -226,6 +234,7 @@ class SyncManagerTest {
     private val epgSourceRepo: EpgSourceRepository = mock()
     private val preferencesRepo: PreferencesRepository = mock()
     private val stalkerApiService: StalkerApiService = mock()
+    private val jellyfinProvider: JellyfinProvider = mock()
     private val xtreamBackend = FakeXtreamBackend()
     private val xtreamJson = Json {
         ignoreUnknownKeys = true
@@ -350,6 +359,8 @@ class SyncManagerTest {
         xtreamIndexJobDao = xtreamIndexJobDao,
         xtreamLiveOnboardingDao = xtreamLiveOnboardingDao,
         stalkerApiService = stalkerApiService,
+        episodeDao = episodeDao,
+        jellyfinProvider = jellyfinProvider,
         xtreamJson = xtreamJson,
         m3uParser = M3uParser(),
         epgRepository = epgRepo,
@@ -405,6 +416,57 @@ class SyncManagerTest {
         assertThat(result.isError).isTrue()
         // State must NOT transition away from Idle (no provider = nothing to sync)
         assertThat(mgr.currentSyncState(99L)).isEqualTo(SyncState.Idle)
+    }
+
+    @Test
+    fun sync_stalker_rebuilt_provider_respects_editable_setup_options() = runTest {
+        val advancedOptionsJson = StalkerAdvancedOptionsCodec.encode(
+            StalkerAdvancedOptions(
+                apiUserAgent = "API Agent/9.0",
+                playerUserAgent = "Player Agent/10.0",
+                hwVersion = "1.2.3",
+                xUserAgentLink = StalkerAdvancedOptions.LINK_WIFI,
+                proxyEnabled = true,
+                proxyHost = "127.0.0.1",
+                proxyPort = 8888
+            )
+        )
+        val providerEntity = sampleProvider(ProviderType.STALKER_PORTAL).copy(
+            serverUrl = "http://example.com",
+            username = "",
+            password = "",
+            httpUserAgent = "Legacy Agent/1.0",
+            httpHeaders = "X-Test: enabled",
+            stalkerMacAddress = "00:11:22:33:44:55",
+            stalkerDeviceProfile = "MAG254",
+            stalkerDeviceTimezone = "UTC",
+            stalkerDeviceLocale = "en",
+            stalkerSerialNumber = "SERIAL123",
+            stalkerDeviceId = "AABBCC",
+            stalkerDeviceId2 = "DDEEFF",
+            stalkerAdvancedOptionsJson = advancedOptionsJson,
+            epgSyncMode = ProviderEpgSyncMode.SKIP
+        )
+        val mgr = buildManager(providerType = ProviderType.STALKER_PORTAL, providerEntity = providerEntity)
+
+        mgr.sync(1L, force = true)
+        advanceUntilIdle()
+
+        val profileCaptor = argumentCaptor<StalkerDeviceProfile>()
+        verify(stalkerApiService, atLeastOnce()).authenticate(profileCaptor.capture())
+        val profile = profileCaptor.firstValue
+        assertThat(profile.httpUserAgent).isEqualTo("Legacy Agent/1.0")
+        assertThat(profile.httpHeaders).isEqualTo("X-Test: enabled")
+        assertThat(profile.headerOverrides).containsEntry("X-Test", "enabled")
+        assertThat(profile.advancedOptions.apiUserAgent).isEqualTo("API Agent/9.0")
+        assertThat(profile.advancedOptions.playerUserAgent).isEqualTo("Player Agent/10.0")
+        assertThat(profile.advancedOptions.hwVersion).isEqualTo("1.2.3")
+        assertThat(profile.advancedOptions.proxy?.host).isEqualTo("127.0.0.1")
+        assertThat(profile.advancedOptions.proxy?.port).isEqualTo(8888)
+        assertThat(profile.xUserAgent).isEqualTo("Model: MAG254; Link: WiFi")
+        assertThat(profile.serialNumber).isEqualTo("SERIAL123")
+        assertThat(profile.deviceId).isEqualTo("AABBCC")
+        assertThat(profile.deviceId2).isEqualTo("DDEEFF")
     }
 
     // ── Xtream sync failure ─────────────────────────────────────────

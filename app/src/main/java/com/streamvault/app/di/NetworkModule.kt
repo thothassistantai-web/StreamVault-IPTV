@@ -30,7 +30,12 @@ import okhttp3.Cache
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import java.io.File
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit.SECONDS
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.SSLContext
+import javax.net.ssl.X509TrustManager
 import javax.inject.Singleton
 
 @Module
@@ -90,7 +95,7 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideStalkerApiService(okHttpClient: OkHttpClient, xtreamJson: Json): StalkerApiService =
-        OkHttpStalkerApiService(okHttpClient, xtreamJson)
+        OkHttpStalkerApiService(okHttpClient.newBuilder().applyUnsafeTlsBypass().build(), xtreamJson)
 
     @Provides
     @Singleton
@@ -99,6 +104,19 @@ object NetworkModule {
         isLenient = true
         explicitNulls = false
         coerceInputValues = true
+    }
+
+    private fun OkHttpClient.Builder.applyUnsafeTlsBypass(): OkHttpClient.Builder {
+        val trustAllManager = object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+        }
+        val sslContext = SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf(trustAllManager), SecureRandom())
+        }
+        return sslSocketFactory(sslContext.socketFactory, trustAllManager)
+            .hostnameVerifier(HostnameVerifier { _, _ -> true })
     }
 
     @Provides

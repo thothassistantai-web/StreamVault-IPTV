@@ -29,6 +29,8 @@ import com.streamvault.domain.usecase.ImportBackupCommand
 import com.streamvault.domain.usecase.ImportBackupResult
 import com.streamvault.domain.usecase.InspectBackupCommand
 import com.streamvault.domain.usecase.InspectBackupResult
+import com.streamvault.domain.usecase.JellyfinProviderSetupCommand
+import com.streamvault.domain.usecase.JellyfinQuickConnectProviderSetupCommand
 import com.streamvault.domain.usecase.M3uProviderSetupCommand
 import com.streamvault.domain.usecase.StalkerProviderSetupCommand
 import com.streamvault.domain.usecase.ValidateAndAddProvider
@@ -70,7 +72,8 @@ class ProviderSetupViewModel @Inject constructor(
     enum class SetupSourceType {
         XTREAM,
         STALKER,
-        M3U
+        M3U,
+        JELLYFIN
     }
 
     private val _uiState = MutableStateFlow(ProviderSetupState())
@@ -78,6 +81,7 @@ class ProviderSetupViewModel @Inject constructor(
     private val _knownLocalM3uUrls = MutableStateFlow<Set<String>>(emptySet())
     val knownLocalM3uUrls: StateFlow<Set<String>> = _knownLocalM3uUrls.asStateFlow()
     val pairingState: StateFlow<ProviderQrPairingState> = providerQrPairingManager.state
+    private var jellyfinQuickConnectJob: kotlinx.coroutines.Job? = null
 
     init {
         viewModelScope.launch {
@@ -221,6 +225,7 @@ class ProviderSetupViewModel @Inject constructor(
                         stalkerDeviceId = provider.stalkerDeviceId,
                         stalkerDeviceId2 = provider.stalkerDeviceId2,
                         stalkerSignature = provider.stalkerSignature,
+                        stalkerAdvancedOptionsJson = provider.stalkerAdvancedOptionsJson,
                         epgSyncMode = provider.epgSyncMode,
                         xtreamLiveSyncMode = provider.xtreamLiveSyncMode,
                         hasCustomizedEpgSyncMode = true,
@@ -229,6 +234,7 @@ class ProviderSetupViewModel @Inject constructor(
                             ProviderType.XTREAM_CODES -> 0
                             ProviderType.STALKER_PORTAL -> 1
                             ProviderType.M3U -> 2
+                            ProviderType.JELLYFIN -> 3
                         },
                         m3uTab = if (provider.m3uUrl.startsWith("file://")) 1 else 0
                     )
@@ -272,13 +278,16 @@ class ProviderSetupViewModel @Inject constructor(
         username: String,
         password: String,
         name: String,
+        httpUserAgent: String,
+        httpHeaders: String,
         deviceProfile: String,
         timezone: String,
         locale: String,
         serialNumber: String = "",
         deviceId: String = "",
         deviceId2: String = "",
-        signature: String = ""
+        signature: String = "",
+        stalkerAdvancedOptionsJson: String = ""
     ) {
         _uiState.update {
             it.copy(
@@ -302,6 +311,8 @@ class ProviderSetupViewModel @Inject constructor(
                     username = username,
                     password = password,
                     name = name,
+                    httpUserAgent = httpUserAgent,
+                    httpHeaders = httpHeaders,
                     deviceProfile = deviceProfile,
                     timezone = timezone,
                     locale = locale,
@@ -309,6 +320,7 @@ class ProviderSetupViewModel @Inject constructor(
                     deviceId = deviceId,
                     deviceId2 = deviceId2,
                     signature = signature,
+                    stalkerAdvancedOptionsJson = stalkerAdvancedOptionsJson,
                     epgSyncMode = _uiState.value.epgSyncMode,
                     existingProviderId = existingId
                 ),
@@ -548,6 +560,174 @@ class ProviderSetupViewModel @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    fun loginJellyfin(
+        serverUrl: String,
+        username: String,
+        password: String,
+        name: String
+    ) {
+        _uiState.update {
+            it.copy(
+                validationError = null,
+                error = null,
+                completionWarning = null,
+                onboardingCompletion = OnboardingCompletion.NONE,
+                loginSuccess = false
+            )
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, validationError = null, syncProgress = "Connecting...") }
+            val existingId = if (_uiState.value.isEditing) _uiState.value.existingProviderId else null
+
+            when (val result = validateAndAddProvider.loginJellyfin(
+                JellyfinProviderSetupCommand(
+                    serverUrl = serverUrl,
+                    username = username,
+                    password = password,
+                    name = name,
+                    existingProviderId = existingId
+                ),
+                onProgress = { msg -> _uiState.update { it.copy(syncProgress = msg) } }
+            )) {
+                is ValidateAndAddProviderResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            loginSuccess = true,
+                            onboardingCompletion = OnboardingCompletion.READY,
+                            createdProviderId = result.provider.id,
+                            error = null,
+                            validationError = null,
+                            syncProgress = null
+                        )
+                    }
+                }
+                is ValidateAndAddProviderResult.SavedWithWarning -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            loginSuccess = false,
+                            onboardingCompletion = OnboardingCompletion.SAVED_RESUMING,
+                            createdProviderId = result.provider.id,
+                            error = null,
+                            validationError = null,
+                            completionWarning = result.warning,
+                            syncProgress = null
+                        )
+                    }
+                }
+                is ValidateAndAddProviderResult.ValidationError -> {
+                    _uiState.update {
+                        it.copy(isLoading = false, validationError = result.message, error = null, syncProgress = null)
+                    }
+                }
+                is ValidateAndAddProviderResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = mapJellyfinLoginError(result),
+                            validationError = null,
+                            syncProgress = null
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun loginJellyfinQuickConnect(
+        serverUrl: String,
+        name: String
+    ) {
+        _uiState.update {
+            it.copy(
+                validationError = null,
+                error = null,
+                completionWarning = null,
+                onboardingCompletion = OnboardingCompletion.NONE,
+                loginSuccess = false
+            )
+        }
+
+        jellyfinQuickConnectJob?.cancel()
+        jellyfinQuickConnectJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, validationError = null, syncProgress = "Connecting...") }
+            val existingId = if (_uiState.value.isEditing) _uiState.value.existingProviderId else null
+
+            when (val result = validateAndAddProvider.loginJellyfinQuickConnect(
+                JellyfinQuickConnectProviderSetupCommand(
+                    serverUrl = serverUrl,
+                    name = name,
+                    existingProviderId = existingId
+                ),
+                onCode = { code ->
+                    _uiState.update {
+                        it.copy(jellyfinQuickConnectCode = code, syncProgress = "Waiting for approval on your Jellyfin server...", isLoading = false)
+                    }
+                },
+                onProgress = { msg -> _uiState.update { it.copy(syncProgress = msg) } }
+            )) {
+                is ValidateAndAddProviderResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            loginSuccess = true,
+                            onboardingCompletion = OnboardingCompletion.READY,
+                            createdProviderId = result.provider.id,
+                            error = null,
+                            validationError = null,
+                            syncProgress = null
+                        )
+                    }
+                }
+                is ValidateAndAddProviderResult.SavedWithWarning -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            loginSuccess = false,
+                            onboardingCompletion = OnboardingCompletion.SAVED_RESUMING,
+                            createdProviderId = result.provider.id,
+                            error = null,
+                            validationError = null,
+                            completionWarning = result.warning,
+                            syncProgress = null
+                        )
+                    }
+                }
+                is ValidateAndAddProviderResult.ValidationError -> {
+                    _uiState.update {
+                        it.copy(isLoading = false, validationError = result.message, error = null, syncProgress = null)
+                    }
+                }
+                is ValidateAndAddProviderResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = mapJellyfinLoginError(result),
+                            validationError = null,
+                            syncProgress = null
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun cancelJellyfinQuickConnect() {
+        jellyfinQuickConnectJob?.cancel()
+        jellyfinQuickConnectJob = null
+        _uiState.update {
+            it.copy(
+                syncProgress = null,
+                jellyfinQuickConnectCode = "",
+                isLoading = false,
+                error = null,
+                validationError = null
+            )
         }
     }
 
@@ -821,6 +1001,32 @@ class ProviderSetupViewModel @Inject constructor(
     private inline fun <reified T : Throwable> Throwable?.hasCause(): Boolean =
         findCause<T>() != null
 
+    private fun mapJellyfinLoginError(result: ValidateAndAddProviderResult.Error): String {
+        val failure = result.exception
+        return when {
+            result.message.startsWith(PROVIDER_LOGIN_SYNC_FAILED_PREFIX, ignoreCase = true) ->
+                "Login succeeded, but the initial sync failed while loading the Jellyfin library"
+
+            failure.hasCause<CredentialDecryptionException>() ->
+                failure.findCause<CredentialDecryptionException>()?.message
+                    ?: CredentialDecryptionException.MESSAGE
+
+            failure.hasCause<SSLPeerUnverifiedException>() ||
+                failure.hasCause<CertificateException>() ||
+                failure.hasCause<SSLException>() ->
+                "Secure connection failed - the server's TLS certificate is not trusted on this device"
+
+            failure.hasCause<SocketTimeoutException>() ||
+                failure.hasCause<InterruptedIOException>() ||
+                failure.hasCause<UnknownHostException>() ||
+                failure.hasCause<ConnectException>() ||
+                failure.hasCause<NoRouteToHostException>() ->
+                "Cannot reach server - check your internet connection and server URL"
+
+            else -> result.message
+        }
+    }
+
     private companion object {
         private const val PROVIDER_LOGIN_SYNC_FAILED_PREFIX =
             "Provider login succeeded, but initial sync failed"
@@ -859,6 +1065,8 @@ data class ProviderSetupState(
     val stalkerDeviceId: String = "",
     val stalkerDeviceId2: String = "",
     val stalkerSignature: String = "",
+    val stalkerAdvancedOptionsJson: String = "",
+    val jellyfinQuickConnectCode: String = "",
     val createdProviderId: Long? = null,
     val createdProviderName: String? = null,
     val pendingCombinedAttachProfileId: Long? = null,
@@ -878,5 +1086,6 @@ data class ProviderSetupState(
 private fun defaultEpgSyncModeFor(sourceType: ProviderSetupViewModel.SetupSourceType): ProviderEpgSyncMode = when (sourceType) {
     ProviderSetupViewModel.SetupSourceType.STALKER,
     ProviderSetupViewModel.SetupSourceType.XTREAM,
-    ProviderSetupViewModel.SetupSourceType.M3U -> ProviderEpgSyncMode.BACKGROUND
+    ProviderSetupViewModel.SetupSourceType.M3U,
+    ProviderSetupViewModel.SetupSourceType.JELLYFIN -> ProviderEpgSyncMode.BACKGROUND
 }

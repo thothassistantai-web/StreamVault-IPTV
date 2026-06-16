@@ -6,14 +6,17 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamvault.app.R
+import com.streamvault.app.navigation.MOVIE_DETAIL_PRESENTATION_HINT_KEY
 import com.streamvault.app.plugins.StreamVaultPluginManager
 import com.streamvault.app.service.DownloadForegroundService
 import com.streamvault.app.util.isPlaybackComplete
+import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.DownloadContentType
 import com.streamvault.domain.model.DownloadRequest
 import com.streamvault.domain.model.ExternalRatings
 import com.streamvault.domain.model.ExternalRatingsLookup
+import com.streamvault.domain.model.MovieDetailPresentationHint
 import com.streamvault.domain.model.Movie
 import com.streamvault.domain.model.Result
 import com.streamvault.domain.repository.DownloadManager
@@ -39,6 +42,7 @@ class MovieDetailViewModel @Inject constructor(
     private val playbackHistoryRepository: PlaybackHistoryRepository,
     private val externalRatingsRepository: ExternalRatingsRepository,
     private val favoriteRepository: FavoriteRepository,
+    private val preferencesRepository: PreferencesRepository,
     private val pluginManager: StreamVaultPluginManager,
     private val downloadManager: DownloadManager
 ) : ViewModel() {
@@ -47,6 +51,8 @@ class MovieDetailViewModel @Inject constructor(
         savedStateHandle.get<Long>("movieId")
             ?: savedStateHandle.get<String>("movieId")?.toLongOrNull()
     )
+    private val knownPresentationHint: MovieDetailPresentationHint? =
+        savedStateHandle[MOVIE_DETAIL_PRESENTATION_HINT_KEY]
 
     private val _uiState = MutableStateFlow(MovieDetailUiState())
     val uiState: StateFlow<MovieDetailUiState> = _uiState.asStateFlow()
@@ -70,31 +76,9 @@ class MovieDetailViewModel @Inject constructor(
                         return@launch
                     }
 
-                val playbackHistory = playbackHistoryRepository.getPlaybackHistory(
-                    contentId = movieId,
-                    contentType = ContentType.MOVIE,
-                    providerId = effectiveProviderId
-                )
-
-                val isFavorite = favoriteRepository.isFavorite(effectiveProviderId, movieId, ContentType.MOVIE)
-
-                when (val result = movieRepository.getMovieDetails(effectiveProviderId, movieId)) {
-                    is Result.Success -> _uiState.update {
-                        val movie = result.data
-                        val movieDurationMs = movie.durationSeconds.takeIf { it > 0 }?.times(1000L) ?: 0L
-                        val resumePositionMs = playbackHistory?.resumePositionMs ?: movie.watchProgress
-                        val hasResume = resumePositionMs > 5000L && !isPlaybackComplete(
-                            progressMs = resumePositionMs,
-                            totalDurationMs = playbackHistory?.totalDurationMs?.takeIf { it > 0L } ?: movieDurationMs
-                        )
-                        it.copy(
-                            isLoading = false,
-                            movie = result.data.copy(isFavorite = isFavorite),
-                            error = null,
-                            hasResume = hasResume,
-                            resumePositionMs = if (hasResume) resumePositionMs else 0L
-                        )
-                    }.also {
+                when (val result = movieRepository.getMovieDetails(effectiveProviderId, movieId, knownPresentationHint)) {
+                    is Result.Success -> {
+                        applyLoadedMovie(effectiveProviderId, result.data)
                         loadExternalRatings(result.data)
                         loadRelatedContent(effectiveProviderId)
                     }
@@ -109,6 +93,24 @@ class MovieDetailViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(isLoading = false, error = e.message ?: "Failed to load movie details")
                 }
+            }
+        }
+    }
+
+    fun selectMovieVariant(rawMovieId: Long) {
+        val currentMovie = _uiState.value.movie ?: return
+        if (rawMovieId <= 0L || rawMovieId == currentMovie.id) return
+        viewModelScope.launch {
+            currentMovie.logicalGroupId?.takeIf { it.isNotBlank() }?.let { logicalGroupId ->
+                preferencesRepository.setPreferredVodVariant(currentMovie.providerId, logicalGroupId, rawMovieId)
+            }
+            when (val result = movieRepository.getMovieDetails(currentMovie.providerId, rawMovieId, knownPresentationHint)) {
+                is Result.Success -> {
+                    applyLoadedMovie(currentMovie.providerId, result.data)
+                    loadExternalRatings(result.data)
+                }
+                is Result.Error -> _uiState.update { it.copy(error = result.message) }
+                Result.Loading -> Unit
             }
         }
     }
@@ -208,6 +210,30 @@ class MovieDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val related = movieRepository.getRelatedContent(providerId, movieId, limit = 10).first()
             _uiState.update { it.copy(relatedContent = related) }
+        }
+    }
+
+    private suspend fun applyLoadedMovie(providerId: Long, movie: Movie) {
+        val playbackHistory = playbackHistoryRepository.getPlaybackHistory(
+            contentId = movie.id,
+            contentType = ContentType.MOVIE,
+            providerId = providerId
+        )
+        val isFavorite = favoriteRepository.isFavorite(providerId, movie.id, ContentType.MOVIE)
+        val movieDurationMs = movie.durationSeconds.takeIf { it > 0 }?.times(1000L) ?: 0L
+        val resumePositionMs = playbackHistory?.resumePositionMs ?: movie.watchProgress
+        val hasResume = resumePositionMs > 5000L && !isPlaybackComplete(
+            progressMs = resumePositionMs,
+            totalDurationMs = playbackHistory?.totalDurationMs?.takeIf { it > 0L } ?: movieDurationMs
+        )
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                movie = movie.copy(isFavorite = isFavorite),
+                error = null,
+                hasResume = hasResume,
+                resumePositionMs = if (hasResume) resumePositionMs else 0L
+            )
         }
     }
 }

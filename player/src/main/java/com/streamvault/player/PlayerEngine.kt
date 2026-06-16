@@ -4,12 +4,14 @@ import android.content.Context
 import android.view.View
 import com.streamvault.domain.model.AudioOutputPreference
 import com.streamvault.domain.model.DecoderMode
+import com.streamvault.domain.model.PlaybackBufferMode
 import com.streamvault.domain.model.VodHttpProtocolMode
 import com.streamvault.domain.model.PlayerSurfaceMode
 import com.streamvault.domain.model.DrmScheme
 import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.VideoFormat
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.text.Cue
 import androidx.media3.datasource.HttpDataSource
 import com.streamvault.player.playback.PlaybackErrorCategory
 import com.streamvault.player.playback.PlayerErrorClassifier
@@ -71,6 +73,7 @@ interface PlayerEngine {
     fun seekForward(ms: Long = 10_000)
     fun seekBackward(ms: Long = 10_000)
     fun setDecoderMode(mode: DecoderMode)
+    fun setPlaybackBufferMode(mode: PlaybackBufferMode)
     fun setSurfaceMode(mode: PlayerSurfaceMode)
     fun setVodHttpProtocolMode(mode: VodHttpProtocolMode)
     fun setMediaSessionEnabled(enabled: Boolean)
@@ -95,6 +98,10 @@ interface PlayerEngine {
     fun selectVideoTrack(trackId: String)
     fun selectSubtitleTrack(trackId: String?) // null to disable subtitles
     fun addExternalSubtitle(subtitleUri: android.net.Uri, language: String)
+    fun setInjectedSubtitleCues(cues: List<Cue>)
+    fun clearInjectedSubtitleCues()
+    fun setLiveAudioTap(tap: LiveAudioTap?)
+    fun clearLiveAudioTap() = setLiveAudioTap(null)
     fun release()
     fun resetForReuse() = release()
 
@@ -127,6 +134,7 @@ interface PlayerEngine {
     fun bindRenderView(renderView: View, resizeMode: PlayerSurfaceResizeMode)
     fun clearRenderBinding()
     fun releaseRenderView(renderView: View)
+    fun resetLiveHandoffGrace() {}
 }
 
 data class PlayerRetryStatus(

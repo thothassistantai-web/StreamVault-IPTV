@@ -64,6 +64,7 @@ import com.streamvault.app.ui.design.requestFocusSafely
 import com.streamvault.app.ui.model.formatVodRatingLabel
 import com.streamvault.domain.model.ExternalRatings
 import com.streamvault.domain.model.Movie
+import com.streamvault.domain.model.VodMovieVariant
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.app.ui.interaction.TvIconButton
@@ -123,6 +124,7 @@ fun MovieDetailScreen(
                 },
                 onDownload = {},
                 onToggleFavorite = viewModel::toggleFavorite,
+                onSelectVariant = viewModel::selectMovieVariant,
                 onRelatedClick = onPlay,
                 onBack = onBack,
                 viewModel = viewModel
@@ -143,6 +145,7 @@ private fun MovieDetailContent(
     onCopyUrl: suspend () -> String?,
     onDownload: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onSelectVariant: (Long) -> Unit,
     onRelatedClick: (Movie) -> Unit,
     onBack: () -> Unit,
     viewModel: MovieDetailViewModel
@@ -237,6 +240,7 @@ private fun MovieDetailContent(
                             },
                             onDownload = onDownload,
                             onToggleFavorite = onToggleFavorite,
+                            onSelectVariant = onSelectVariant,
                             playButtonFocusRequester = playButtonFocusRequester,
                             onPlayTrailer = {
                                 resolveTrailerUrl(movie.youtubeTrailer)?.let { trailerUrl ->
@@ -267,6 +271,7 @@ private fun MovieDetailContent(
                             },
                             onDownload = onDownload,
                             onToggleFavorite = onToggleFavorite,
+                            onSelectVariant = onSelectVariant,
                             playButtonFocusRequester = playButtonFocusRequester,
                             onPlayTrailer = {
                                 resolveTrailerUrl(movie.youtubeTrailer)?.let { trailerUrl ->
@@ -362,6 +367,7 @@ private fun MovieDetailHeroText(
     onCopyUrl: () -> Unit,
     onDownload: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onSelectVariant: (Long) -> Unit,
     playButtonFocusRequester: FocusRequester,
     onPlayTrailer: () -> Unit,
     modifier: Modifier = Modifier
@@ -407,6 +413,12 @@ private fun MovieDetailHeroText(
         )
 
         MovieFactGrid(movie = movie)
+
+        MovieVersionSelector(
+            variants = movie.variants,
+            selectedVariantId = movie.selectedVariantId ?: movie.id,
+            onSelectVariant = onSelectVariant
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             TvButton(
@@ -478,6 +490,40 @@ private fun MovieDetailHeroText(
             maxLines = 6,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun MovieVersionSelector(
+    variants: List<VodMovieVariant>,
+    selectedVariantId: Long,
+    onSelectVariant: (Long) -> Unit
+) {
+    if (variants.size <= 1) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.movie_detail_versions),
+            style = MaterialTheme.typography.titleMedium,
+            color = AppColors.TextPrimary
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(variants, key = { it.rawMovieId }) { variant ->
+                val selected = variant.rawMovieId == selectedVariantId
+                TvButton(
+                    onClick = { onSelectVariant(variant.rawMovieId) },
+                    colors = ButtonDefaults.colors(
+                        containerColor = if (selected) AppColors.Brand else AppColors.SurfaceEmphasis,
+                        contentColor = if (selected) Color.White else AppColors.TextPrimary
+                    )
+                ) {
+                    Text(
+                        text = variant.label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
     }
 }
 
