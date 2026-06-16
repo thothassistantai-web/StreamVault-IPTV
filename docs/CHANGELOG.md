@@ -29,6 +29,7 @@ All notable product changes are recorded in this document.
 - Fixed provider onboarding URL handling so bare-host Xtream and Stalker server inputs resolve their protocol before validation and duplicate checks, allowing auto-detected `http://` or `https://` URLs to save correctly.
 - Fixed default Stalker player requests to use MAG-style playback defaults, including `Lavf53.32.100` as the player User-Agent plus explicit `Accept`, `Connection`, and `Host` headers.
 - Fixed Live TV favorites, recents, and custom-group ordered lists still collapsing SD/HD/FHD channel variants after grouped variants were disabled.
+- Fixed download speed test
 
 ### Added
 
