@@ -74,6 +74,7 @@ internal fun PlayerViewModel.applyPrepareSessionState(
             )
 
     clearSeekPreview()
+    playbackPreferencesSynced = false
     currentResolvedPlaybackUrl = ""
     currentResolvedStreamInfo = null
     currentStreamUrl = streamUrl

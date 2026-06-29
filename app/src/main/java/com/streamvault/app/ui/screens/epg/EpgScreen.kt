@@ -408,8 +408,22 @@ fun FullEpgScreen(
                         GuidePreviewPane(
                             previewPlayerEngine = uiState.previewPlayerEngine,
                             isPreviewLoading = uiState.isPreviewLoading,
+                            errorMessage = uiState.previewErrorMessage,
+                            errorCode = uiState.previewErrorCode,
                             focusedChannel = focusedChannel,
                             focusedProgram = focusedProgram,
+                            onPreviewClick = focusedChannel?.let { channel ->
+                                {
+                                    viewModel.handoffOrClearForFullscreen(channel)
+                                    onPlayChannel(
+                                        channel,
+                                        playerCategoryId,
+                                        playerIsVirtualCategory,
+                                        uiState.combinedProfileId,
+                                        returnRoute
+                                    )
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 14.dp, vertical = 4.dp)

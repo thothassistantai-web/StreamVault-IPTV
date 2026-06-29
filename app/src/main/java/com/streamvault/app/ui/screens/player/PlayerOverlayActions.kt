@@ -13,6 +13,10 @@ private const val DIAGNOSTICS_EXTRA_VISIBLE_MS = 10_000L
 
 fun PlayerViewModel.openChannelListOverlay() {
     clearNumericChannelInput()
+    showMiniGuideOverlayFlow.value = false
+    showQuickMenuOverlayFlow.value = false
+    showProgramDetailsOverlayFlow.value = false
+    touchEdgePanelFlow.value = com.streamvault.app.ui.screens.player.gesture.TouchEdgePanel.NONE
     showChannelListOverlayFlow.value = true
     showCategoryListOverlayFlow.value = false
     showEpgOverlayFlow.value = false
@@ -57,6 +61,10 @@ fun PlayerViewModel.openEpgOverlay() {
 fun PlayerViewModel.openFullGuideOverlay() {
     if (currentContentType != ContentType.LIVE) return
     clearNumericChannelInput()
+    showMiniGuideOverlayFlow.value = false
+    showQuickMenuOverlayFlow.value = false
+    showProgramDetailsOverlayFlow.value = false
+    touchEdgePanelFlow.value = com.streamvault.app.ui.screens.player.gesture.TouchEdgePanel.NONE
     showFullGuideOverlayFlow.value = true
     showChannelListOverlayFlow.value = false
     showCategoryListOverlayFlow.value = false
@@ -140,6 +148,10 @@ fun PlayerViewModel.closeOverlays() {
     showEpgOverlayFlow.value = false
     showFullGuideOverlayFlow.value = false
     showChannelInfoOverlayFlow.value = false
+    showMiniGuideOverlayFlow.value = false
+    showQuickMenuOverlayFlow.value = false
+    showProgramDetailsOverlayFlow.value = false
+    touchEdgePanelFlow.value = com.streamvault.app.ui.screens.player.gesture.TouchEdgePanel.NONE
     showDiagnosticsFlow.value = false
     channelInfoHideJob?.cancel()
     clearLiveOverlayAutoHide()
@@ -194,7 +206,11 @@ internal fun PlayerViewModel.hideZapOverlayAfterDelay() {
 internal fun PlayerViewModel.hasVisibleTransientLiveOverlay(): Boolean =
     showChannelInfoOverlayFlow.value ||
         showChannelListOverlayFlow.value ||
-        showEpgOverlayFlow.value
+        showEpgOverlayFlow.value ||
+        showMiniGuideOverlayFlow.value ||
+        showQuickMenuOverlayFlow.value ||
+        showProgramDetailsOverlayFlow.value ||
+        touchEdgePanelFlow.value != com.streamvault.app.ui.screens.player.gesture.TouchEdgePanel.NONE
 
 internal fun PlayerViewModel.clearLiveOverlayAutoHide() {
     liveOverlayHideJob?.cancel()
@@ -217,6 +233,10 @@ internal fun PlayerViewModel.scheduleLiveOverlayAutoHide() {
         showChannelInfoOverlayFlow.value = false
         showChannelListOverlayFlow.value = false
         showEpgOverlayFlow.value = false
+        showMiniGuideOverlayFlow.value = false
+        showQuickMenuOverlayFlow.value = false
+        showProgramDetailsOverlayFlow.value = false
+        touchEdgePanelFlow.value = com.streamvault.app.ui.screens.player.gesture.TouchEdgePanel.NONE
     }
 }
 

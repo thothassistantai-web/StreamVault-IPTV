@@ -107,7 +107,8 @@ For Activity configuration, set `CONFIGURATION_MODE` to `activity`, set
 Capability names:
 
 - `provider.m3u`: the plugin can expose an M3U URL that StreamVault imports as a
-  provider when enabled.
+  provider when enabled. `MSG_GET_PROVIDER_URL` may also return `epg_url` with an
+  XMLTV feed URL; StreamVault applies it when creating or updating the provider.
 - `playback.prepare`: the plugin can prepare a stream URL before playback starts.
 - `cast.rewriteUrl`: the plugin can rewrite a playback URL before Google Cast
   loads it.
@@ -137,13 +138,14 @@ Messages:
 | 1 | `MSG_GET_MANIFEST` | Return `manifest_json`. |
 | 2 | `MSG_SET_ENABLED` | Start or stop plugin functionality using `enabled`. |
 | 3 | `MSG_GET_STATUS` | Return a short `status_label` and optional `message`. |
-| 4 | `MSG_GET_PROVIDER_URL` | Return `url` and optional `provider_name`. |
+| 4 | `MSG_GET_PROVIDER_URL` | Return `url`, optional `provider_name`, and optional `epg_url` for XMLTV guide import. |
 | 5 | `MSG_PREPARE_PLAYBACK` | Prepare `input_url`; set `handled` when relevant. |
 | 6 | `MSG_REWRITE_CAST_URL` | Rewrite `input_url`; return `output_url` when relevant. |
 | 7 | `MSG_GET_CONFIGURATION_SCHEMA` | Return `configuration_schema_json`. |
 | 8 | `MSG_GET_CONFIGURATION_VALUES` | Return `configuration_values_json`. |
 | 9 | `MSG_SET_CONFIGURATION_VALUES` | Persist `configuration_values_json`. |
 | 10 | `MSG_RUN_CONFIGURATION_ACTION` | Run `configuration_action_id`. |
+| 11 | `MSG_ENSURE_GATEWAY` | Wake gateway `ServerService` and block until `/health?lite=1` reports catalog ready (StepDaddy Gateway plugin). |
 
 For `playback.prepare` and `cast.rewriteUrl`, plugins should set
 `handled=false` when the URL is not theirs. StreamVault then continues with other

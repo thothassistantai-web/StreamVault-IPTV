@@ -9,6 +9,13 @@ import org.junit.Test
 class PlayerPlaybackRecoverySupportTest {
 
     @Test
+    fun `network error with http code includes status in message`() {
+        val error = PlayerError.NetworkError("Server error (HTTP 502).")
+        assertThat(resolvePlaybackErrorMessage(error))
+            .contains("HTTP 502")
+    }
+
+    @Test
     fun `509 source error shows provider limit message`() {
         val error = PlayerError.SourceError(
             "Provider rejected playback, likely max connections or bandwidth limit (HTTP 509)."

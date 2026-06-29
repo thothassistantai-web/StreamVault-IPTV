@@ -8,6 +8,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamvault.app.R
+import com.streamvault.app.ui.cache.DownloadsSnapshotCache
 import com.streamvault.domain.model.DownloadItem
 import com.streamvault.domain.repository.DownloadManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,15 +29,25 @@ import kotlinx.coroutines.cancel
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
     private val downloadManager: DownloadManager,
+    private val downloadsSnapshotCache: DownloadsSnapshotCache,
     @ApplicationContext private val application: Context
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(DownloadsUiState())
+    private val _uiState = MutableStateFlow(
+        downloadsSnapshotCache.get()?.let { cached ->
+            DownloadsUiState(
+                downloads = cached.downloads,
+                storageConfig = cached.storageConfig,
+                isLoading = false
+            )
+        } ?: DownloadsUiState()
+    )
     val uiState: StateFlow<DownloadsUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
             downloadManager.observeAllDownloads().collect { downloads ->
+                downloadsSnapshotCache.putDownloads(downloads)
                 _uiState.update {
                     it.copy(downloads = downloads, isLoading = false)
                 }
@@ -45,6 +56,7 @@ class DownloadsViewModel @Inject constructor(
 
         viewModelScope.launch {
             downloadManager.observeStorageState().collect { storageConfig ->
+                downloadsSnapshotCache.putStorageConfig(storageConfig)
                 _uiState.update { it.copy(storageConfig = storageConfig) }
             }
         }

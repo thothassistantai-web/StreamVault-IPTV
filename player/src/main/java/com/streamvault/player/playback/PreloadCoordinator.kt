@@ -38,6 +38,12 @@ class PreloadCoordinator(
     }
 
     @MainThread
+    fun matchesTargetUrl(url: String): Boolean {
+        if (preloadedMediaSource == null || isExpired()) return false
+        return currentPreloadedNormalizedUrl == normalizedUrl(url)
+    }
+
+    @MainThread
     fun tryReuse(mediaId: String, streamInfo: StreamInfo, resolvedType: ResolvedStreamType): MediaSource? {
         val result = when {
             preloadedMediaSource == null -> null

@@ -6,6 +6,7 @@ import com.streamvault.domain.model.ChannelNumberingMode
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.PlaybackHistory
 import com.streamvault.domain.model.ProviderType
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.filter
@@ -94,9 +95,10 @@ internal fun shouldPreloadAdjacentChannel(
     streamUrl: String,
     providerType: ProviderType?,
     maxConnections: Int,
-    preloadCoolingDown: Boolean
+    preloadCoolingDown: Boolean,
+    isGatewayManaged: Boolean = false,
 ): Boolean {
-    if (streamUrl.isBlank() || preloadCoolingDown) return false
+    if (streamUrl.isBlank() || preloadCoolingDown || isGatewayManaged) return false
     return when (providerType) {
         ProviderType.M3U -> true
         ProviderType.JELLYFIN -> true
@@ -207,6 +209,21 @@ fun PlayerViewModel.clearNumericChannelInput() {
     numericChannelInputFlow.value = null
 }
 
+internal fun PlayerViewModel.persistLastLiveChannel(channelId: Long) {
+    if (currentContentType != ContentType.LIVE || channelId <= 0L) return
+    viewModelScope.launch {
+        if (preferencesRepository.isIncognitoMode.first()) return@launch
+        if (!preferencesRepository.resumeLastLiveChannelEnabled.first()) return@launch
+        val scopeKey = when {
+            currentCombinedProfileId != null && currentCombinedProfileId!! > 0L ->
+                "combined_$currentCombinedProfileId"
+            currentProviderId > 0L -> "provider_$currentProviderId"
+            else -> return@launch
+        }
+        preferencesRepository.setLastLiveChannelId(scopeKey, channelId)
+    }
+}
+
 internal fun PlayerViewModel.changeChannel(index: Int, isAutoFallback: Boolean = false) {
     check(index in channelList.indices) {
         "changeChannel index=$index out of channelList bounds (size=${channelList.size})"
@@ -216,11 +233,6 @@ internal fun PlayerViewModel.changeChannel(index: Int, isAutoFallback: Boolean =
         previousChannelIndex = currentChannelIndex
     }
     val requestVersion = beginPlaybackSession()
-    releaseOutgoingLiveZapPlayback(
-        stopPlayback = playerEngine::stop,
-        stopLiveTimeshift = playerEngine::stopLiveTimeshift,
-        clearPreload = { playerEngine.preload(null) }
-    )
     currentResolvedPlaybackUrl = ""
     currentResolvedStreamInfo = null
     val channel = channelList[index]
@@ -236,12 +248,33 @@ internal fun PlayerViewModel.changeChannel(index: Int, isAutoFallback: Boolean =
     displayChannelNumberFlow.value = resolveChannelNumber(channel, index)
     recentChannelsFlow.update { channels -> channels.filterNot { it.id == channel.id } }
 
+    playerEngine.ensureRenderSurfaceAttached()
     viewModelScope.launch {
+        val cacheKey = ZapStreamCacheKey(channel.providerId, channel.id, channel.streamUrl)
+        val streamInfoDeferred = async {
+            zapStreamInfoCache.get(cacheKey) ?: resolvePlaybackStreamInfo(
+                channel.streamUrl,
+                channel.id,
+                channel.providerId,
+                ContentType.LIVE,
+            )?.also { resolved ->
+                zapStreamInfoCache.put(cacheKey, resolved)
+            }
+        }
         withScopedScrubbingMode(playerEngine::setScrubbingMode) {
-            val streamInfo = resolvePlaybackStreamInfo(channel.streamUrl, channel.id, channel.providerId, ContentType.LIVE)
-                ?: return@withScopedScrubbingMode
+            playerEngine.prepareForLiveZap(channel.streamUrl)
+            val streamInfo = streamInfoDeferred.await() ?: return@withScopedScrubbingMode
             if (!isActivePlaybackSession(requestVersion, channel.streamUrl)) return@withScopedScrubbingMode
-            if (!preparePlayer(streamInfo, requestVersion)) return@withScopedScrubbingMode
+            if (!preparePlayer(
+                    streamInfo = streamInfo,
+                    requestVersion = requestVersion,
+                    probeBeforePlayback = false,
+                    liveZap = true,
+                    skipPreferenceSync = playbackPreferencesSynced
+                )
+            ) {
+                return@withScopedScrubbingMode
+            }
             playerEngine.play()
 
             playerEngine.playbackState
@@ -268,15 +301,27 @@ internal fun PlayerViewModel.changeChannel(index: Int, isAutoFallback: Boolean =
 
     triedAlternativeStreams.clear()
     triedAlternativeStreams.add(channel.streamUrl)
-    if (currentContentType == ContentType.LIVE && !isAutoFallback) scheduleZapBufferWatchdog(index)
+    if (currentContentType == ContentType.LIVE && !isAutoFallback) {
+        scheduleZapBufferWatchdog(index)
+        persistLastLiveChannel(channel.id)
+    }
 }
 
 internal fun PlayerViewModel.preloadAdjacentChannel(currentIndex: Int) {
     if (channelList.size < 2) return
     val nextIndex = (currentIndex + 1) % channelList.size
+    val prevIndex = (currentIndex - 1 + channelList.size) % channelList.size
+    warmGatewayAdjacentChannel(nextIndex)
+    warmGatewayAdjacentChannel(prevIndex)
+
     val nextChannel = channelList[nextIndex]
     if (nextChannel.streamUrl.isBlank()) {
-        playerEngine.preload(null)
+        if (!pluginManager.isGatewayManagedUrl(channelList[prevIndex].streamUrl)) {
+            playerEngine.preload(null)
+        }
+        return
+    }
+    if (pluginManager.isGatewayManagedUrl(nextChannel.streamUrl)) {
         return
     }
     viewModelScope.launch {
@@ -285,7 +330,8 @@ internal fun PlayerViewModel.preloadAdjacentChannel(currentIndex: Int) {
                 streamUrl = nextChannel.streamUrl,
                 providerType = provider?.type,
                 maxConnections = provider?.maxConnections ?: 1,
-                preloadCoolingDown = nextChannel.providerId in livePreloadCooldownProviderIds
+                preloadCoolingDown = nextChannel.providerId in livePreloadCooldownProviderIds,
+                isGatewayManaged = pluginManager.isGatewayManagedUrl(nextChannel.streamUrl),
             )
         ) {
             playerEngine.preload(null)
@@ -298,6 +344,16 @@ internal fun PlayerViewModel.preloadAdjacentChannel(currentIndex: Int) {
             ContentType.LIVE
         ) ?: return@launch
         playerEngine.preload(streamInfo)
+    }
+}
+
+private fun PlayerViewModel.warmGatewayAdjacentChannel(index: Int) {
+    val channel = channelList.getOrNull(index) ?: return
+    if (channel.streamUrl.isBlank()) return
+    if (!pluginManager.isGatewayManagedUrl(channel.streamUrl)) return
+    viewModelScope.launch {
+        runCatching { pluginManager.preparePlaybackUrl(channel.streamUrl) }
+            .onFailure { /* best-effort adjacent warm */ }
     }
 }
 

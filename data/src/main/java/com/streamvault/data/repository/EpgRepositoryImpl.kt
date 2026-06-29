@@ -14,6 +14,7 @@ import com.streamvault.data.remote.http.HttpRequestProfile
 import com.streamvault.data.remote.http.safeRequestIdentitySummary
 import com.streamvault.data.remote.http.toGenericRequestProfile
 import com.streamvault.data.remote.http.withRequestProfile
+import com.streamvault.data.epg.EpgQueryCache
 import com.streamvault.data.util.rankSearchResults
 import com.streamvault.domain.model.Program
 import com.streamvault.domain.model.Result
@@ -58,6 +59,7 @@ class EpgRepositoryImpl @Inject constructor(
     private val transactionRunner: DatabaseTransactionRunner,
     private val epgSourceRepository: EpgSourceRepository,
     private val preferencesRepository: PreferencesRepository,
+    private val epgQueryCache: EpgQueryCache,
     private val externalScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) : EpgRepository {
 
@@ -132,6 +134,22 @@ class EpgRepositoryImpl @Inject constructor(
     ): Map<String, List<Program>> {
         if (channelIds.isEmpty()) return emptyMap()
 
+        val cacheKey = EpgQueryCache.programsForChannelsKey(providerId, channelIds, startTime, endTime)
+        return epgQueryCache.getOrLoad(
+            key = cacheKey,
+            freshTtlMs = EpgQueryCache.PROGRAMS_SNAPSHOT_FRESH_MS,
+            staleTtlMs = EpgQueryCache.PROGRAMS_SNAPSHOT_STALE_MS,
+        ) {
+            loadProgramsForChannelsSnapshot(providerId, channelIds, startTime, endTime)
+        }
+    }
+
+    private suspend fun loadProgramsForChannelsSnapshot(
+        providerId: Long,
+        channelIds: List<String>,
+        startTime: Long,
+        endTime: Long
+    ): Map<String, List<Program>> {
         val offsetMs = shiftMsFor(providerId)
         val adjustedStart = startTime - offsetMs
         val adjustedEnd = endTime - offsetMs
@@ -225,6 +243,21 @@ class EpgRepositoryImpl @Inject constructor(
     ): Map<String, Program?> {
         if (channelIds.isEmpty()) return emptyMap()
 
+        val nowBucket = EpgQueryCache.nowPlayingBucket(System.currentTimeMillis())
+        val cacheKey = EpgQueryCache.nowPlayingKey(providerId, channelIds, nowBucket)
+        return epgQueryCache.getOrLoad(
+            key = cacheKey,
+            freshTtlMs = EpgQueryCache.NOW_PLAYING_FRESH_MS,
+            staleTtlMs = EpgQueryCache.NOW_PLAYING_STALE_MS,
+        ) {
+            loadNowPlayingForChannelsSnapshot(providerId, channelIds)
+        }
+    }
+
+    private suspend fun loadNowPlayingForChannelsSnapshot(
+        providerId: Long,
+        channelIds: List<String>
+    ): Map<String, Program?> {
         val offsetMs = shiftMsFor(providerId)
         val now = System.currentTimeMillis() - offsetMs
         val entities = if (channelIds.size <= 500) {
@@ -338,6 +371,7 @@ class EpgRepositoryImpl @Inject constructor(
                         programDao.moveToProvider(stagingProviderId, providerId)
                     }
 
+                    epgQueryCache.invalidateProvider(providerId)
                     Result.success(Unit)
                 } catch (e: Exception) {
                     programDao.deleteByProvider(stagingProviderId)
@@ -356,9 +390,28 @@ class EpgRepositoryImpl @Inject constructor(
 
     override fun onProviderDeleted(providerId: Long) {
         providerRefreshMutexes.remove(providerId)
+        epgQueryCache.invalidateProvider(providerId)
     }
 
     override suspend fun getResolvedProgramsForChannels(
+        providerId: Long,
+        channelIds: List<Long>,
+        startTime: Long,
+        endTime: Long
+    ): Map<String, List<Program>> {
+        if (channelIds.isEmpty()) return emptyMap()
+
+        val cacheKey = EpgQueryCache.resolvedProgramsKey(providerId, channelIds, startTime, endTime)
+        return epgQueryCache.getOrLoad(
+            key = cacheKey,
+            freshTtlMs = EpgQueryCache.RESOLVED_PROGRAMS_FRESH_MS,
+            staleTtlMs = EpgQueryCache.RESOLVED_PROGRAMS_STALE_MS,
+        ) {
+            loadResolvedProgramsForChannels(providerId, channelIds, startTime, endTime)
+        }
+    }
+
+    private suspend fun loadResolvedProgramsForChannels(
         providerId: Long,
         channelIds: List<Long>,
         startTime: Long,
@@ -371,6 +424,38 @@ class EpgRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getResolvedProgramsForPlaybackChannel(
+        providerId: Long,
+        internalChannelId: Long,
+        epgChannelId: String?,
+        streamId: Long,
+        startTime: Long,
+        endTime: Long
+    ): List<Program> {
+        val cacheKey = EpgQueryCache.playbackChannelKey(
+            providerId = providerId,
+            internalChannelId = internalChannelId,
+            epgChannelId = epgChannelId,
+            streamId = streamId,
+            startTime = startTime,
+            endTime = endTime,
+        )
+        return epgQueryCache.getOrLoad(
+            key = cacheKey,
+            freshTtlMs = EpgQueryCache.PLAYBACK_CHANNEL_FRESH_MS,
+            staleTtlMs = EpgQueryCache.PLAYBACK_CHANNEL_STALE_MS,
+        ) {
+            loadResolvedProgramsForPlaybackChannel(
+                providerId = providerId,
+                internalChannelId = internalChannelId,
+                epgChannelId = epgChannelId,
+                streamId = streamId,
+                startTime = startTime,
+                endTime = endTime,
+            )
+        }
+    }
+
+    private suspend fun loadResolvedProgramsForPlaybackChannel(
         providerId: Long,
         internalChannelId: Long,
         epgChannelId: String?,
@@ -395,10 +480,12 @@ class EpgRepositoryImpl @Inject constructor(
         }
 
         if (normalizedChannelId != null) {
-            // getProgramsForChannel already applies the offset internally.
-            return getProgramsForChannel(providerId, normalizedChannelId, startTime, endTime)
-                .first()
-                .sortedBy { it.startTime }
+            return loadProgramsForChannelsSnapshot(
+                providerId = providerId,
+                channelIds = listOf(normalizedChannelId),
+                startTime = startTime,
+                endTime = endTime,
+            )[normalizedChannelId].orEmpty().sortedBy { it.startTime }
         }
 
         return emptyList()

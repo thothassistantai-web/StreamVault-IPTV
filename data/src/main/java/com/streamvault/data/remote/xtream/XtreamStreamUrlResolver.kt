@@ -25,6 +25,7 @@ import com.streamvault.domain.model.StalkerMagPreset
 import com.streamvault.domain.model.StalkerPlaybackBackendHint
 import com.streamvault.domain.model.StalkerPortalFingerprint
 import com.streamvault.domain.model.ProviderType
+import com.streamvault.domain.util.TiviMateStreamLineParser
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -140,10 +141,7 @@ class XtreamStreamUrlResolver @Inject constructor(
                 )?.let { return it }
             }
             return provider.applyPlaybackRequestProfile(
-                ResolvedStreamUrl(
-                    url = url,
-                    expirationTime = extractStreamExpirationTime(url)
-                )
+                normalizePassthroughStreamUrl(url)
             )
         }
 
@@ -216,10 +214,7 @@ class XtreamStreamUrlResolver @Inject constructor(
             }
             ProviderType.M3U -> url.takeIf { it.isNotBlank() }?.let { passthroughUrl ->
                 resolvedProvider.applyPlaybackRequestProfile(
-                    ResolvedStreamUrl(
-                        url = passthroughUrl,
-                        expirationTime = extractStreamExpirationTime(passthroughUrl)
-                    )
+                    normalizePassthroughStreamUrl(passthroughUrl)
                 )
             }
             ProviderType.M3U,
@@ -235,6 +230,16 @@ class XtreamStreamUrlResolver @Inject constructor(
         return resolved.copy(
             headers = requestProfile.headers + resolved.headers,
             userAgent = resolved.userAgent?.takeIf { it.isNotBlank() } ?: requestProfile.userAgent
+        )
+    }
+
+    private fun normalizePassthroughStreamUrl(url: String): ResolvedStreamUrl {
+        val parsed = TiviMateStreamLineParser.parse(url)
+        return ResolvedStreamUrl(
+            url = parsed.url,
+            expirationTime = extractStreamExpirationTime(parsed.url),
+            headers = parsed.headers,
+            userAgent = parsed.userAgent,
         )
     }
 

@@ -18,6 +18,8 @@ import com.streamvault.app.update.AppUpdateDownloadState
 import com.streamvault.app.update.AppUpdateDownloadStatus
 import com.streamvault.app.update.AppUpdateInstaller
 import com.streamvault.app.update.GitHubReleaseChecker
+import com.streamvault.app.ui.cache.CombinedProfilesCache
+import com.streamvault.app.ui.cache.SettingsSnapshotCache
 import com.streamvault.app.update.GitHubReleaseInfo
 import com.streamvault.data.local.dao.ProgramDao
 import com.streamvault.data.local.dao.XtreamIndexJobDao
@@ -123,13 +125,15 @@ class SettingsViewModel @Inject constructor(
     private val gitHubReleaseChecker: GitHubReleaseChecker,
     private val appUpdateInstaller: AppUpdateInstaller,
     private val getCustomCategories: GetCustomCategories,
-    private val audioCompatibilityMemoryStore: AudioCompatibilityMemoryStore
+    private val audioCompatibilityMemoryStore: AudioCompatibilityMemoryStore,
+    private val settingsSnapshotCache: SettingsSnapshotCache,
+    private val combinedProfilesCache: CombinedProfilesCache
 ) : ViewModel() {
     private val appContext = application
     private val exportBackup = ExportBackup(backupManager)
     private val importBackup = ImportBackup(backupManager)
 
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(settingsSnapshotCache.get() ?: SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     val playerLiveStreamFormatMode: StateFlow<LiveStreamFormatMode> =
         preferencesRepository.playerLiveStreamFormatMode.stateIn(
@@ -200,6 +204,7 @@ class SettingsViewModel @Inject constructor(
         registerCombinedProfileObservers(
             scope = viewModelScope,
             combinedM3uRepository = combinedM3uRepository,
+            combinedProfilesCache = combinedProfilesCache,
             uiState = _uiState
         )
         registerDerivedStateObservers(
@@ -231,6 +236,11 @@ class SettingsViewModel @Inject constructor(
             uiState = _uiState
         )
         driveBackupActions.observeAuthState(viewModelScope)
+        viewModelScope.launch {
+            _uiState
+                .drop(1)
+                .collect { state -> settingsSnapshotCache.put(state) }
+        }
     }
 
     fun refreshCrashReport() {
@@ -778,6 +788,84 @@ class SettingsViewModel @Inject constructor(
     fun setZapAutoRevert(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setZapAutoRevert(enabled)
+        }
+    }
+
+    fun setResumeLastLiveChannelEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setResumeLastLiveChannelEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGesturesEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGesturesEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureSwipeChannelChangeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureSwipeChannelChangeEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureSwipeOverlayNavigationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureSwipeOverlayNavigationEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGesturePinchZoomEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGesturePinchZoomEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureDoubleTapSkipEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureDoubleTapSkipEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureLongPressQuickMenuEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureLongPressQuickMenuEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureEdgePanelsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureEdgePanelsEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureTwoFingerSwipeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureTwoFingerSwipeEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureTwoFingerProgramDetailsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureTwoFingerProgramDetailsEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureEdgeHoldZonesEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureEdgeHoldZonesEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureCornerHoldZonesEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureCornerHoldZonesEnabled(enabled)
+        }
+    }
+
+    fun setPlaybackGestureSwipeSensitivityPercent(percent: Int) {
+        viewModelScope.launch {
+            preferencesRepository.setPlaybackGestureSwipeSensitivityPercent(percent)
         }
     }
 

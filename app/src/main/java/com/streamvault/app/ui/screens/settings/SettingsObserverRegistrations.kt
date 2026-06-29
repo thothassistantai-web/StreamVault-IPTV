@@ -8,6 +8,7 @@ import com.streamvault.domain.manager.RecordingManager
 import com.streamvault.domain.model.RecordingItem
 import com.streamvault.domain.repository.CategoryRepository
 import com.streamvault.domain.repository.ChannelRepository
+import com.streamvault.app.ui.cache.CombinedProfilesCache
 import com.streamvault.domain.repository.CombinedM3uRepository
 import com.streamvault.domain.repository.EpgSourceRepository
 import com.streamvault.domain.repository.MovieRepository
@@ -65,22 +66,36 @@ internal fun registerSettingsAppUpdateObservers(
 internal fun registerCombinedProfileObservers(
     scope: CoroutineScope,
     combinedM3uRepository: CombinedM3uRepository,
+    combinedProfilesCache: CombinedProfilesCache,
     uiState: MutableStateFlow<SettingsUiState>
 ) {
+    combinedProfilesCache.get()?.let { cached ->
+        uiState.update {
+            it.copy(
+                combinedProfiles = cached.profiles,
+                availableM3uProviders = cached.availableM3uProviders,
+                activeLiveSource = cached.activeLiveSource
+            )
+        }
+    }
+
     scope.launch {
         combinedM3uRepository.getProfiles().collect { profiles ->
+            combinedProfilesCache.putProfiles(profiles)
             uiState.update { it.copy(combinedProfiles = profiles) }
         }
     }
 
     scope.launch {
         combinedM3uRepository.getAvailableM3uProviders().collect { providers ->
+            combinedProfilesCache.putAvailableM3uProviders(providers)
             uiState.update { it.copy(availableM3uProviders = providers) }
         }
     }
 
     scope.launch {
         combinedM3uRepository.getActiveLiveSource().collect { activeSource ->
+            combinedProfilesCache.putActiveLiveSource(activeSource)
             uiState.update { it.copy(activeLiveSource = activeSource) }
         }
     }

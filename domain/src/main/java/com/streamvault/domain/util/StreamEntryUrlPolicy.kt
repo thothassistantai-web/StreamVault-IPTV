@@ -6,7 +6,10 @@ import java.util.Locale
 object StreamEntryUrlPolicy {
     private val allowedSchemes = setOf("http", "https", "rtsp", "rtsps", "rtmp", "file", "content")
 
-    fun isAllowed(url: String): Boolean = !containsControlSeparators(url) && hasAllowedScheme(url)
+    fun isAllowed(url: String): Boolean {
+        val normalized = url.substringBefore("|").trim()
+        return !containsControlSeparators(url) && hasAllowedScheme(normalized)
+    }
 
     private fun hasAllowedScheme(url: String): Boolean {
         val scheme = runCatching { URI(url.trim()).scheme }

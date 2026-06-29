@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import android.app.Application
 import androidx.lifecycle.ViewModel
+import com.streamvault.app.player.LivePlaybackStreamCache
 import com.streamvault.app.player.LivePreviewHandoffManager
 import com.streamvault.app.plugins.StreamVaultPluginManager
 import com.streamvault.data.preferences.PreferencesRepository
@@ -73,6 +74,7 @@ class EpgViewModelTest {
     private val scheduleRecording: ScheduleRecording = mock()
     private val recordingManager: RecordingManager = mock()
     private val livePreviewHandoffManager: LivePreviewHandoffManager = mock()
+    private val livePlaybackStreamCache = LivePlaybackStreamCache()
     private val pluginManager: StreamVaultPluginManager = mock()
     private val playerEngine: PlayerEngine = mock()
     private val playerEngineProvider: InjectProvider<PlayerEngine> = mock()
@@ -142,7 +144,9 @@ class EpgViewModelTest {
             recordingManager = recordingManager,
             playerEngineProvider = playerEngineProvider,
             pluginManager = pluginManager,
+            livePlaybackStreamCache = livePlaybackStreamCache,
             livePreviewHandoffManager = livePreviewHandoffManager,
+            guideSessionCache = GuideSessionCache(),
             application = application
         ).also(createdViewModels::add)
 

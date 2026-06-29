@@ -364,7 +364,7 @@ internal fun CompactGuideProgramDialog(
                 }
                 if (now in program.startTime until program.endTime) {
                     LinearProgressIndicator(
-                        progress = { ((now - program.startTime).toFloat() / (program.endTime - program.startTime).toFloat()).coerceIn(0f, 1f) },
+                        progress = { program.progressPercent(now) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(4.dp),

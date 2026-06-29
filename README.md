@@ -1,17 +1,21 @@
 # StreamVault
 
 <p align="center">
-	<a href="https://github.com/Davidona/StreamVault-IPTV/releases/latest/download/StreamVault.apk"><img src="https://img.shields.io/badge/Download-StreamVault.apk-2ea44f?style=for-the-badge&logo=android" alt="Download StreamVault APK" /></a>
-	<a href="https://github.com/Davidona/StreamVault-IPTV/releases/latest"><img src="https://img.shields.io/github/v/release/Davidona/StreamVault-IPTV?display_name=tag&style=for-the-badge&color=0f766e" alt="Latest StreamVault release" /></a>
-	<a href="https://github.com/Davidona/StreamVault-IPTV/releases"><img src="https://img.shields.io/github/downloads/Davidona/StreamVault-IPTV/total?style=for-the-badge&color=8b5cf6" alt="Total Downloads" /></a>
+	<a href="https://github.com/thothassistantai-web/StreamVault-IPTV/releases/latest/download/StreamVault.apk"><img src="https://img.shields.io/badge/Download-StreamVault.apk-2ea44f?style=for-the-badge&logo=android" alt="Download StreamVault APK" /></a>
+	<a href="https://github.com/thothassistantai-web/StreamVault-IPTV/releases/latest"><img src="https://img.shields.io/github/v/release/thothassistantai-web/StreamVault-IPTV?display_name=tag&style=for-the-badge&color=0f766e" alt="Latest StreamVault release" /></a>
+	<a href="https://github.com/thothassistantai-web/StreamVault-IPTV/releases"><img src="https://img.shields.io/github/downloads/thothassistantai-web/StreamVault-IPTV/total?style=for-the-badge&color=8b5cf6" alt="Total Downloads" /></a>
 	<a href="https://discord.gg/eGPBMygcb"><img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the StreamVault Discord" /></a>
 	<a href="docs/CHANGELOG.md"><img src="https://img.shields.io/badge/Changelog-View-2563eb?style=for-the-badge" alt="View changelog" /></a>
-	<a href="https://github.com/Davidona/StreamVault-IPTV/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Davidona/StreamVault-IPTV/release.yml?branch=master&style=for-the-badge&label=CI" alt="GitHub Actions status" /></a>
+	<a href="https://github.com/thothassistantai-web/StreamVault-IPTV/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/thothassistantai-web/StreamVault-IPTV/release.yml?branch=master&style=for-the-badge&label=CI" alt="GitHub Actions status" /></a>
 	<a href="https://ko-fi.com/davidona"><img src="https://img.shields.io/badge/Support-Ko--fi-ff5f5f?style=for-the-badge&logo=kofi" alt="Support on Ko-fi" /></a>
 	<a href="LICENSE"><img src="https://img.shields.io/badge/License-StreamVault_OSL-0284c7?style=for-the-badge" alt="License" /></a>
 </p>
 
 StreamVault is a TV-first IPTV player for Android TV built with Kotlin, Jetpack Compose, Room, Hilt, and Media3.
+
+This repository is a **StepDaddy suite fork** of [Davidona/StreamVault-IPTV](https://github.com/Davidona/StreamVault-IPTV), maintained at [thothassistantai-web/StreamVault-IPTV](https://github.com/thothassistantai-web/StreamVault-IPTV) with gateway integration, TiviMate-style stream line support, and touch playback gestures for phones and tablets.
+
+**Suite partner:** [StepDaddy Gateway](https://github.com/thothassistantai-web/stepdaddy-gateway-android) **v3.0.0** — local M3U/EPG on port 3000.
 
 It is designed for large playlists, remote-friendly browsing, fast provider switching, and a polished living-room playback experience. StreamVault supports `M3U` playlists, `Xtream Codes`, `Stalker Portal`, and `Jellyfin` providers, with dedicated flows for `Live TV`, `Movies`, and `Series`.
 
@@ -53,6 +57,7 @@ Built for Android TV first, StreamVault focuses on the things generic IPTV apps 
 - Built-in DVR with scheduled recording, background capture, recording playback, and app-managed default storage
 - Multi-view split-screen playback for watching multiple channels at once
 - Plugin API for creating companion Android APKs that extend providers, playback, Cast URL handling, or configuration flows
+- StepDaddy Gateway plugin support — enable the built-in Gateway plugin to import the local M3U playlist and EPG with one tap (see [Gateway integration](docs/GATEWAY.md))
 - Strong parental controls with PIN-protected categories and automatic adult-category detection
 - TV integrations including Watch Next, launcher recommendations, TV input sync, Cast support, external-player handoff, and in-app update delivery
 
@@ -162,7 +167,7 @@ Built for Android TV first, StreamVault focuses on the things generic IPTV apps 
 
 ## Download
 
-- [Download latest StreamVault.apk](https://github.com/Davidona/StreamVault-IPTV/releases/latest/download/StreamVault.apk)
+- [Download latest StreamVault.apk](https://github.com/thothassistantai-web/StreamVault-IPTV/releases/latest/download/StreamVault.apk)
 - The app can also detect and download newer releases in-app through GitHub Releases.
 - GitHub Actions still runs build and test validation on pushes and pull requests.
 - GitHub Releases are now published only when the workflow is started manually with `workflow_dispatch`, so versioned releases do not get created by mistake on every push.
@@ -179,7 +184,7 @@ If StreamVault is useful to you, you can support development here:
 - `data/` Room database, sync, parsing, provider implementations, and repositories
 - `domain/` models, repository contracts, managers, and use cases
 - `player/` playback abstraction and Media3 player implementation
-- `docs/` architecture notes, plugin API docs, and image assets
+- `docs/` architecture notes, plugin API docs, release process, and image assets
 
 ## Build
 
@@ -197,6 +202,10 @@ Useful commands:
 ./gradlew assembleRelease
 ./gradlew testDebugUnitTest
 ```
+
+See [docs/RELEASE.md](docs/RELEASE.md) for version bump, signing, and GitHub Release workflow.
+
+**Gateway partner:** [stepdaddy-gateway-android](https://github.com/thothassistantai-web/stepdaddy-gateway-android) — see [docs/GATEWAY.md](docs/GATEWAY.md), [docs/STREAMVAULT-GATEWAY-PLAN.md](docs/STREAMVAULT-GATEWAY-PLAN.md), [docs/TIER-RELEASES.md](docs/TIER-RELEASES.md).
 
 ## Notes
 

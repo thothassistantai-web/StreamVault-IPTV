@@ -31,6 +31,7 @@ import androidx.work.WorkManager
 import com.streamvault.data.manager.recording.RecordingReconcileWorker
 import com.streamvault.data.sync.ProviderSyncWorker
 import com.streamvault.data.sync.XtreamIndexWorker
+import com.streamvault.app.plugins.GatewayRecoveryWorker
 import com.streamvault.player.timeshift.TimeshiftDiskManager
 import javax.inject.Inject
 import okhttp3.OkHttpClient
@@ -95,6 +96,7 @@ class StreamVaultApp : Application(), SingletonImageLoader.Factory {
         XtreamIndexWorker.enqueueLaunchStaleCheck(this)
         RecordingReconcileWorker.enqueuePeriodic(this)
         RecordingReconcileWorker.enqueueOneShot(this)
+        GatewayRecoveryWorker.enqueuePeriodic(this)
     }
 
     override fun onTerminate() {

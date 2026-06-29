@@ -100,6 +100,9 @@ import com.streamvault.app.ui.screens.player.overlay.PlayerSpeedSelectionDialog
 import com.streamvault.app.ui.screens.player.overlay.PlayerSleepTimerDialog
 import com.streamvault.app.ui.screens.player.overlay.PlayerSleepTimerWarningOverlay
 import com.streamvault.app.ui.screens.player.overlay.NextEpisodeCountdownOverlay
+import com.streamvault.app.ui.screens.player.gesture.PlayerTouchOverlays
+import com.streamvault.app.ui.screens.player.gesture.PlaybackGestureContext
+import com.streamvault.app.ui.screens.player.gesture.rememberPlaybackGestureModifier
 import com.streamvault.app.ui.screens.multiview.MultiViewViewModel
 import com.streamvault.app.ui.screens.multiview.MultiViewPlannerDialog
 import com.streamvault.app.navigation.Routes
@@ -149,6 +152,11 @@ fun PlayerScreen(
     } else {
         400.dp
     }
+    val touchPanelWidth = if (screenWidth < 700.dp) {
+        (screenWidth * 0.42f).coerceIn(240.dp, 300.dp)
+    } else {
+        (screenWidth * 0.34f).coerceIn(280.dp, 360.dp)
+    }
     val mainActivity = LocalContext.current.findMainActivity()
     val notificationPermissionGate = rememberNotificationPermissionGate(
         onNotificationsBlocked = { message -> viewModel.showPlayerNotice(message = message) },
@@ -160,6 +168,7 @@ fun PlayerScreen(
         ?.collectAsState(initial = mainActivity.isInPictureInPictureMode)
         ?.value
         ?: false
+    val touchGesturesEnabled = !isTelevisionDevice && !isInPictureInPictureMode
     val playerEngine by viewModel.activePlayerEngine.collectAsStateWithLifecycle()
     val playbackState by playerEngine.playbackState.collectAsStateWithLifecycle()
     val isPlaying by playerEngine.isPlaying.collectAsStateWithLifecycle()
@@ -195,6 +204,11 @@ fun PlayerScreen(
     val displayChannelNumber by viewModel.displayChannelNumber.collectAsStateWithLifecycle()
     val upcomingPrograms by viewModel.upcomingPrograms.collectAsStateWithLifecycle()
     val showChannelInfoOverlay by viewModel.showChannelInfoOverlay.collectAsStateWithLifecycle()
+    val showMiniGuideOverlay by viewModel.showMiniGuideOverlay.collectAsStateWithLifecycle()
+    val showQuickMenuOverlay by viewModel.showQuickMenuOverlay.collectAsStateWithLifecycle()
+    val showProgramDetailsOverlay by viewModel.showProgramDetailsOverlay.collectAsStateWithLifecycle()
+    val showFullGuideOverlay by viewModel.showFullGuideOverlay.collectAsStateWithLifecycle()
+    val touchEdgePanel by viewModel.touchEdgePanel.collectAsStateWithLifecycle()
     val numericChannelInput by viewModel.numericChannelInput.collectAsStateWithLifecycle()
     
     val availableAudioTracks by viewModel.availableAudioTracks.collectAsStateWithLifecycle()
@@ -321,9 +335,42 @@ fun PlayerScreen(
     }
 
     // Consolidated focus management for all overlays
-    val liveOverlayVisible = contentType == "LIVE" && (showChannelListOverlay || showCategoryListOverlay || showEpgOverlay || showChannelInfoOverlay)
+    val liveOverlayVisible = contentType == "LIVE" && (
+        showChannelListOverlay || showCategoryListOverlay || showEpgOverlay ||
+            showChannelInfoOverlay || showMiniGuideOverlay || showQuickMenuOverlay ||
+            showProgramDetailsOverlay || showFullGuideOverlay || touchEdgePanel != com.streamvault.app.ui.screens.player.gesture.TouchEdgePanel.NONE
+        )
     val nextEpisodeCountdownVisible = !isInPictureInPictureMode && autoPlayCountdown != null
     val anyOverlayVisible = liveOverlayVisible || nextEpisodeCountdownVisible || showTrackSelection != null || showVariantSelection || showSpeedSelection || showAudioVideoOffsetDialog || showStopPlaybackTimerDialog || showIdleStandbyTimerDialog || showProgramHistory || showSplitDialog || showEpisodePicker || showDiagnostics
+    val playbackGesturePreferences by viewModel.playbackGesturePreferences.collectAsStateWithLifecycle()
+    val playbackGestureContext = remember(contentType, isCatchUpPlayback, timeshiftUiState.enabledForSession) {
+        PlaybackGestureContext(
+            contentType = contentType,
+            isCatchUpPlayback = isCatchUpPlayback,
+            timeshiftEnabled = timeshiftUiState.enabledForSession,
+        )
+    }
+    val touchGestureModifier = if (touchGesturesEnabled) {
+        rememberPlaybackGestureModifier(
+            enabled = true,
+            preferences = playbackGesturePreferences,
+            context = playbackGestureContext,
+            gesturesBlocked = anyOverlayVisible || resumePrompt.show,
+            onAction = { action -> viewModel.handlePlaybackAction(action, playbackGestureContext) },
+        )
+    } else {
+        Modifier.pointerInput(contentType, anyOverlayVisible, showControls) {
+            detectTapGestures {
+                viewModel.notifyUserActivity()
+                when {
+                    anyOverlayVisible -> return@detectTapGestures
+                    showControls -> viewModel.toggleControls()
+                    contentType == "LIVE" && !isCatchUpPlayback -> viewModel.openChannelInfoOverlay()
+                    else -> viewModel.toggleControls()
+                }
+            }
+        }
+    }
 
     LaunchedEffect(contentType, showCategoryListOverlay, showChannelListOverlay, showEpgOverlay, showChannelInfoOverlay) {
         if (contentType == "LIVE" && (showCategoryListOverlay || showChannelListOverlay || showEpgOverlay || showChannelInfoOverlay)) {
@@ -511,6 +558,11 @@ fun PlayerScreen(
         showChannelListOverlay,
         showCategoryListOverlay,
         showEpgOverlay,
+        showMiniGuideOverlay,
+        showQuickMenuOverlay,
+        showProgramDetailsOverlay,
+        showFullGuideOverlay,
+        touchEdgePanel,
         showControls,
         numericChannelInput
     ) {
@@ -533,6 +585,11 @@ fun PlayerScreen(
                 showTrackSelection != null -> showTrackSelection = null
                 showDiagnostics -> viewModel.toggleDiagnostics()
                 showChannelInfoOverlay -> viewModel.closeChannelInfoOverlay()
+                showMiniGuideOverlay -> viewModel.closeMiniGuideOverlay()
+                showQuickMenuOverlay -> viewModel.closeQuickMenuOverlay()
+                showProgramDetailsOverlay -> viewModel.closeProgramDetailsOverlay()
+                showFullGuideOverlay -> viewModel.closeFullGuideOverlay()
+                touchEdgePanel != com.streamvault.app.ui.screens.player.gesture.TouchEdgePanel.NONE -> viewModel.dismissTouchEdgePanel()
                 showChannelListOverlay || showCategoryListOverlay || showEpgOverlay -> viewModel.closeOverlays()
                 showControls -> viewModel.toggleControls()
                 else -> onBack()
@@ -554,17 +611,7 @@ fun PlayerScreen(
                 canFocus = !anyOverlayVisible && !showControls
             }
             .focusable()
-            .pointerInput(contentType, anyOverlayVisible, showControls) {
-                detectTapGestures {
-                    viewModel.notifyUserActivity()
-                    when {
-                        anyOverlayVisible -> return@detectTapGestures
-                        showControls -> viewModel.toggleControls()
-                        contentType == "LIVE" && !isCatchUpPlayback -> viewModel.openChannelInfoOverlay()
-                        else -> viewModel.toggleControls()
-                    }
-                }
-            }
+            .then(touchGestureModifier)
             // --- Key handler ownership ---
             // onPreviewKeyEvent (top-down): DPAD_UP, DPAD_DOWN, CHANNEL_UP, CHANNEL_DOWN
             //   for live-TV channel zapping when no overlay/dialog is open. Fires BEFORE
@@ -1218,8 +1265,27 @@ fun PlayerScreen(
         }
 
         if (contentType == "LIVE") {
+            if (touchGesturesEnabled) {
+                PlayerTouchOverlays(
+                    viewModel = viewModel,
+                    contentType = contentType,
+                    touchPanelWidth = touchPanelWidth,
+                    channelBrowserWidth = sideOverlayWidth,
+                    channelListFocusRequester = channelListFocusRequester,
+                    currentChannelId = internalChannelId,
+                    onNavigate = onNavigate,
+                    onOpenTrackSelection = { trackType -> showTrackSelection = trackType },
+                    onOpenSpeedSelection = { showSpeedSelection = true },
+                    onOpenStopPlaybackTimer = { showStopPlaybackTimerDialog = true },
+                    onOpenProgramHistory = { showProgramHistory = true },
+                    onOpenSplitDialog = { showSplitDialog = true },
+                    onEnterPictureInPicture = enterPictureInPicture,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
             AnimatedVisibility(
-                visible = showChannelListOverlay,
+                visible = showChannelListOverlay && !touchGesturesEnabled,
                 enter = slideInHorizontally(initialOffsetX = { if (isRtl) it else -it }),
                 exit = slideOutHorizontally(targetOffsetX = { if (isRtl) it else -it }),
                 modifier = Modifier

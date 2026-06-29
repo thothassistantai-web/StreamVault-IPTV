@@ -41,3 +41,10 @@
 #
 # m3u.dev.url=https://iptv-org.github.io/iptv/countries/fr.m3u
 # m3u.dev.name=iptv-org France
+
+# --- Option C: StepDaddy Gateway (debug seed) --------------------------------
+# Auto-add the local gateway playlist on first boot. Requires Gateway running
+# on the same device. See docs/GATEWAY.md.
+#
+# m3u.dev.url=http://127.0.0.1:3000/streamvault-setup-playlist.m3u8
+# m3u.dev.name=StepDaddy Gateway

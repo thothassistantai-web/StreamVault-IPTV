@@ -3,9 +3,13 @@ package com.streamvault.app.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamvault.app.di.AuxiliaryPlayerEngine
+import com.streamvault.app.player.LivePlaybackStreamCache
 import com.streamvault.app.player.LivePreviewHandoffManager
 import com.streamvault.app.player.PreviewHandoffSource
 import com.streamvault.app.plugins.StreamVaultPluginManager
+import com.streamvault.app.ui.cache.CombinedProfilesCache
+import com.streamvault.app.ui.cache.LiveRecentChannelsCache
+import com.streamvault.app.ui.cache.LiveSourceCacheKeys
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.app.ui.screens.multiview.MultiViewManager
 import com.streamvault.app.ui.model.applyProviderCategoryDisplayPreferences
@@ -50,7 +54,11 @@ import com.streamvault.domain.usecase.UnlockParentalCategoryCommand
 import com.streamvault.player.PlaybackState
 import com.streamvault.player.PlayerEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
-import com.streamvault.app.R
+import com.streamvault.app.ui.preview.adjacentPreviewChannels
+import com.streamvault.app.ui.preview.resolveLivePreviewErrorFromMessage
+import com.streamvault.app.ui.preview.resolveLivePreviewErrorFromPlayerError
+import com.streamvault.app.ui.preview.resolvePreparedPreviewStreamInfo
+import com.streamvault.app.ui.preview.warmPreviewStreamCache
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -63,6 +71,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import android.app.Application
+import com.streamvault.app.R
 import javax.inject.Provider as InjectProvider
 
 @HiltViewModel
@@ -85,6 +94,12 @@ class HomeViewModel @Inject constructor(
     private val multiViewManager: MultiViewManager,
     private val livePreviewHandoffManager: LivePreviewHandoffManager,
     private val pluginManager: StreamVaultPluginManager,
+    private val livePlaybackStreamCache: LivePlaybackStreamCache,
+    private val channelBrowseCache: LiveChannelBrowseCache,
+    private val categoryListCache: LiveCategoryListCache,
+    private val liveRecentChannelsCache: LiveRecentChannelsCache,
+    private val combinedProfilesCache: CombinedProfilesCache,
+    private val liveEpgNowPlayingCache: LiveEpgNowPlayingCache,
     @param:AuxiliaryPlayerEngine
     private val playerEngineProvider: InjectProvider<PlayerEngine>
 ) : ViewModel() {
@@ -98,7 +113,11 @@ class HomeViewModel @Inject constructor(
 
     private val appContext = application
 
-    private val _uiState = MutableStateFlow(HomeUiState())
+    private val _uiState = MutableStateFlow(
+        HomeUiState(
+            liveSourceOptions = combinedProfilesCache.get()?.liveSourceOptions.orEmpty()
+        )
+    )
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
     val remoteShortcutPreferences = preferencesRepository.remoteShortcutPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), com.streamvault.domain.model.RemoteShortcutPreferences())
@@ -115,9 +134,16 @@ class HomeViewModel @Inject constructor(
     private var recentChannelsJob: Job? = null
     private var previewPlaybackJob: Job? = null
     private var previewErrorJob: Job? = null
+    private var previewPrewarmJob: Job? = null
     private var previewPlayerEngine: PlayerEngine? = null
     private var previewSessionVersion: Long = 0L
     private var combinedCategoriesById: Map<Long, CombinedCategory> = emptyMap()
+    private val livePreviewStateCache = LivePreviewStateCache()
+    private val channelScrollAnchors = mutableMapOf<Long, ChannelScrollAnchor>()
+    private var hydratedLiveSourceKey: String? = null
+    private var previewPausedForBackground = false
+    private var hasAttemptedLastChannelResume = false
+    private var skipLastChannelResume = false
 
     init {
         loadAllProviders()
@@ -156,69 +182,124 @@ class HomeViewModel @Inject constructor(
             }.distinctUntilChanged { old, new ->
                 old.first == new.first && old.second?.id == new.second?.id
             }.collectLatest { (activeSource, activeProvider) ->
+                val incomingSourceKey = liveBrowseSourceKey(activeSource, activeProvider)
                 when (activeSource) {
                     is ActiveLiveSource.CombinedM3uSource -> {
+                        if (shouldSkipLiveSourceHydration(incomingSourceKey)) {
+                            resumeChannelBrowseIfNeeded()
+                            return@collectLatest
+                        }
+                        hydratedLiveSourceKey = incomingSourceKey
                         val profile = combinedM3uRepository.getProfile(activeSource.profileId)
+                        val sourceKey = incomingSourceKey.orEmpty()
+                        val cachedCategories = categoryListCache.get(sourceKey)
                         combinedCategoriesById = emptyMap()
+                        if (cachedCategories == null) {
+                            channelBrowseCache.clearForSource(sourceKey)
+                            livePreviewStateCache.clearForSource(sourceKey)
+                            liveEpgNowPlayingCache.clear()
+                        } else {
+                            channelBrowseCache.markStaleForSource(sourceKey)
+                        }
                         _uiState.update {
                             it.copy(
                                 provider = null,
                                 activeLiveSource = activeSource,
                                 activeLiveSourceTitle = profile?.name ?: "Combined M3U",
                                 isCombinedLiveSource = true,
-                                categories = emptyList(),
-                                recentChannels = emptyList(),
-                                lastVisitedCategory = null,
+                                categories = cachedCategories?.categories ?: emptyList(),
+                                recentChannels = liveRecentChannelsCache.get(sourceKey).orEmpty(),
+                                lastVisitedCategory = cachedCategories?.lastVisitedCategory,
                                 selectedCategory = null,
                                 filteredChannels = emptyList(),
                                 hasChannels = false,
                                 isLoading = false,
-                                isCategoriesLoading = true,
+                                isCategoriesLoading = cachedCategories == null,
                                 errorMessage = null,
                                 currentCombinedProfileMembers = profile?.members.orEmpty(),
-                                selectedCombinedSourceProviderId = null
+                                selectedCombinedSourceProviderId = null,
+                                channelSearchQuery = "",
+                                pinnedCategoryIds = cachedCategories?.pinnedCategoryIds ?: emptySet(),
+                                hiddenLiveCategories = cachedCategories?.hiddenLiveCategories ?: emptyList()
                             )
                         }
                         recentChannelsJob?.cancel()
                         recentChannelsJob = null
                         _localChannels.value = emptyList()
                         observeCombinedRecentChannels(currentCombinedProviderIds())
-                        loadCombinedCategoriesAndChannels(activeSource.profileId)
+                        if (cachedCategories == null || categoryListCache.isStale(sourceKey)) {
+                            loadCombinedCategoriesAndChannels(
+                                profileId = activeSource.profileId,
+                                preferCache = cachedCategories != null,
+                                backgroundRefresh = cachedCategories != null
+                            )
+                        } else {
+                            restoreBrowseAfterCachedCategories(cachedCategories)
+                        }
                     }
                     is ActiveLiveSource.ProviderSource -> {
+                        if (shouldSkipLiveSourceHydration(incomingSourceKey)) {
+                            resumeChannelBrowseIfNeeded()
+                            return@collectLatest
+                        }
+                        hydratedLiveSourceKey = incomingSourceKey
                         val provider = activeProvider?.takeIf { it.id == activeSource.providerId }
                             ?: providerRepository.getProvider(activeSource.providerId)
                             ?: return@collectLatest
+                        val sourceKey = incomingSourceKey.orEmpty()
+                        val cachedCategories = categoryListCache.get(sourceKey)
                         parentalControlManager.clearUnlockedCategories(provider.id)
                         combinedCategoriesById = emptyMap()
+                        if (cachedCategories == null) {
+                            channelBrowseCache.clearForSource(sourceKey)
+                            livePreviewStateCache.clearForSource(sourceKey)
+                            liveEpgNowPlayingCache.clear()
+                        } else {
+                            channelBrowseCache.markStaleForSource(sourceKey)
+                        }
                         _uiState.update {
                             it.copy(
                                 provider = provider,
                                 activeLiveSource = activeSource,
                                 activeLiveSourceTitle = provider.name,
                                 isCombinedLiveSource = false,
-                                categories = emptyList(),
-                                recentChannels = emptyList(),
-                                lastVisitedCategory = null,
+                                categories = cachedCategories?.categories ?: emptyList(),
+                                recentChannels = liveRecentChannelsCache.get(sourceKey).orEmpty(),
+                                lastVisitedCategory = cachedCategories?.lastVisitedCategory,
                                 selectedCategory = null,
                                 filteredChannels = emptyList(),
                                 hasChannels = false,
                                 isLoading = false,
-                                isCategoriesLoading = true,
+                                isCategoriesLoading = cachedCategories == null,
                                 errorMessage = null,
                                 currentCombinedProfileMembers = emptyList(),
-                                selectedCombinedSourceProviderId = null
+                                selectedCombinedSourceProviderId = null,
+                                channelSearchQuery = "",
+                                pinnedCategoryIds = cachedCategories?.pinnedCategoryIds ?: emptySet(),
+                                hiddenLiveCategories = cachedCategories?.hiddenLiveCategories ?: emptyList()
                             )
                         }
                         _localChannels.value = emptyList()
-                        loadCategoriesAndChannels(provider.id)
+                        if (cachedCategories == null || categoryListCache.isStale(sourceKey)) {
+                            loadCategoriesAndChannels(
+                                providerId = provider.id,
+                                preferCache = cachedCategories != null,
+                                backgroundRefresh = cachedCategories != null
+                            )
+                        } else {
+                            restoreBrowseAfterCachedCategories(cachedCategories)
+                        }
                         observeRecentChannels(provider.id)
                         preferencesRepository.setLastActiveProviderId(provider.id)
                     }
                     null -> {
+                        hydratedLiveSourceKey = null
                         recentChannelsJob?.cancel()
                         recentChannelsJob = null
                         combinedCategoriesById = emptyMap()
+                        channelBrowseCache.clear()
+                        liveEpgNowPlayingCache.clear()
+                        categoryListCache.clear()
                         _localChannels.value = emptyList()
                         _uiState.update {
                             it.copy(
@@ -236,7 +317,8 @@ class HomeViewModel @Inject constructor(
                                 isCategoriesLoading = false,
                                 errorMessage = null,
                                 currentCombinedProfileMembers = emptyList(),
-                                selectedCombinedSourceProviderId = null
+                                selectedCombinedSourceProviderId = null,
+                                channelSearchQuery = ""
                             )
                         }
                     }
@@ -246,17 +328,17 @@ class HomeViewModel @Inject constructor(
 
         viewModelScope.launch {
             combinedM3uRepository.getActiveLiveSourceOptions().collectLatest { options ->
-                _uiState.update { state ->
-                    state.copy(
-                        liveSourceOptions = options.filter { option ->
-                            when (val source = option.source) {
-                                is ActiveLiveSource.ProviderSource -> {
-                                    state.allProviders.firstOrNull { it.id == source.providerId }?.type == ProviderType.M3U
-                                }
-                                is ActiveLiveSource.CombinedM3uSource -> true
-                            }
+                val filtered = options.filter { option ->
+                    when (val source = option.source) {
+                        is ActiveLiveSource.ProviderSource -> {
+                            _uiState.value.allProviders.firstOrNull { it.id == source.providerId }?.type == ProviderType.M3U
                         }
-                    )
+                        is ActiveLiveSource.CombinedM3uSource -> true
+                    }
+                }
+                combinedProfilesCache.putLiveSourceOptions(filtered)
+                _uiState.update { state ->
+                    state.copy(liveSourceOptions = filtered)
                 }
             }
         }
@@ -290,7 +372,10 @@ class HomeViewModel @Inject constructor(
                 val previewChannelId = _uiState.value.previewChannelId
                 if (previewChannelId != null && markedChannels.none { it.id == previewChannelId }) {
                     clearPreview()
+                } else {
+                    maybeRestoreCachedPreview(markedChannels)
                 }
+                maybeResumeLastChannel(markedChannels)
             }
         }
 
@@ -398,15 +483,31 @@ class HomeViewModel @Inject constructor(
                 }
                 .collectLatest { syncState ->
                     val isSyncing = syncState is SyncState.Syncing
-                    _uiState.update { state ->
-                        state.copy(
-                            isSyncing = isSyncing,
-                            isLoading = when {
-                                state.hasChannels -> false
-                                isSyncing && state.selectedCategory != null -> true
-                                else -> state.isLoading && isSyncing
+                    val wasSyncing = _uiState.value.isSyncing
+                    _uiState.update { state -> state.copy(isSyncing = isSyncing) }
+                    if (wasSyncing && !isSyncing) {
+                        liveBrowseSourceKey()?.let { sourceKey ->
+                            categoryListCache.markStale(sourceKey)
+                            channelBrowseCache.markStaleForSource(sourceKey)
+                        }
+                        _uiState.value.provider?.id?.let { id ->
+                            if (_uiState.value.categories.isNotEmpty()) {
+                                loadCategoriesAndChannels(
+                                    providerId = id,
+                                    preferCache = true,
+                                    backgroundRefresh = true
+                                )
                             }
-                        )
+                        }
+                        _uiState.value.selectedCategory?.let { selected ->
+                            if (!shouldSkipRedundantChannelReload(selected)) {
+                                loadChannelsForCategory(
+                                    selected,
+                                    preferCache = true,
+                                    backgroundRefresh = true
+                                )
+                            }
+                        }
                     }
                 }
         }
@@ -445,11 +546,19 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun loadCategoriesAndChannels(providerId: Long) {
+    private fun loadCategoriesAndChannels(
+        providerId: Long,
+        preferCache: Boolean = false,
+        backgroundRefresh: Boolean = false
+    ) {
+        val hasExistingCategories =
+            _uiState.value.provider?.id == providerId && _uiState.value.categories.isNotEmpty()
         categoriesJob?.cancel()
         categoriesJob = viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isCategoriesLoading = true, errorMessage = null) }
+                if (!preferCache && !backgroundRefresh && !hasExistingCategories) {
+                    _uiState.update { it.copy(isCategoriesLoading = true, errorMessage = null) }
+                }
                 combine(
                     channelRepository.getCategories(providerId),
                     getCustomCategories(providerId, ContentType.LIVE),
@@ -522,6 +631,16 @@ class HomeViewModel @Inject constructor(
                     val lastVisitedCategory = selectionContext.lastVisitedCategoryId?.let { lastVisitedId ->
                         categories.find { it.id == lastVisitedId && it.id != VirtualCategoryIds.RECENT }
                     }
+                    val sourceKey = liveBrowseSourceKey().orEmpty()
+                    categoryListCache.put(
+                        sourceKey,
+                        CachedCategoryList(
+                            categories = categories,
+                            lastVisitedCategory = lastVisitedCategory,
+                            pinnedCategoryIds = selectionContext.pinnedCategoryIds,
+                            hiddenLiveCategories = selectionContext.hiddenLiveCategories
+                        )
+                    )
                     _uiState.update {
                         it.copy(
                             categories = categories,
@@ -580,11 +699,22 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun loadCombinedCategoriesAndChannels(profileId: Long) {
+    private fun loadCombinedCategoriesAndChannels(
+        profileId: Long,
+        preferCache: Boolean = false,
+        backgroundRefresh: Boolean = false
+    ) {
+        val hasExistingCategories = _uiState.value.isCombinedLiveSource &&
+            (_uiState.value.activeLiveSource as? ActiveLiveSource.CombinedM3uSource)?.profileId == profileId &&
+            _uiState.value.categories.isNotEmpty()
         categoriesJob?.cancel()
         categoriesJob = viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isCategoriesLoading = true, errorMessage = null, pinnedCategoryIds = emptySet()) }
+                if (!preferCache && !backgroundRefresh && !hasExistingCategories) {
+                    _uiState.update {
+                        it.copy(isCategoriesLoading = true, errorMessage = null, pinnedCategoryIds = emptySet())
+                    }
+                }
                 val providerIds = currentCombinedProviderIds()
                 combine(
                     combinedM3uRepository.getCombinedCategories(profileId),
@@ -624,6 +754,16 @@ class HomeViewModel @Inject constructor(
                     if (!showAll) ctx.copy(categories = ctx.categories.filter { it.id != ChannelRepository.ALL_CHANNELS_ID }) else ctx
                 }.collect { selectionContext ->
                     val categories = selectionContext.categories
+                    val sourceKey = liveBrowseSourceKey().orEmpty()
+                    categoryListCache.put(
+                        sourceKey,
+                        CachedCategoryList(
+                            categories = categories,
+                            lastVisitedCategory = null,
+                            pinnedCategoryIds = emptySet(),
+                            hiddenLiveCategories = emptyList()
+                        )
+                    )
                     _uiState.update {
                         it.copy(
                             categories = categories,
@@ -656,7 +796,12 @@ class HomeViewModel @Inject constructor(
     }
 
     fun selectCategory(category: Category) {
-        if (_uiState.value.selectedCategory?.id == category.id) return
+        if (_uiState.value.selectedCategory?.id == category.id) {
+            if (_uiState.value.filteredChannels.isEmpty() || _uiState.value.isLoading) {
+                resumeChannelBrowseIfNeeded()
+            }
+            return
+        }
         if (!_uiState.value.isCombinedLiveSource) {
             _uiState.value.provider?.id?.let { providerId ->
                 parentalControlManager.retainUnlockedCategory(
@@ -666,17 +811,35 @@ class HomeViewModel @Inject constructor(
             }
         }
         clearPreview()
-        _localChannels.value = emptyList()
-        _uiState.update {
-            it.copy(
-                selectedCategory = category,
-                filteredChannels = emptyList(),
-                hasChannels = false,
-                isLoading = true,
-                errorMessage = null
-            )
-        }
         _preferredInitialCategoryId.value = null
+        val cacheKey = browseCacheKey(
+            categoryId = category.id,
+            searchQuery = "",
+            combinedFilterProviderId = _uiState.value.selectedCombinedSourceProviderId
+        )
+        val cachedBrowse = channelBrowseCache.get(cacheKey)
+        if (cachedBrowse != null) {
+            applyCachedChannelBrowse(category, cachedBrowse)
+        } else {
+            val previewChannelId = cachedPreviewChannelIdForCategory(category.id)
+            _localChannels.value = emptyList()
+            _uiState.update {
+                it.copy(
+                    selectedCategory = category,
+                    filteredChannels = emptyList(),
+                    hasChannels = false,
+                    isLoading = true,
+                    isRefreshingChannels = false,
+                    channelSearchQuery = "",
+                    errorMessage = null,
+                    previewChannelId = previewChannelId,
+                    previewPlayerEngine = null,
+                    isPreviewLoading = previewChannelId != null,
+                    previewErrorMessage = null,
+                    previewErrorCode = null,
+                )
+            }
+        }
         if (!_uiState.value.isCombinedLiveSource && category.id != VirtualCategoryIds.RECENT) {
             val providerId = _uiState.value.provider?.id
             if (providerId != null) {
@@ -687,16 +850,25 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
-        loadChannelsForCategory(category)
+        if (cachedBrowse == null || !channelBrowseCache.isFresh(cacheKey)) {
+            loadChannelsForCategory(
+                category,
+                preferCache = cachedBrowse != null,
+                backgroundRefresh = cachedBrowse != null
+            )
+        }
     }
 
     fun setPreferredInitialCategory(categoryId: Long?) {
         if (categoryId == null) return
+        skipLastChannelResume = true
 
         val matchingCategory = _uiState.value.categories.firstOrNull { it.id == categoryId }
         if (matchingCategory != null) {
             if (_uiState.value.selectedCategory?.id != matchingCategory.id) {
                 selectCategory(matchingCategory)
+            } else if (_uiState.value.filteredChannels.isEmpty() || _uiState.value.isLoading) {
+                resumeChannelBrowseIfNeeded()
             }
             return
         }
@@ -704,21 +876,34 @@ class HomeViewModel @Inject constructor(
         _preferredInitialCategoryId.value = categoryId
     }
 
-    private fun loadChannelsForCategory(category: Category) {
+    private fun loadChannelsForCategory(
+        category: Category,
+        preferCache: Boolean = false,
+        backgroundRefresh: Boolean = false
+    ) {
+        if (backgroundRefresh && shouldSkipRedundantChannelReload(category)) {
+            return
+        }
         loadChannelsJob?.cancel()
         _channelBrowseLimit.value = CHANNEL_PAGE_SIZE
         _channelSearchLimit.value = CHANNEL_SEARCH_PAGE_SIZE
         loadChannelsJob = viewModelScope.launch {
             try {
-                _uiState.update {
-                    it.copy(
-                        isLoading = true,
-                        errorMessage = null
-                    )
+                val hasVisibleChannels = _uiState.value.filteredChannels.isNotEmpty()
+                if (backgroundRefresh && hasVisibleChannels) {
+                    _uiState.update { it.copy(isRefreshingChannels = true, isLoading = false) }
+                } else if (!preferCache && !backgroundRefresh && !hasVisibleChannels) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = true,
+                            isRefreshingChannels = false,
+                            errorMessage = null
+                        )
+                    }
                 }
 
                 val queryFlow = _uiState.map { it.channelSearchQuery }
-                    .debounce(150)
+                    .debounce { query -> if (query.isBlank()) 0L else 150L }
                     .distinctUntilChanged()
 
                 val channelsFlow = if (_uiState.value.isCombinedLiveSource) {
@@ -768,7 +953,11 @@ class HomeViewModel @Inject constructor(
                         }
                     }
                 } else if (category.isVirtual) {
-                    val providerId = _uiState.value.provider?.id ?: return@launch
+                    val providerId = _uiState.value.provider?.id
+                    if (providerId == null) {
+                        _uiState.update { it.copy(isLoading = false) }
+                        return@launch
+                    }
                     val orderedFlow = if (category.id == VirtualCategoryIds.RECENT) {
                         playbackHistoryRepository.getRecentlyWatchedByProvider(providerId, limit = 24)
                             .map { it.toRecentLiveContentIds() }
@@ -795,7 +984,11 @@ class HomeViewModel @Inject constructor(
                         }
                     }
                 } else {
-                    val providerId = _uiState.value.provider?.id ?: return@launch
+                    val providerId = _uiState.value.provider?.id
+                    if (providerId == null) {
+                        _uiState.update { it.copy(isLoading = false) }
+                        return@launch
+                    }
                     queryFlow.flatMapLatest { query ->
                         val trimmedQuery = query.trim()
                         if (trimmedQuery.isBlank()) {
@@ -842,13 +1035,27 @@ class HomeViewModel @Inject constructor(
                     } else {
                         _channelSearchLimit.value
                     }
+                    val hasMore = displayedChannels.size >= currentLimit
                     _localChannels.value = displayedChannels
+                    channelBrowseCache.put(
+                        browseCacheKey(
+                            categoryId = category.id,
+                            searchQuery = currentQuery,
+                            combinedFilterProviderId = _uiState.value.selectedCombinedSourceProviderId
+                        ),
+                        CachedChannelBrowse(
+                            channels = displayedChannels,
+                            hasMore = hasMore
+                        )
+                    )
                     _uiState.update {
                         it.copy(
                             hasChannels = displayedChannels.isNotEmpty(),
-                            isLoading = displayedChannels.isEmpty() && it.isSyncing,
+                            filteredChannels = displayedChannels,
+                            isLoading = false,
+                            isRefreshingChannels = false,
                             errorMessage = null,
-                            hasMoreChannels = displayedChannels.size >= currentLimit
+                            hasMoreChannels = hasMore
                         )
                     }
                 }
@@ -858,6 +1065,7 @@ class HomeViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        isRefreshingChannels = false,
                         errorMessage = appContext.getString(R.string.home_error_load_failed)
                     )
                 }
@@ -990,6 +1198,26 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun consumePendingResumeChannel() {
+        _uiState.update { it.copy(pendingResumeChannel = null) }
+    }
+
+    private fun maybeResumeLastChannel(channels: List<Channel>) {
+        if (hasAttemptedLastChannelResume || skipLastChannelResume || channels.isEmpty()) return
+        hasAttemptedLastChannelResume = true
+        viewModelScope.launch {
+            if (preferencesRepository.isIncognitoMode.first()) return@launch
+            if (!preferencesRepository.resumeLastLiveChannelEnabled.first()) return@launch
+            val scopeKey = liveResumeScopeKey(_uiState.value.activeLiveSource) ?: return@launch
+            val lastChannelId = preferencesRepository.getLastLiveChannelId(scopeKey).first() ?: return@launch
+            val channel = channels.firstOrNull { it.id == lastChannelId }
+                ?: channelRepository.getChannel(lastChannelId)
+                ?: return@launch
+            if (channel.providerId !in currentLiveProviderIds()) return@launch
+            _uiState.update { it.copy(pendingResumeChannel = channel) }
+        }
+    }
+
     fun previewChannel(channel: Channel) {
         if (_uiState.value.liveTvChannelMode != LiveTvChannelMode.PRO) return
         if (_uiState.value.previewChannelId == channel.id && _uiState.value.previewPlayerEngine != null) return
@@ -1004,7 +1232,8 @@ class HomeViewModel @Inject constructor(
                 previewChannelId = channel.id,
                 previewPlayerEngine = engine,
                 isPreviewLoading = true,
-                previewErrorMessage = null
+                previewErrorMessage = null,
+                previewErrorCode = null
             )
         }
 
@@ -1019,6 +1248,11 @@ class HomeViewModel @Inject constructor(
                                 appContext.getString(R.string.live_preview_failed)
                             playbackState != PlaybackState.ERROR -> null
                             else -> state.previewErrorMessage
+                        },
+                        previewErrorCode = if (playbackState == PlaybackState.ERROR) {
+                            state.previewErrorCode ?: "UNKNOWN"
+                        } else {
+                            null
                         }
                     )
                 }
@@ -1029,10 +1263,13 @@ class HomeViewModel @Inject constructor(
             engine.error.collectLatest { error ->
                 if (!isActivePreviewSession(previewVersion, channel.id)) return@collectLatest
                 if (error != null) {
+                    val fallback = appContext.getString(R.string.live_preview_failed)
+                    val display = resolveLivePreviewErrorFromPlayerError(error, fallback)
                     _uiState.update {
                         it.copy(
                             isPreviewLoading = false,
-                            previewErrorMessage = error.message.ifBlank { appContext.getString(R.string.live_preview_failed) }
+                            previewErrorMessage = display.message,
+                            previewErrorCode = display.code,
                         )
                     }
                 }
@@ -1040,23 +1277,17 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            when (val result = channelRepository.getStreamInfo(channel)) {
+            when (
+                val result = resolvePreparedPreviewStreamInfo(
+                    channel = channel,
+                    channelRepository = channelRepository,
+                    pluginManager = pluginManager,
+                    streamCache = livePlaybackStreamCache,
+                )
+            ) {
                 is Result.Success -> {
                     if (!isActivePreviewSession(previewVersion, channel.id)) return@launch
-                    val preparedStreamInfo = when (val pluginResult = pluginManager.preparePlaybackStreamInfo(result.data)) {
-                        is Result.Success -> pluginResult.data
-                        is Result.Error -> {
-                            if (!isActivePreviewSession(previewVersion, channel.id)) return@launch
-                            _uiState.update {
-                                it.copy(
-                                    isPreviewLoading = false,
-                                    previewErrorMessage = pluginResult.message.ifBlank { appContext.getString(R.string.live_preview_failed) }
-                                )
-                            }
-                            return@launch
-                        }
-                        Result.Loading -> result.data
-                    }
+                    val preparedStreamInfo = result.data
                     if (!isActivePreviewSession(previewVersion, channel.id)) return@launch
                     engine.stop()
                     engine.setDecoderMode(preferencesRepository.playerDecoderMode.first())
@@ -1068,6 +1299,7 @@ class HomeViewModel @Inject constructor(
                     engine.prepare(preparedStreamInfo)
                     engine.setVolume(1f)
                     engine.play()
+                    cacheCurrentPreviewState(channel.id)
                     livePreviewHandoffManager.registerPreviewSession(
                         channel = channel,
                         streamInfo = preparedStreamInfo,
@@ -1080,13 +1312,19 @@ class HomeViewModel @Inject constructor(
                         streamInfo = preparedStreamInfo,
                         engine = engine
                     )
+                    prewarmAdjacentPreviewChannels(channel)
                 }
                 is Result.Error -> {
                     if (!isActivePreviewSession(previewVersion, channel.id)) return@launch
                     _uiState.update {
+                        val display = resolveLivePreviewErrorFromMessage(
+                            result.message,
+                            appContext.getString(R.string.live_preview_failed)
+                        )
                         it.copy(
                             isPreviewLoading = false,
-                            previewErrorMessage = result.message
+                            previewErrorMessage = display.message,
+                            previewErrorCode = display.code,
                         )
                     }
                 }
@@ -1126,6 +1364,9 @@ class HomeViewModel @Inject constructor(
         if (_uiState.value.previewChannelId != channel.id) return false
         if (!livePreviewHandoffManager.beginFullscreenHandoff(channel.id, engine)) return false
 
+        cacheCurrentPreviewState(channel.id)
+        previewPrewarmJob?.cancel()
+        previewPrewarmJob = null
         previewSessionVersion++
         previewPlaybackJob?.cancel()
         previewErrorJob?.cancel()
@@ -1137,7 +1378,8 @@ class HomeViewModel @Inject constructor(
                 previewChannelId = null,
                 previewPlayerEngine = null,
                 isPreviewLoading = false,
-                previewErrorMessage = null
+                previewErrorMessage = null,
+                previewErrorCode = null
             )
         }
         return true
@@ -1174,21 +1416,59 @@ class HomeViewModel @Inject constructor(
                 previewChannelId = session.channelId,
                 previewPlayerEngine = engine,
                 isPreviewLoading = false,
-                previewErrorMessage = null
+                previewErrorMessage = null,
+                previewErrorCode = null
             )
         }
         previewPlaybackJob = viewModelScope.launch {
             engine.playbackState.collectLatest { state ->
                 if (!isActivePreviewSession(version, session.channelId)) return@collectLatest
                 if (state == PlaybackState.ERROR && _uiState.value.previewErrorMessage == null) {
-                    _uiState.update { it.copy(previewErrorMessage = appContext.getString(R.string.live_preview_failed)) }
+                    _uiState.update {
+                        it.copy(
+                            previewErrorMessage = appContext.getString(R.string.live_preview_failed),
+                            previewErrorCode = "UNKNOWN",
+                        )
+                    }
                 }
             }
         }
     }
 
+    fun savedChannelScroll(categoryId: Long): ChannelScrollAnchor? = channelScrollAnchors[categoryId]
+
+    fun saveChannelScroll(categoryId: Long, index: Int, offset: Int) {
+        channelScrollAnchors[categoryId] = ChannelScrollAnchor(index, offset)
+    }
+
+    fun pausePreviewForBackground() {
+        val engine = previewPlayerEngine ?: return
+        if (_uiState.value.previewChannelId == null) return
+        previewPausedForBackground = engine.isPlaying.value
+        engine.pause()
+    }
+
+    fun resumePreviewAfterBackground() {
+        if (!previewPausedForBackground) return
+        previewPausedForBackground = false
+        previewPlayerEngine?.play()
+    }
+
     fun clearPreview() {
-        if (previewPlayerEngine == null) return
+        previewPausedForBackground = false
+        previewPrewarmJob?.cancel()
+        previewPrewarmJob = null
+        if (previewPlayerEngine == null) {
+            _uiState.update {
+                it.copy(
+                    previewChannelId = null,
+                    isPreviewLoading = false,
+                    previewErrorMessage = null,
+                    previewErrorCode = null,
+                )
+            }
+            return
+        }
         previewSessionVersion++
         previewPlaybackJob?.cancel()
         previewErrorJob?.cancel()
@@ -1203,8 +1483,83 @@ class HomeViewModel @Inject constructor(
                 previewChannelId = null,
                 previewPlayerEngine = null,
                 isPreviewLoading = false,
-                previewErrorMessage = null
+                previewErrorMessage = null,
+                previewErrorCode = null
             )
+        }
+    }
+
+    private fun cacheCurrentPreviewState(channelId: Long? = _uiState.value.previewChannelId) {
+        val id = channelId ?: return
+        if (_uiState.value.channelSearchQuery.trim().length >= MIN_CHANNEL_SEARCH_QUERY_LENGTH) return
+        val categoryId = _uiState.value.selectedCategory?.id ?: return
+        val sourceKey = liveBrowseSourceKey() ?: return
+        livePreviewStateCache.put(
+            previewStateCacheKey(
+                categoryId = categoryId,
+                combinedFilterProviderId = _uiState.value.selectedCombinedSourceProviderId,
+                sourceKey = sourceKey,
+            ),
+            channelId = id,
+        )
+    }
+
+    private fun previewStateCacheKey(
+        categoryId: Long,
+        combinedFilterProviderId: Long?,
+        sourceKey: String = liveBrowseSourceKey().orEmpty(),
+    ): LivePreviewStateCacheKey = LivePreviewStateCacheKey(
+        sourceKey = sourceKey,
+        categoryId = categoryId,
+        combinedFilterProviderId = combinedFilterProviderId,
+    )
+
+    private fun suspendPreviewForCategorySwitch() {
+        previewPausedForBackground = false
+        previewPrewarmJob?.cancel()
+        previewPrewarmJob = null
+        previewSessionVersion++
+        previewPlaybackJob?.cancel()
+        previewErrorJob?.cancel()
+        previewPlaybackJob = null
+        previewErrorJob = null
+        livePreviewHandoffManager.clear(previewPlayerEngine)
+        previewPlayerEngine?.stop()
+        previewPlayerEngine?.release()
+        previewPlayerEngine = null
+    }
+
+    private fun maybeRestoreCachedPreview(channels: List<Channel>) {
+        if (_uiState.value.liveTvChannelMode != LiveTvChannelMode.PRO) return
+        if (_uiState.value.previewPlayerEngine != null) return
+        if (!_uiState.value.isPreviewLoading) return
+        val previewChannelId = _uiState.value.previewChannelId ?: return
+        val channel = channels.firstOrNull { it.id == previewChannelId } ?: run {
+            _uiState.update {
+                it.copy(
+                    previewChannelId = null,
+                    isPreviewLoading = false,
+                )
+            }
+            return
+        }
+        previewChannel(channel)
+    }
+
+    private fun prewarmAdjacentPreviewChannels(currentChannel: Channel) {
+        previewPrewarmJob?.cancel()
+        val neighbors = adjacentPreviewChannels(_uiState.value.filteredChannels, currentChannel.id)
+        if (neighbors.isEmpty()) return
+        previewPrewarmJob = viewModelScope.launch {
+            neighbors.forEach { neighbor ->
+                warmPreviewStreamCache(
+                    channel = neighbor,
+                    channelRepository = channelRepository,
+                    pluginManager = pluginManager,
+                    providerRepository = providerRepository,
+                    streamCache = livePlaybackStreamCache,
+                )
+            }
         }
     }
 
@@ -1213,23 +1568,86 @@ class HomeViewModel @Inject constructor(
 
     private fun fetchEpgForChannels(channels: List<Channel>) {
         epgJob?.cancel()
+        if (channels.isEmpty()) return
+
         val lookupKeys = channels.mapNotNull(Channel::guideLookupKey).distinct()
+        val cacheKeys = channels.mapNotNull { channel ->
+            channel.guideLookupKey()?.let { lookupKey ->
+                LiveEpgChannelKey(channel.providerId, lookupKey)
+            }
+        }
+        val partition = liveEpgNowPlayingCache.partition(cacheKeys)
+        if (partition.immediate.isNotEmpty()) {
+            _epgProgramMap.update { existing ->
+                buildMap {
+                    putAll(existing)
+                    partition.immediate.forEach { (lookupKey, program) -> put(lookupKey, program) }
+                }
+            }
+        }
+        if (partition.revalidate.isEmpty()) {
+            return
+        }
+
+        val channelsToLoad = channels.filter { channel ->
+            channel.guideLookupKey()?.let { lookupKey ->
+                LiveEpgChannelKey(channel.providerId, lookupKey) in partition.revalidate
+            } == true
+        }
 
         epgJob = viewModelScope.launch {
             val now = System.currentTimeMillis()
+            val windowStart = now - (60L * 60L * 1000L)
+            val windowEnd = now + (2L * 60L * 60L * 1000L)
             val mergedProgramMap = buildMap {
-                channels.groupBy { it.providerId }.forEach { (providerId, providerChannels) ->
-                    val freshProgramMap = epgRepository.getResolvedProgramsForChannels(
-                        providerId = providerId,
-                        channelIds = providerChannels.map { it.id },
-                        startTime = now - (60L * 60L * 1000L),
-                        endTime = now + (2L * 60L * 60L * 1000L)
-                    ).mapValues { (_, programs) ->
+                val channelsByProvider = channelsToLoad.groupBy { it.providerId }
+                channelsByProvider.forEach { (providerId, providerChannels) ->
+                    val resolvedPrograms = runCatching {
+                        epgRepository.getResolvedProgramsForChannels(
+                            providerId = providerId,
+                            channelIds = providerChannels.map { it.id },
+                            startTime = windowStart,
+                            endTime = windowEnd
+                        )
+                    }.getOrElse { emptyMap() }
+                    val resolvedNowPlaying = resolvedPrograms.mapValues { (_, programs) ->
                         programs.firstOrNull { it.startTime <= now && it.endTime > now }
                             ?: programs.firstOrNull()
                     }.mapNotNull { (lookupKey, program) ->
                         program?.let { lookupKey to it }
                     }.toMap()
+
+                    val unresolvedChannels = providerChannels.filter { channel ->
+                        val lookupKey = channel.guideLookupKey()
+                        lookupKey == null || resolvedPrograms[lookupKey].isNullOrEmpty()
+                    }
+                    val legacyNowPlaying = if (unresolvedChannels.isNotEmpty()) {
+                        val fallbackGuideKeys = unresolvedChannels.mapNotNull(Channel::guideLookupKey).distinct()
+                        if (fallbackGuideKeys.isEmpty()) {
+                            emptyMap()
+                        } else {
+                            runCatching {
+                                epgRepository.getProgramsForChannelsSnapshot(
+                                    providerId = providerId,
+                                    channelIds = fallbackGuideKeys,
+                                    startTime = windowStart,
+                                    endTime = windowEnd
+                                )
+                            }.getOrElse { emptyMap() }
+                                .mapValues { (_, programs) ->
+                                    programs.firstOrNull { it.startTime <= now && it.endTime > now }
+                                        ?: programs.firstOrNull()
+                                }
+                                .mapNotNull { (lookupKey, program) ->
+                                    program?.let { lookupKey to it }
+                                }
+                                .toMap()
+                        }
+                    } else {
+                        emptyMap()
+                    }
+
+                    val freshProgramMap = resolvedNowPlaying + legacyNowPlaying.filterKeys { it !in resolvedNowPlaying }
                     putAll(freshProgramMap)
                     putAll(
                         fetchXtreamNowPlayingFallback(
@@ -1241,6 +1659,11 @@ class HomeViewModel @Inject constructor(
                 }
             }
 
+            val providerIdByLookupKey = channelsToLoad.mapNotNull { channel ->
+                channel.guideLookupKey()?.let { lookupKey -> lookupKey to channel.providerId }
+            }.toMap()
+            liveEpgNowPlayingCache.put(mergedProgramMap, providerIdByLookupKey)
+
             val channelEpgIds = lookupKeys.toSet()
             _epgProgramMap.update { existing ->
                 buildMap {
@@ -1248,7 +1671,7 @@ class HomeViewModel @Inject constructor(
                     channelEpgIds.forEach { epgId ->
                         if (mergedProgramMap.containsKey(epgId)) {
                             put(epgId, mergedProgramMap.getValue(epgId))
-                        } else {
+                        } else if (epgId in partition.revalidate.map { it.lookupKey }) {
                             remove(epgId)
                         }
                     }
@@ -1370,6 +1793,11 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun observeCombinedRecentChannels(providerIds: List<Long>) {
+        val sourceKey = liveBrowseSourceKey().orEmpty()
+        liveRecentChannelsCache.get(sourceKey)?.let { cached ->
+            _uiState.update { it.copy(recentChannels = cached) }
+            updateRecentCategoryCount(cached.size)
+        }
         recentChannelsJob?.cancel()
         recentChannelsJob = viewModelScope.launch {
             combine(
@@ -1381,6 +1809,7 @@ class HomeViewModel @Inject constructor(
                     channels, level
                 ) { isAdult || isUserProtected }
             }.collect { visible ->
+                liveRecentChannelsCache.put(sourceKey, visible)
                 _uiState.update { it.copy(recentChannels = visible) }
                 updateRecentCategoryCount(visible.size)
             }
@@ -1388,6 +1817,11 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun observeRecentChannels(providerId: Long) {
+        val sourceKey = LiveSourceCacheKeys.provider(providerId)
+        liveRecentChannelsCache.get(sourceKey)?.let { cached ->
+            _uiState.update { it.copy(recentChannels = cached) }
+            updateRecentCategoryCount(cached.size)
+        }
         recentChannelsJob?.cancel()
         recentChannelsJob = viewModelScope.launch {
             combine(
@@ -1400,6 +1834,7 @@ class HomeViewModel @Inject constructor(
                     channels, level
                 ) { isAdult || isUserProtected }
             }.collect { visible ->
+                liveRecentChannelsCache.put(sourceKey, visible)
                 _uiState.update { it.copy(recentChannels = visible) }
                 updateRecentCategoryCount(visible.size)
             }
@@ -1570,6 +2005,10 @@ class HomeViewModel @Inject constructor(
 
     fun refreshData() {
         val provider = _uiState.value.provider ?: return
+        liveBrowseSourceKey()?.let { sourceKey ->
+            channelBrowseCache.clearForSource(sourceKey)
+            categoryListCache.clearForSource(sourceKey)
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             providerRepository.refreshProviderData(provider.id, force = true)
@@ -1960,6 +2399,180 @@ class HomeViewModel @Inject constructor(
             ?: _uiState.value.selectedCombinedSourceProviderId
             ?: currentLiveProviderIds().singleOrNull()
 
+    private fun liveBrowseSourceKey(state: HomeUiState = _uiState.value): String? =
+        liveBrowseSourceKey(state.activeLiveSource, state.provider)
+
+    private fun liveBrowseSourceKey(
+        activeSource: ActiveLiveSource?,
+        activeProvider: Provider?
+    ): String? = when (activeSource) {
+        is ActiveLiveSource.ProviderSource -> "provider_${activeSource.providerId}"
+        is ActiveLiveSource.CombinedM3uSource -> "combined_${activeSource.profileId}"
+        null -> activeProvider?.id?.let { "provider_$it" }
+    }
+
+    private fun shouldSkipLiveSourceHydration(sourceKey: String?): Boolean {
+        if (sourceKey == null || sourceKey != hydratedLiveSourceKey) return false
+        val state = _uiState.value
+        return state.categories.isNotEmpty() &&
+            (state.selectedCategory != null || state.filteredChannels.isNotEmpty())
+    }
+
+    private fun cachedPreviewChannelIdForCategory(
+        categoryId: Long,
+        combinedFilterProviderId: Long? = _uiState.value.selectedCombinedSourceProviderId
+    ): Long? = livePreviewStateCache.get(
+        previewStateCacheKey(categoryId, combinedFilterProviderId)
+    )
+
+    private fun applyCachedChannelBrowse(category: Category, cachedBrowse: CachedChannelBrowse) {
+        val previewChannelId = cachedPreviewChannelIdForCategory(category.id)
+        _localChannels.value = cachedBrowse.channels
+        _uiState.update {
+            it.copy(
+                selectedCategory = category,
+                filteredChannels = cachedBrowse.channels,
+                hasChannels = cachedBrowse.channels.isNotEmpty(),
+                hasMoreChannels = cachedBrowse.hasMore,
+                isLoading = false,
+                isRefreshingChannels = false,
+                channelSearchQuery = "",
+                errorMessage = null,
+                previewChannelId = previewChannelId,
+                previewPlayerEngine = null,
+                isPreviewLoading = previewChannelId != null,
+                previewErrorMessage = null,
+                previewErrorCode = null,
+            )
+        }
+    }
+
+    private fun resolveCategoryToRestore(cached: CachedCategoryList): Category? {
+        _uiState.value.selectedCategory?.let { return it }
+        _preferredInitialCategoryId.value?.let { categoryId ->
+            cached.categories.find { it.id == categoryId }?.let { return it }
+        }
+        _uiState.value.lastVisitedCategory?.let { return it }
+        cached.lastVisitedCategory?.let { return it }
+        return cached.categories.find { it.id == ChannelRepository.ALL_CHANNELS_ID }
+            ?: cached.categories.firstOrNull()
+    }
+
+    private fun restoreBrowseAfterCachedCategories(cached: CachedCategoryList) {
+        val category = resolveCategoryToRestore(cached) ?: return
+        val cacheKey = browseCacheKey(
+            categoryId = category.id,
+            searchQuery = "",
+            combinedFilterProviderId = _uiState.value.selectedCombinedSourceProviderId
+        )
+        val cachedBrowse = channelBrowseCache.get(cacheKey)
+        if (cachedBrowse != null) {
+            applyCachedChannelBrowse(category, cachedBrowse)
+        } else {
+            val previewChannelId = cachedPreviewChannelIdForCategory(category.id)
+            _uiState.update {
+                it.copy(
+                    selectedCategory = category,
+                    filteredChannels = emptyList(),
+                    hasChannels = false,
+                    isLoading = true,
+                    isRefreshingChannels = false,
+                    previewChannelId = previewChannelId,
+                    previewPlayerEngine = null,
+                    isPreviewLoading = previewChannelId != null,
+                    previewErrorMessage = null,
+                    previewErrorCode = null,
+                )
+            }
+        }
+        if (cachedBrowse == null || !channelBrowseCache.isFresh(cacheKey)) {
+            loadChannelsForCategory(
+                category,
+                preferCache = cachedBrowse != null,
+                backgroundRefresh = cachedBrowse != null,
+            )
+        }
+    }
+
+    private fun resumeChannelBrowseIfNeeded() {
+        val state = _uiState.value
+        if (state.categories.isEmpty()) return
+
+        val category = state.selectedCategory
+            ?: resolveCategoryToRestore(
+                CachedCategoryList(
+                    categories = state.categories,
+                    lastVisitedCategory = state.lastVisitedCategory,
+                    pinnedCategoryIds = state.pinnedCategoryIds,
+                    hiddenLiveCategories = state.hiddenLiveCategories,
+                )
+            )
+            ?: return
+
+        val cacheKey = browseCacheKey(
+            categoryId = category.id,
+            searchQuery = state.channelSearchQuery,
+            combinedFilterProviderId = state.selectedCombinedSourceProviderId
+        )
+        val cachedBrowse = channelBrowseCache.get(cacheKey)
+
+        if (state.filteredChannels.isNotEmpty() && !state.isLoading) {
+            if (channelBrowseCache.isFresh(cacheKey)) return
+            loadChannelsForCategory(category, preferCache = true, backgroundRefresh = true)
+            return
+        }
+
+        if (cachedBrowse != null) {
+            applyCachedChannelBrowse(category, cachedBrowse)
+        } else if (state.selectedCategory?.id != category.id || state.filteredChannels.isEmpty()) {
+            val previewChannelId = cachedPreviewChannelIdForCategory(category.id)
+            _uiState.update {
+                it.copy(
+                    selectedCategory = category,
+                    isLoading = true,
+                    isRefreshingChannels = false,
+                    filteredChannels = emptyList(),
+                    hasChannels = false,
+                    previewChannelId = previewChannelId,
+                    previewPlayerEngine = null,
+                    isPreviewLoading = previewChannelId != null,
+                    previewErrorMessage = null,
+                    previewErrorCode = null,
+                )
+            }
+        }
+
+        if (cachedBrowse == null || !channelBrowseCache.isFresh(cacheKey)) {
+            loadChannelsForCategory(
+                category,
+                preferCache = cachedBrowse != null,
+                backgroundRefresh = cachedBrowse != null || state.filteredChannels.isNotEmpty(),
+            )
+        }
+    }
+
+    private fun shouldSkipRedundantChannelReload(category: Category): Boolean {
+        if (_uiState.value.filteredChannels.isEmpty()) return false
+        val cacheKey = browseCacheKey(
+            categoryId = category.id,
+            searchQuery = _uiState.value.channelSearchQuery,
+            combinedFilterProviderId = _uiState.value.selectedCombinedSourceProviderId
+        )
+        return channelBrowseCache.isFresh(cacheKey)
+    }
+
+    private fun browseCacheKey(
+        categoryId: Long,
+        searchQuery: String,
+        combinedFilterProviderId: Long?
+    ): LiveChannelBrowseCacheKey =
+        LiveChannelBrowseCacheKey(
+            sourceKey = liveBrowseSourceKey().orEmpty(),
+            categoryId = categoryId,
+            searchQuery = searchQuery.trim(),
+            combinedFilterProviderId = combinedFilterProviderId
+        )
+
     override fun onCleared() {
         epgJob?.cancel()
         loadChannelsJob?.cancel()
@@ -1988,6 +2601,7 @@ data class HomeUiState(
     val hasChannels: Boolean = false,
     val hasMoreChannels: Boolean = false,
     val isLoading: Boolean = true,
+    val isRefreshingChannels: Boolean = false,
     val isCategoriesLoading: Boolean = true,
     val isSyncing: Boolean = false,
     val categorySearchQuery: String = "",
@@ -2017,9 +2631,16 @@ data class HomeUiState(
     val previewPlayerEngine: PlayerEngine? = null,
     val isPreviewLoading: Boolean = false,
     val previewErrorMessage: String? = null,
+    val previewErrorCode: String? = null,
+    val pendingResumeChannel: Channel? = null,
     val errorMessage: String? = null,
     val multiviewChannelCount: Int = 0,
     val multiviewSlotCapacity: Int = MultiViewManager.MAX_SLOTS
+)
+
+data class ChannelScrollAnchor(
+    val index: Int,
+    val offset: Int
 )
 
 private data class CategorySelectionContext(

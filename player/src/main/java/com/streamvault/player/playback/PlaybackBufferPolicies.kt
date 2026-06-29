@@ -20,19 +20,25 @@ internal data class PlaybackBufferPolicy(
 internal object PlaybackBufferPolicies {
     private const val DEFAULT_TARGET_BUFFER_BYTES = -1
     private const val MPEG_TS_LIVE_TARGET_BUFFER_BYTES = 16 * 1024 * 1024
+    private const val LOW_MEMORY_MPEG_TS_LIVE_TARGET_BUFFER_BYTES = 8 * 1024 * 1024
     private const val MEDIUM_LIVE_TARGET_BUFFER_BYTES = 32 * 1024 * 1024
     private const val LARGE_LIVE_TARGET_BUFFER_BYTES = 64 * 1024 * 1024
     private const val MPEG_TS_LIVE_MIN_BUFFER_MS = 5_000
     private const val MPEG_TS_LIVE_MAX_BUFFER_MS = 10_000
 
-    private const val LOW_MEMORY_LIVE_MIN_BUFFER_MS = 4_000
-    private const val LOW_MEMORY_LIVE_MAX_BUFFER_MS = 12_000
-    private const val LOW_MEMORY_COMPAT_LIVE_MIN_BUFFER_MS = 6_000
-    private const val LOW_MEMORY_COMPAT_LIVE_MAX_BUFFER_MS = 15_000
+    private const val LOW_MEMORY_LIVE_MIN_BUFFER_MS = 2_500
+    private const val LOW_MEMORY_LIVE_MAX_BUFFER_MS = 10_000
+    private const val LOW_MEMORY_COMPAT_LIVE_MIN_BUFFER_MS = 4_000
+    private const val LOW_MEMORY_COMPAT_LIVE_MAX_BUFFER_MS = 12_000
     private const val LOW_MEMORY_VOD_MIN_BUFFER_MS = 15_000
     private const val LOW_MEMORY_VOD_MAX_BUFFER_MS = 45_000
-    private const val LOW_MEMORY_PLAYBACK_BUFFER_MS = 1_000
-    private const val LOW_MEMORY_REBUFFER_MS = 3_000
+    private const val LOW_MEMORY_PLAYBACK_BUFFER_MS = 500
+    private const val LOW_MEMORY_REBUFFER_MS = 2_500
+
+    private const val SMALL_LIVE_MIN_BUFFER_MS = 1_500
+    private const val SMALL_LIVE_MAX_BUFFER_MS = 6_000
+    private const val SMALL_LIVE_PLAYBACK_BUFFER_MS = 250
+    private const val SMALL_LIVE_REBUFFER_MS = 1_500
 
     private const val LIVE_MIN_BUFFER_MS = 8_000
     private const val LIVE_MAX_BUFFER_MS = 30_000
@@ -104,26 +110,36 @@ internal object PlaybackBufferPolicies {
         bufferMode: PlaybackBufferMode,
         streamInfo: StreamInfo? = null,
         observedVideoFormat: VideoFormat? = null,
-        qualityReasonOverride: String? = null
+        qualityReasonOverride: String? = null,
+        fastZapBuffering: Boolean = false
     ): PlaybackBufferPolicy = when {
+        bufferMode == PlaybackBufferMode.SMALL && resolvedStreamType.isLive ->
+            smallLivePolicy(
+                resolvedStreamType = resolvedStreamType,
+                compatibilityMode = compatibilityMode,
+                lowMemoryDevice = lowMemoryDevice
+            )
         bufferMode == PlaybackBufferMode.MEDIUM && resolvedStreamType.isLive ->
             mediumLivePolicy(label = "medium-live", qualityReason = "user-medium")
         bufferMode == PlaybackBufferMode.LARGE && resolvedStreamType.isLive ->
             largeLivePolicy(label = "large-live", qualityReason = "user-large")
         bufferMode == PlaybackBufferMode.AUTO && resolvedStreamType == ResolvedStreamType.HLS -> {
-            val qualityReason = qualityReasonOverride ?: highQualityLiveHlsReason(streamInfo, observedVideoFormat)
-            when {
-                qualityReason == null -> baselineLivePolicy(
+            if (fastZapBuffering) {
+                baselineLivePolicy(
                     resolvedStreamType = resolvedStreamType,
                     compatibilityMode = compatibilityMode,
                     lowMemoryDevice = lowMemoryDevice
                 )
-                lowMemoryDevice -> mediumLivePolicy(
-                    label = "auto-uhd-live-hls-capped",
-                    qualityReason = qualityReason,
-                    lowMemoryCapped = true
-                )
-                else -> largeLivePolicy(label = "auto-uhd-live-hls", qualityReason = qualityReason)
+            } else {
+                val qualityReason = qualityReasonOverride ?: highQualityLiveHlsReason(streamInfo, observedVideoFormat)
+                when {
+                    lowMemoryDevice || qualityReason == null -> baselineLivePolicy(
+                        resolvedStreamType = resolvedStreamType,
+                        compatibilityMode = compatibilityMode,
+                        lowMemoryDevice = lowMemoryDevice
+                    )
+                    else -> largeLivePolicy(label = "auto-uhd-live-hls", qualityReason = qualityReason)
+                }
             }
         }
         else -> baselineLivePolicy(
@@ -145,7 +161,7 @@ internal object PlaybackBufferPolicies {
                 maxBufferMs = LOW_MEMORY_LIVE_MAX_BUFFER_MS,
                 playbackBufferMs = LOW_MEMORY_PLAYBACK_BUFFER_MS,
                 rebufferMs = LOW_MEMORY_REBUFFER_MS,
-                targetBufferBytes = MPEG_TS_LIVE_TARGET_BUFFER_BYTES,
+                targetBufferBytes = LOW_MEMORY_MPEG_TS_LIVE_TARGET_BUFFER_BYTES,
                 prioritizeTimeOverSizeThresholds = true
             )
         lowMemoryDevice && compatibilityMode && resolvedStreamType.isLive ->
@@ -217,6 +233,41 @@ internal object PlaybackBufferPolicies {
                 rebufferMs = VOD_REBUFFER_MS,
                 targetBufferBytes = DEFAULT_TARGET_BUFFER_BYTES,
                 prioritizeTimeOverSizeThresholds = true
+            )
+    }
+
+    private fun smallLivePolicy(
+        resolvedStreamType: ResolvedStreamType,
+        compatibilityMode: Boolean,
+        lowMemoryDevice: Boolean
+    ): PlaybackBufferPolicy = when {
+        lowMemoryDevice && resolvedStreamType == ResolvedStreamType.MPEG_TS_LIVE ->
+            PlaybackBufferPolicy(
+                label = "small-lowmem-mpeg-ts-live",
+                minBufferMs = LOW_MEMORY_LIVE_MIN_BUFFER_MS,
+                maxBufferMs = LOW_MEMORY_LIVE_MAX_BUFFER_MS,
+                playbackBufferMs = LOW_MEMORY_PLAYBACK_BUFFER_MS,
+                rebufferMs = LOW_MEMORY_REBUFFER_MS,
+                targetBufferBytes = LOW_MEMORY_MPEG_TS_LIVE_TARGET_BUFFER_BYTES,
+                prioritizeTimeOverSizeThresholds = true,
+                qualityReason = "user-small"
+            )
+        lowMemoryDevice ->
+            baselineLivePolicy(
+                resolvedStreamType = resolvedStreamType,
+                compatibilityMode = compatibilityMode,
+                lowMemoryDevice = true
+            ).copy(label = "small-lowmem-live", qualityReason = "user-small")
+        else ->
+            PlaybackBufferPolicy(
+                label = "small-live",
+                minBufferMs = SMALL_LIVE_MIN_BUFFER_MS,
+                maxBufferMs = SMALL_LIVE_MAX_BUFFER_MS,
+                playbackBufferMs = SMALL_LIVE_PLAYBACK_BUFFER_MS,
+                rebufferMs = SMALL_LIVE_REBUFFER_MS,
+                targetBufferBytes = DEFAULT_TARGET_BUFFER_BYTES,
+                prioritizeTimeOverSizeThresholds = true,
+                qualityReason = "user-small"
             )
     }
 

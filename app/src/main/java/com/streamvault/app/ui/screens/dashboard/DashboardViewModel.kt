@@ -2,10 +2,14 @@ package com.streamvault.app.ui.screens.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.streamvault.app.BuildConfig
+import com.streamvault.app.ui.cache.DashboardShelfCache
+import com.streamvault.app.ui.cache.LiveRecentChannelsCache
+import com.streamvault.app.ui.cache.LiveSourceCacheKeys
+import com.streamvault.app.ui.cache.staleWhileRevalidate
 import com.streamvault.app.ui.model.orderedByRequestedRawIds
 import com.streamvault.data.preferences.PreferencesRepository
 import com.streamvault.data.sync.SyncManager
+import com.streamvault.app.ui.screens.settings.isRemoteVersionNewer
 import com.streamvault.app.update.AppUpdateInstaller
 import com.streamvault.domain.model.ActiveLiveSource
 import com.streamvault.domain.model.AppHomeDashboardShelf
@@ -55,6 +59,7 @@ import kotlinx.coroutines.flow.flow
 import com.streamvault.domain.util.AdultContentVisibilityPolicy
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 
@@ -74,7 +79,9 @@ class DashboardViewModel @Inject constructor(
     private val getCustomCategories: GetCustomCategories,
     private val syncManager: SyncManager,
     private val appUpdateInstaller: AppUpdateInstaller,
-    private val recordingManager: RecordingManager
+    private val recordingManager: RecordingManager,
+    private val dashboardShelfCache: DashboardShelfCache,
+    private val liveRecentChannelsCache: LiveRecentChannelsCache
 ) : ViewModel() {
     private companion object {
         const val FAVORITE_CHANNEL_LIMIT = 12
@@ -164,6 +171,38 @@ class DashboardViewModel @Inject constructor(
         liveProviderIds: List<Long>,
         combinedProfileId: Long?
     ): Flow<DashboardUiState> {
+        val sourceKey = LiveSourceCacheKeys.resolve(provider.id, combinedProfileId).orEmpty()
+        val cachedSnapshot = dashboardShelfCache.get(sourceKey)
+
+        return flow {
+            cachedSnapshot?.let { cached ->
+                emit(
+                    buildDashboardUiState(
+                        provider = provider,
+                        combinedProfileId = combinedProfileId,
+                        shelves = cached.toContentShelves(),
+                        feature = cached.feature,
+                        liveContext = DashboardLiveContext(lastVisitedCategory = null, shortcuts = emptyList()),
+                        liveChannelCount = 0,
+                        movieCount = 0,
+                        seriesCount = 0,
+                        homeDashboardShelves = AppHomeDashboardShelf.defaultOrder,
+                        updateNotice = null,
+                        syncState = SyncState.Idle
+                    )
+                )
+            }
+            emitAll(observeDashboardFresh(provider, liveProviderIds, combinedProfileId, sourceKey, cachedSnapshot))
+        }
+    }
+
+    private fun observeDashboardFresh(
+        provider: Provider,
+        liveProviderIds: List<Long>,
+        combinedProfileId: Long?,
+        sourceKey: String,
+        cachedSnapshot: DashboardShelfCache.CachedSnapshot?
+    ): Flow<DashboardUiState> {
         val movieShelf = combine(
             movieRepository.getFreshPreview(provider.id, MOVIE_SHELF_LIMIT),
             preferencesRepository.parentalControlLevel
@@ -171,7 +210,7 @@ class DashboardViewModel @Inject constructor(
             movies
                 .filter { !shouldHideVodFromHome(it, level) }
                 .take(MOVIE_SHELF_LIMIT)
-        }
+        }.staleWhileRevalidate(cachedSnapshot?.recentMovies)
         val topRatedMovieShelf = combine(
             movieRepository.getTopRatedPreview(provider.id, MOVIE_SHELF_LIMIT),
             preferencesRepository.parentalControlLevel
@@ -179,7 +218,7 @@ class DashboardViewModel @Inject constructor(
             movies
                 .filter { !shouldHideVodFromHome(it, level) }
                 .take(MOVIE_SHELF_LIMIT)
-        }
+        }.staleWhileRevalidate(cachedSnapshot?.topRatedMovies)
         val recommendedMovieShelf = combine(
             movieRepository.getRecommendations(provider.id, MOVIE_SHELF_LIMIT),
             preferencesRepository.parentalControlLevel
@@ -187,7 +226,7 @@ class DashboardViewModel @Inject constructor(
             movies
                 .filter { !shouldHideVodFromHome(it, level) }
                 .take(MOVIE_SHELF_LIMIT)
-        }
+        }.staleWhileRevalidate(cachedSnapshot?.recommendedMovies)
         val seriesShelf = combine(
             seriesRepository.getFreshPreview(provider.id, SERIES_SHELF_LIMIT),
             preferencesRepository.parentalControlLevel
@@ -195,13 +234,20 @@ class DashboardViewModel @Inject constructor(
             series
                 .filter { !shouldHideVodFromHome(it, level) }
                 .take(SERIES_SHELF_LIMIT)
-        }
+        }.staleWhileRevalidate(cachedSnapshot?.recentSeries)
+        val cachedContinueWatchingShelf = cachedSnapshot?.toContinueWatchingShelf()
         val baseContentShelves = combine(
-            observeFavoriteChannels(liveProviderIds).onStart { emit(emptyList()) },
-            observeRecentChannels(liveProviderIds).onStart { emit(emptyList()) },
-            observeContinueWatching(liveProviderIds.toSet()).onStart { emit(ContinueWatchingShelf()) },
-            movieShelf.onStart { emit(emptyList()) },
-            seriesShelf.onStart { emit(emptyList()) }
+            observeFavoriteChannels(liveProviderIds)
+                .staleWhileRevalidate(cachedSnapshot?.favoriteChannels),
+            observeRecentChannels(liveProviderIds)
+                .staleWhileRevalidate(
+                    staleValue = liveRecentChannelsCache.get(sourceKey) ?: cachedSnapshot?.recentChannels,
+                    onFresh = { channels -> liveRecentChannelsCache.put(sourceKey, channels) }
+                ),
+            observeContinueWatching(liveProviderIds.toSet())
+                .staleWhileRevalidate(cachedContinueWatchingShelf),
+            movieShelf,
+            seriesShelf
         ) { favoriteChannels, recentChannels, continueWatchingShelf, recentMovies, recentSeries ->
             DashboardContentShelves(
                 favoriteChannels = favoriteChannels,
@@ -215,10 +261,14 @@ class DashboardViewModel @Inject constructor(
         }
         val contentShelvesWithFavorites = combine(
             baseContentShelves,
-            observeFavoriteMovies(liveProviderIds).onStart { emit(emptyList()) },
-            observeFavoriteSeries(liveProviderIds).onStart { emit(emptyList()) },
-            observeContinueWatchingByScope(liveProviderIds.toSet(), ContinueWatchingScope.MOVIES).onStart { emit(emptyList()) },
-            observeContinueWatchingByScope(liveProviderIds.toSet(), ContinueWatchingScope.SERIES).onStart { emit(emptyList()) }
+            observeFavoriteMovies(liveProviderIds)
+                .staleWhileRevalidate(cachedSnapshot?.favoriteMovies),
+            observeFavoriteSeries(liveProviderIds)
+                .staleWhileRevalidate(cachedSnapshot?.favoriteSeries),
+            observeContinueWatchingByScope(liveProviderIds.toSet(), ContinueWatchingScope.MOVIES)
+                .staleWhileRevalidate(cachedSnapshot?.continueWatchingMovies),
+            observeContinueWatchingByScope(liveProviderIds.toSet(), ContinueWatchingScope.SERIES)
+                .staleWhileRevalidate(cachedSnapshot?.continueWatchingSeriesItems)
         ) { shelves, favoriteMovies, favoriteSeries, continueWatchingMovies, continueWatchingSeriesItems ->
             shelves.copy(
                 favoriteMovies = favoriteMovies,
@@ -228,10 +278,10 @@ class DashboardViewModel @Inject constructor(
             )
         }
         val contentShelves = contentShelvesWithFavorites
-            .combine(topRatedMovieShelf.onStart { emit(emptyList()) }) { shelves, topRatedMovies ->
+            .combine(topRatedMovieShelf) { shelves, topRatedMovies ->
                 shelves.copy(topRatedMovies = topRatedMovies)
             }
-            .combine(recommendedMovieShelf.onStart { emit(emptyList()) }) { shelves, recommendedMovies ->
+            .combine(recommendedMovieShelf) { shelves, recommendedMovies ->
             shelves.copy(
                 recommendedMovies = recommendedMovies
             )
@@ -267,33 +317,10 @@ class DashboardViewModel @Inject constructor(
         }.combine(observeUpdateNotice().onStart { emit(null) }) { snapshot, updateNotice ->
             snapshot.copy(updateNotice = updateNotice)
         }.combine(syncManager.syncStateForProvider(provider.id).onStart { emit(SyncState.Idle) }) { snapshot, syncState ->
-            DashboardUiState(
+            buildDashboardUiState(
                 provider = provider,
-                homeDashboardShelves = snapshot.homeDashboardShelves,
-                favoriteChannels = snapshot.shelves.favoriteChannels,
-                recentChannels = snapshot.shelves.recentChannels,
-                continueWatching = snapshot.shelves.continueWatching,
-                continueWatchingSeries = snapshot.shelves.continueWatchingSeries,
-                continueWatchingMovies = snapshot.shelves.continueWatchingMovies,
-                continueWatchingSeriesItems = snapshot.shelves.continueWatchingSeriesItems,
-                continueWatchingDegraded = snapshot.shelves.continueWatchingDegraded,
-                favoriteMovies = snapshot.shelves.favoriteMovies,
-                favoriteSeries = snapshot.shelves.favoriteSeries,
-                recentMovies = snapshot.shelves.recentMovies,
-                recentSeries = snapshot.shelves.recentSeries,
-                topRatedMovies = snapshot.shelves.topRatedMovies,
-                recommendedMovies = snapshot.shelves.recommendedMovies,
-                lastLiveCategory = snapshot.liveContext.lastVisitedCategory,
-                liveShortcuts = snapshot.liveContext.shortcuts,
-                currentCombinedProfileId = combinedProfileId,
-                stats = DashboardStats(
-                    liveChannelCount = snapshot.liveChannelCount,
-                    favoriteChannelCount = snapshot.shelves.favoriteChannels.size,
-                    recentChannelCount = snapshot.shelves.recentChannels.size,
-                    continueWatchingCount = snapshot.shelves.continueWatching.size,
-                    movieLibraryCount = snapshot.movieCount,
-                    seriesLibraryCount = snapshot.seriesCount
-                ),
+                combinedProfileId = combinedProfileId,
+                shelves = snapshot.shelves,
                 feature = buildFeature(
                     providerName = provider.name,
                     recentChannels = snapshot.shelves.recentChannels,
@@ -302,23 +329,118 @@ class DashboardViewModel @Inject constructor(
                     recentMovies = snapshot.shelves.recentMovies,
                     recentSeries = snapshot.shelves.recentSeries
                 ),
-                providerHealth = DashboardProviderHealth(
-                    status = provider.status,
-                    type = provider.type,
-                    lastSyncedAt = provider.lastSyncedAt,
-                    expirationDate = provider.expirationDate,
-                    maxConnections = provider.maxConnections
-                ),
-                providerWarnings = when (syncState) {
-                    is SyncState.Partial -> syncState.warnings
-                    is SyncState.Error -> listOf(syncState.message)
-                    else -> emptyList()
-                },
+                liveContext = snapshot.liveContext,
+                liveChannelCount = snapshot.liveChannelCount,
+                movieCount = snapshot.movieCount,
+                seriesCount = snapshot.seriesCount,
+                homeDashboardShelves = snapshot.homeDashboardShelves,
                 updateNotice = snapshot.updateNotice,
-                isLoading = false
+                syncState = syncState
             )
+        }.onEach { state ->
+            if (sourceKey.isNotBlank()) {
+                dashboardShelfCache.put(sourceKey, state.toCachedSnapshot())
+            }
         }
     }
+
+    private fun buildDashboardUiState(
+        provider: Provider,
+        combinedProfileId: Long?,
+        shelves: DashboardContentShelves,
+        feature: DashboardFeature,
+        liveContext: DashboardLiveContext,
+        liveChannelCount: Int,
+        movieCount: Int,
+        seriesCount: Int,
+        homeDashboardShelves: List<AppHomeDashboardShelf>,
+        updateNotice: DashboardUpdateNotice?,
+        syncState: SyncState
+    ): DashboardUiState = DashboardUiState(
+        provider = provider,
+        homeDashboardShelves = homeDashboardShelves,
+        favoriteChannels = shelves.favoriteChannels,
+        recentChannels = shelves.recentChannels,
+        continueWatching = shelves.continueWatching,
+        continueWatchingSeries = shelves.continueWatchingSeries,
+        continueWatchingMovies = shelves.continueWatchingMovies,
+        continueWatchingSeriesItems = shelves.continueWatchingSeriesItems,
+        continueWatchingDegraded = shelves.continueWatchingDegraded,
+        favoriteMovies = shelves.favoriteMovies,
+        favoriteSeries = shelves.favoriteSeries,
+        recentMovies = shelves.recentMovies,
+        recentSeries = shelves.recentSeries,
+        topRatedMovies = shelves.topRatedMovies,
+        recommendedMovies = shelves.recommendedMovies,
+        lastLiveCategory = liveContext.lastVisitedCategory,
+        liveShortcuts = liveContext.shortcuts,
+        currentCombinedProfileId = combinedProfileId,
+        stats = DashboardStats(
+            liveChannelCount = liveChannelCount,
+            favoriteChannelCount = shelves.favoriteChannels.size,
+            recentChannelCount = shelves.recentChannels.size,
+            continueWatchingCount = shelves.continueWatching.size,
+            movieLibraryCount = movieCount,
+            seriesLibraryCount = seriesCount
+        ),
+        feature = feature,
+        providerHealth = DashboardProviderHealth(
+            status = provider.status,
+            type = provider.type,
+            lastSyncedAt = provider.lastSyncedAt,
+            expirationDate = provider.expirationDate,
+            maxConnections = provider.maxConnections
+        ),
+        providerWarnings = when (syncState) {
+            is SyncState.Partial -> syncState.warnings
+            is SyncState.Error -> listOf(syncState.message)
+            else -> emptyList()
+        },
+        updateNotice = updateNotice,
+        isLoading = false
+    )
+
+    private fun DashboardUiState.toCachedSnapshot(): DashboardShelfCache.CachedSnapshot =
+        DashboardShelfCache.CachedSnapshot(
+            favoriteChannels = favoriteChannels,
+            recentChannels = recentChannels,
+            continueWatching = continueWatching,
+            continueWatchingSeries = continueWatchingSeries,
+            continueWatchingMovies = continueWatchingMovies,
+            continueWatchingSeriesItems = continueWatchingSeriesItems,
+            continueWatchingDegraded = continueWatchingDegraded,
+            favoriteMovies = favoriteMovies,
+            favoriteSeries = favoriteSeries,
+            recentMovies = recentMovies,
+            recentSeries = recentSeries,
+            topRatedMovies = topRatedMovies,
+            recommendedMovies = recommendedMovies,
+            feature = feature
+        )
+
+    private fun DashboardShelfCache.CachedSnapshot.toContentShelves(): DashboardContentShelves =
+        DashboardContentShelves(
+            favoriteChannels = favoriteChannels,
+            recentChannels = recentChannels,
+            continueWatching = continueWatching,
+            continueWatchingSeries = continueWatchingSeries,
+            continueWatchingMovies = continueWatchingMovies,
+            continueWatchingSeriesItems = continueWatchingSeriesItems,
+            continueWatchingDegraded = continueWatchingDegraded,
+            favoriteMovies = favoriteMovies,
+            favoriteSeries = favoriteSeries,
+            recentMovies = recentMovies,
+            recentSeries = recentSeries,
+            topRatedMovies = topRatedMovies,
+            recommendedMovies = recommendedMovies
+        )
+
+    private fun DashboardShelfCache.CachedSnapshot.toContinueWatchingShelf(): ContinueWatchingShelf =
+        ContinueWatchingShelf(
+            items = continueWatching,
+            series = continueWatchingSeries,
+            isDegraded = continueWatchingDegraded
+        )
 
     private fun observeFavoriteChannels(providerIds: List<Long>): Flow<List<Channel>> =
         observeLiveFavorites(providerIds)
@@ -591,17 +713,18 @@ class DashboardViewModel @Inject constructor(
     private fun observeUpdateNotice(): Flow<DashboardUpdateNotice?> = combine(
         preferencesRepository.cachedAppUpdateVersionName,
         preferencesRepository.cachedAppUpdateVersionCode,
+        preferencesRepository.cachedAppUpdatePublishedAt,
         preferencesRepository.downloadedAppUpdateVersionName
-    ) { latestVersionName, latestVersionCode, downloadedVersionName ->
+    ) { latestVersionName, latestVersionCode, latestPublishedAt, downloadedVersionName ->
         if (latestVersionName.isNullOrBlank()) {
             return@combine null
         }
 
-        val updateAvailable = if (latestVersionCode != null && latestVersionCode > BuildConfig.VERSION_CODE) {
-            true
-        } else {
-            compareVersionNames(latestVersionName, BuildConfig.VERSION_NAME) > 0
-        }
+        val updateAvailable = isRemoteVersionNewer(
+            remoteVersionCode = latestVersionCode,
+            remoteVersionName = latestVersionName,
+            remotePublishedAt = latestPublishedAt
+        )
 
         if (!updateAvailable) {
             return@combine null
@@ -734,20 +857,6 @@ class DashboardViewModel @Inject constructor(
             ?: runCatching {
                 Year.parse(raw, DateTimeFormatter.ofPattern("yyyy")).atDay(1).toEpochDay()
             }.getOrNull()
-    }
-
-    private fun compareVersionNames(left: String, right: String): Int {
-        val leftParts = left.removePrefix("v").split('.')
-        val rightParts = right.removePrefix("v").split('.')
-        val length = maxOf(leftParts.size, rightParts.size)
-        for (index in 0 until length) {
-            val leftValue = leftParts.getOrNull(index)?.toIntOrNull() ?: 0
-            val rightValue = rightParts.getOrNull(index)?.toIntOrNull() ?: 0
-            if (leftValue != rightValue) {
-                return leftValue.compareTo(rightValue)
-            }
-        }
-        return 0
     }
 
     fun setHomeDashboardShelves(shelves: List<AppHomeDashboardShelf>) {

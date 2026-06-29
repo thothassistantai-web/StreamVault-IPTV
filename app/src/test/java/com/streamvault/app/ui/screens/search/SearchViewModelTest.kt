@@ -226,4 +226,59 @@ class SearchViewModelTest {
         assertThat(viewModel.uiState.value.hasSearched).isTrue()
         collectorJob.cancel()
     }
+
+    @Test
+    fun `repeat search serves cached results without loading flash`() = runTest {
+        whenever(providerRepository.getActiveProvider()).thenReturn(
+            flowOf(
+                Provider(
+                    id = 5L,
+                    name = "Provider",
+                    type = ProviderType.M3U,
+                    serverUrl = "http://test"
+                )
+            )
+        )
+        whenever(searchContent.invoke(any(), any(), any(), any())).thenReturn(
+            flow {
+                delay(1_000)
+                emit(
+                    SearchContentResult(
+                        channels = listOf(Channel(id = 1L, name = "News", streamUrl = "http://stream", providerId = 5L))
+                    )
+                )
+            }
+        )
+
+        viewModel = SearchViewModel(
+            providerRepository,
+            searchContent,
+            preferencesRepository,
+            parentalControlManager,
+            favoriteRepository,
+            categoryRepository,
+            recordingManager
+        )
+
+        val collectorJob = backgroundScope.launch { viewModel.uiState.collect { } }
+        advanceUntilIdle()
+        viewModel.onQueryChange("news")
+        testScheduler.advanceTimeBy(400)
+        testScheduler.advanceTimeBy(1_000)
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.isLoading).isFalse()
+        assertThat(viewModel.uiState.value.channels.map { it.id }).containsExactly(1L)
+
+        viewModel.onQueryChange("other")
+        testScheduler.advanceTimeBy(400)
+        advanceUntilIdle()
+        viewModel.onQueryChange("news")
+        testScheduler.advanceTimeBy(400)
+        runCurrent()
+
+        assertThat(viewModel.uiState.value.isLoading).isFalse()
+        assertThat(viewModel.uiState.value.channels.map { it.id }).containsExactly(1L)
+        collectorJob.cancel()
+    }
 }

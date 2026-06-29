@@ -43,7 +43,7 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import com.streamvault.app.R
 import com.streamvault.app.ui.components.ChannelLogoBadge
-import com.streamvault.app.ui.components.PlayerRenderView
+import com.streamvault.app.ui.preview.LivePreviewVideoSurface
 import com.streamvault.app.ui.model.isArchivePlayable
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.model.guideLookupKey
@@ -218,7 +218,7 @@ internal fun ImmersiveGuideHero(
                     )
                     if (currentTime in program.startTime until program.endTime) {
                         LinearProgressIndicator(
-                            progress = { ((currentTime - program.startTime).toFloat() / (program.endTime - program.startTime).toFloat()).coerceIn(0f, 1f) },
+                            progress = { program.progressPercent(currentTime) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(4.dp),
@@ -312,13 +312,13 @@ internal fun GuideHeroBadge(
 internal fun GuidePreviewPane(
     previewPlayerEngine: PlayerEngine?,
     isPreviewLoading: Boolean,
+    errorMessage: String?,
+    errorCode: String?,
     focusedChannel: Channel?,
     focusedProgram: Program?,
+    onPreviewClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val renderSurfaceType by (previewPlayerEngine?.renderSurfaceType)?.collectAsStateWithLifecycle(
-        initialValue = PlayerRenderSurfaceType.SURFACE_VIEW
-    ) ?: remember { mutableStateOf(PlayerRenderSurfaceType.SURFACE_VIEW) }
     val now = currentGuideNow()
     val appTimeFormat = LocalAppTimeFormat.current
     val timeFormat = remember(appTimeFormat) { appTimeFormat.createTimeFormat() }
@@ -335,44 +335,17 @@ internal fun GuidePreviewPane(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Video preview area (16:9 at 90dp height = 160dp wide)
-            Box(
+            LivePreviewVideoSurface(
+                playerEngine = previewPlayerEngine,
+                isLoading = isPreviewLoading && focusedChannel != null,
+                errorMessage = errorMessage,
+                errorCode = errorCode,
+                onPreviewClick = onPreviewClick,
+                showOpenHint = focusedChannel != null && previewPlayerEngine != null && errorMessage == null,
                 modifier = Modifier
                     .fillMaxHeight()
-                    .aspectRatio(16f / 9f)
-                    .background(Color.Black, RoundedCornerShape(12.dp))
-                    .clip(RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (previewPlayerEngine != null) {
-                    PlayerRenderView(
-                        playerEngine = previewPlayerEngine,
-                        resizeMode = PlayerSurfaceResizeMode.FIT,
-                        surfaceType = renderSurfaceType,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    if (isPreviewLoading) {
-                        CircularProgressIndicator(
-                            color = Primary,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                } else {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.live_preview_placeholder_title),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = OnSurfaceDim,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
+                    .aspectRatio(16f / 9f),
+            )
 
             // Program info
             val channel = focusedChannel
@@ -415,7 +388,7 @@ internal fun GuidePreviewPane(
                         )
                         if (now in program.startTime until program.endTime) {
                             LinearProgressIndicator(
-                                progress = { ((now - program.startTime).toFloat() / (program.endTime - program.startTime).toFloat()).coerceIn(0f, 1f) },
+                                progress = { program.progressPercent(now) },
                                 modifier = Modifier
                                     .fillMaxWidth(0.6f)
                                     .height(3.dp),

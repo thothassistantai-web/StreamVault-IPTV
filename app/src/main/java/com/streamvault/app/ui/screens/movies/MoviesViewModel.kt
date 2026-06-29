@@ -40,7 +40,13 @@ import com.streamvault.app.ui.screens.vod.setVodLibrarySortBy
 import com.streamvault.app.ui.screens.vod.setVodSearchQuery
 import com.streamvault.app.ui.screens.vod.setVodFavorite
 import com.streamvault.app.ui.screens.vod.updateVodGroupMembership
+import com.streamvault.app.ui.screens.vod.CachedVodPreviewCatalog
+import com.streamvault.app.ui.screens.vod.CachedVodSelectedCategory
 import com.streamvault.app.ui.screens.vod.VodBrowseDefaults
+import com.streamvault.app.ui.screens.vod.VodPreviewCatalogBrowseCache
+import com.streamvault.app.ui.screens.vod.VodPreviewCatalogCacheKey
+import com.streamvault.app.ui.screens.vod.VodSelectedCategoryBrowseCache
+import com.streamvault.app.ui.screens.vod.VodSelectedCategoryCacheKey
 import com.streamvault.app.util.isPlaybackComplete
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -103,6 +109,8 @@ class MoviesViewModel @Inject constructor(
     private val _selectedLibrarySortBy = MutableStateFlow(LibrarySortBy.LIBRARY)
     private val _previewBatchSize = MutableStateFlow(INITIAL_PREVIEW_BATCH_SIZE)
     private var activeProviderId: Long? = null
+    private val selectedCategoryBrowseCache = VodSelectedCategoryBrowseCache<Movie>()
+    private val previewCatalogBrowseCache = VodPreviewCatalogBrowseCache<Movie>()
 
     private data class PreviewLoadResult(
         val snapshot: MovieCatalogSnapshot,
@@ -124,7 +132,16 @@ class MoviesViewModel @Inject constructor(
 
         viewModelScope.launch {
             providerRepository.getActiveProvider().collectLatest { provider ->
+                val previousProviderId = activeProviderId
                 activeProviderId = provider?.id
+                if (previousProviderId != null && previousProviderId != provider?.id) {
+                    selectedCategoryBrowseCache.clearForProvider(previousProviderId)
+                    previewCatalogBrowseCache.clearForProvider(previousProviderId)
+                }
+                if (provider == null) {
+                    selectedCategoryBrowseCache.clear()
+                    previewCatalogBrowseCache.clear()
+                }
                 _uiState.update {
                     it.copy(
                         hasActiveProvider = provider != null,
@@ -249,6 +266,7 @@ class MoviesViewModel @Inject constructor(
                 }
                 .collect { result ->
                     val snapshot = result.snapshot
+                    cachePreviewCatalogSnapshot(snapshot, result.hasMorePreviewRows)
                     val isReordering = _uiState.value.isReorderMode
                     val currentSelected = _uiState.value.selectedCategory
                     val preserveSelectedCategory = currentSelected != null && _searchQuery.value.isNotBlank()
@@ -361,6 +379,7 @@ class MoviesViewModel @Inject constructor(
                     }
                 }
                 .collect { snapshot ->
+                    cacheSelectedCategorySnapshot(snapshot)
                     _uiState.update {
                         it.copy(
                             selectedCategoryItems = snapshot.items,
@@ -497,6 +516,9 @@ class MoviesViewModel @Inject constructor(
                 categoryId = resolveProviderCategoryId(categoryName)
             )
         }
+        if (categoryName != null && applySelectedCategoryFromCache(categoryName)) {
+            return
+        }
         selectVodCategory(
             categoryName = categoryName,
             selectedCategoryLoadLimit = _selectedCategoryLoadLimit,
@@ -542,27 +564,37 @@ class MoviesViewModel @Inject constructor(
     }
 
     fun resetPreviewRowsForScreenEntry() {
+        val query = _searchQuery.value.trim()
+        if (_uiState.value.selectedCategory != null || query.isNotBlank()) {
+            return
+        }
         _previewBatchSize.value = INITIAL_PREVIEW_BATCH_SIZE
+        if (restorePreviewCatalogFromCache(INITIAL_PREVIEW_BATCH_SIZE, query)) {
+            return
+        }
         _uiState.update { state ->
-            if (state.selectedCategory != null || state.searchQuery.isNotBlank()) {
-                state
-            } else {
-                val providerNames = state.providerCategories.mapTo(linkedSetOf()) { it.name }
-                val initialProviderNames = state.providerCategories
-                    .take(INITIAL_PREVIEW_BATCH_SIZE)
-                    .mapTo(linkedSetOf()) { it.name }
-                fun keepRow(name: String): Boolean = name !in providerNames || name in initialProviderNames
-                state.copy(
-                    moviesByCategory = state.moviesByCategory.filterKeys(::keepRow),
-                    categoryNames = state.categoryNames.filter(::keepRow),
-                    categoryCounts = state.categoryCounts.filterKeys(::keepRow),
-                    hasMorePreviewRows = state.providerCategories.size > INITIAL_PREVIEW_BATCH_SIZE
-                )
-            }
+            val providerNames = state.providerCategories.mapTo(linkedSetOf()) { it.name }
+            val initialProviderNames = state.providerCategories
+                .take(INITIAL_PREVIEW_BATCH_SIZE)
+                .mapTo(linkedSetOf()) { it.name }
+            fun keepRow(name: String): Boolean = name !in providerNames || name in initialProviderNames
+            state.copy(
+                moviesByCategory = state.moviesByCategory.filterKeys(::keepRow),
+                categoryNames = state.categoryNames.filter(::keepRow),
+                categoryCounts = state.categoryCounts.filterKeys(::keepRow),
+                hasMorePreviewRows = state.providerCategories.size > INITIAL_PREVIEW_BATCH_SIZE
+            )
         }
     }
 
     fun setSelectedLibraryFilterType(filterType: LibraryFilterType) {
+        _selectedLibraryFilterType.value = filterType
+        _selectedCategoryLoadLimit.value = VodBrowseDefaults.SELECTED_CATEGORY_PAGE_SIZE
+        val selectedCategory = _uiState.value.selectedCategory
+        if (selectedCategory != null && applySelectedCategoryFromCache(selectedCategory)) {
+            _uiState.update { it.copy(selectedLibraryFilterType = filterType) }
+            return
+        }
         setVodLibraryFilterType(
             filterType = filterType,
             selectedLibraryFilterType = _selectedLibraryFilterType,
@@ -582,6 +614,13 @@ class MoviesViewModel @Inject constructor(
     }
 
     fun setSelectedLibrarySortBy(sortBy: LibrarySortBy) {
+        _selectedLibrarySortBy.value = sortBy
+        _selectedCategoryLoadLimit.value = VodBrowseDefaults.SELECTED_CATEGORY_PAGE_SIZE
+        val selectedCategory = _uiState.value.selectedCategory
+        if (selectedCategory != null && applySelectedCategoryFromCache(selectedCategory)) {
+            _uiState.update { it.copy(selectedLibrarySortBy = sortBy) }
+            return
+        }
         setVodLibrarySortBy(
             sortBy = sortBy,
             selectedLibrarySortBy = _selectedLibrarySortBy,
@@ -1191,6 +1230,103 @@ class MoviesViewModel @Inject constructor(
             ?: 0L
 
     private fun movieAddedScore(movie: Movie): Long = movie.addedAt.takeIf { it > 0L } ?: 0L
+
+    private fun selectedCategoryCacheKey(
+        providerId: Long,
+        categoryName: String,
+        filterType: LibraryFilterType = _selectedLibraryFilterType.value,
+        sortBy: LibrarySortBy = _selectedLibrarySortBy.value,
+        searchQuery: String = _searchQuery.value.trim(),
+        loadLimit: Int = _selectedCategoryLoadLimit.value
+    ): VodSelectedCategoryCacheKey {
+        val effectiveQuery = searchQuery.takeIf { it.length >= MIN_SEARCH_QUERY_LENGTH }.orEmpty()
+        return VodSelectedCategoryCacheKey(
+            providerId = providerId,
+            categoryName = categoryName,
+            filterType = filterType,
+            sortBy = sortBy,
+            searchQuery = effectiveQuery,
+            loadLimit = loadLimit
+        )
+    }
+
+    private fun applySelectedCategoryFromCache(categoryName: String): Boolean {
+        val providerId = activeProviderId ?: return false
+        val cacheKey = selectedCategoryCacheKey(providerId, categoryName)
+        val cached = selectedCategoryBrowseCache.peek(cacheKey) ?: return false
+        _selectedCategoryLoadLimit.value = cacheKey.loadLimit
+        _uiState.update {
+            it.copy(
+                selectedCategory = categoryName,
+                selectedCategoryItems = cached.items,
+                selectedCategoryLoadedCount = cached.loadedCount,
+                selectedCategoryTotalCount = cached.totalCount,
+                canLoadMoreSelectedCategory = cached.canLoadMore,
+                isLoadingSelectedCategory = false
+            )
+        }
+        return true
+    }
+
+    private fun cacheSelectedCategorySnapshot(snapshot: SelectedMovieCategorySnapshot) {
+        val providerId = activeProviderId ?: return
+        val categoryName = _uiState.value.selectedCategory ?: return
+        selectedCategoryBrowseCache.put(
+            selectedCategoryCacheKey(providerId, categoryName),
+            CachedVodSelectedCategory(
+                items = snapshot.items,
+                loadedCount = snapshot.loadedCount,
+                totalCount = snapshot.totalCount,
+                canLoadMore = snapshot.canLoadMore,
+                savedAtMs = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun cachePreviewCatalogSnapshot(snapshot: MovieCatalogSnapshot, hasMorePreviewRows: Boolean) {
+        val providerId = activeProviderId ?: return
+        val query = _searchQuery.value.trim()
+        if (query.length >= MIN_SEARCH_QUERY_LENGTH) return
+        previewCatalogBrowseCache.put(
+            VodPreviewCatalogCacheKey(
+                providerId = providerId,
+                batchSize = _previewBatchSize.value,
+                searchQuery = ""
+            ),
+            CachedVodPreviewCatalog(
+                itemsByCategory = snapshot.grouped,
+                categoryNames = snapshot.categoryNames,
+                categoryCounts = snapshot.categoryCounts,
+                libraryCount = snapshot.libraryCount,
+                hasMorePreviewRows = hasMorePreviewRows,
+                savedAtMs = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun restorePreviewCatalogFromCache(batchSize: Int, searchQuery: String): Boolean {
+        val providerId = activeProviderId ?: return false
+        val effectiveQuery = searchQuery.takeIf { it.length >= MIN_SEARCH_QUERY_LENGTH }.orEmpty()
+        val cached = previewCatalogBrowseCache.peek(
+            VodPreviewCatalogCacheKey(
+                providerId = providerId,
+                batchSize = batchSize,
+                searchQuery = effectiveQuery
+            )
+        ) ?: return false
+        _uiState.update {
+            it.copy(
+                moviesByCategory = cached.itemsByCategory,
+                categoryNames = cached.categoryNames,
+                categoryCounts = cached.categoryCounts,
+                libraryCount = cached.libraryCount,
+                isLoading = false,
+                isLoadingPreviewRows = false,
+                hasMorePreviewRows = cached.hasMorePreviewRows
+            )
+        }
+        return true
+    }
 }
 
 private data class MovieCatalogParams(

@@ -127,7 +127,9 @@ class Media3PlayerEngine @Inject constructor(
         private const val LEGACY_TEXTURE_VIEW_MAX_SDK = Build.VERSION_CODES.N_MR1
         private const val FIRE_TV_MEDIATEK_TEXTURE_VIEW_MAX_SDK = Build.VERSION_CODES.P
         private const val TEXTURE_VIEW_STARTUP_TIMEOUT_MS = 9_000L
+        private const val LOW_MEMORY_TEXTURE_VIEW_STARTUP_TIMEOUT_MS = 6_000L
         private const val TEXTURE_VIEW_BUFFERED_STARTUP_THRESHOLD_MS = 4_000L
+        private const val LOW_MEMORY_TEXTURE_VIEW_BUFFERED_STARTUP_THRESHOLD_MS = 2_000L
         private const val LIVE_HLS_STARTUP_GRACE_MS = 15_000L
         private const val KNOWN_BAD_FAILURE_THRESHOLD = 3
         private const val MEDIA_SESSION_ID_PREFIX = "streamvault"
@@ -223,6 +225,7 @@ class Media3PlayerEngine @Inject constructor(
         val lowRam = activityManager?.isLowRamDevice ?: false
         lowRam || memoryClassMb <= 256
     }
+    private var scrubbingModeRequested = false
 
     private val _playbackState = MutableStateFlow(PlaybackState.IDLE)
     override val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
@@ -466,6 +469,61 @@ class Media3PlayerEngine @Inject constructor(
         statsCollector.stop()
         statsCollector.reset()
         audioFocusController.onPauseOrStop()
+    }
+
+    override fun prepareForLiveZap(targetStreamUrl: String?) {
+        if (ensureNotDisposed("prepareForLiveZap")) return
+        retryJob?.cancel()
+        retryJob = null
+        if (isPlayingTimeshiftSnapshot) {
+            exoPlayer?.stop()
+            exoPlayer?.clearMediaItems()
+            isPlayingTimeshiftSnapshot = false
+        }
+        activeLiveTimeshiftStreamInfo = null
+        activeLiveTimeshiftChannelKey = null
+        pendingTimeshiftSeekMs = null
+        pendingTimeshiftSeekToEnd = false
+        pendingTimeshiftAutoPlay = false
+        scope.launch {
+            liveTimeshiftManager.stopSession()
+            syncTimeshiftState()
+        }
+        exoPlayer?.stop()
+        val preservePreload = targetStreamUrl != null && preloadCoordinator.matchesTargetUrl(targetStreamUrl)
+        if (preservePreload) {
+            Log.i(TAG, "live-zap preserving preloaded target=${PlaybackLogSanitizer.sanitizeUrl(targetStreamUrl)}")
+        } else {
+            preloadCoordinator.invalidate("live-zap")
+        }
+        playbackStarted = false
+        hasRenderedFirstVideoFrame = false
+        clearInjectedSubtitleCues()
+        statsCollector.stop()
+        statsCollector.reset()
+        _playbackState.value = PlaybackState.BUFFERING
+        _isPlaying.value = false
+        _mediaTitle.value = null
+        audioFocusController.onPauseOrStop()
+    }
+
+    override fun switchLiveStream(streamInfo: StreamInfo) {
+        if (ensureNotDisposed("switchLiveStream")) return
+        prepareForLiveZap(streamInfo.url)
+        prepareInternal(
+            streamInfo = streamInfo,
+            preserveRetryState = false,
+            seekPositionMs = null,
+            autoPlay = true,
+            liveZapSwitch = true
+        )
+    }
+
+    override fun ensureRenderSurfaceAttached() {
+        if (ensureNotDisposed("ensureRenderSurfaceAttached")) return
+        val player = getOrCreatePlayer()
+        viewBinder.attachPlayer(player)
+        applyScrubbingModeToPlayer(player)
     }
 
     override fun seekTo(positionMs: Long) {
@@ -771,8 +829,12 @@ class Media3PlayerEngine @Inject constructor(
     }
 
     override fun setScrubbingMode(enabled: Boolean) {
-        val player = exoPlayer ?: return
-        if (enabled) {
+        scrubbingModeRequested = enabled
+        exoPlayer?.let(::applyScrubbingModeToPlayer)
+    }
+
+    private fun applyScrubbingModeToPlayer(player: ExoPlayer) {
+        if (scrubbingModeRequested) {
             player.setScrubbingModeEnabled(true)
         } else {
             player.setScrubbingModeEnabled(false)
@@ -811,7 +873,10 @@ class Media3PlayerEngine @Inject constructor(
 
     override fun bindRenderView(renderView: android.view.View, resizeMode: PlayerSurfaceResizeMode) {
         if (ensureNotDisposed("bindRenderView")) return
-        viewBinder.bind(renderView, getOrCreatePlayer(), resizeMode)
+        val player = getOrCreatePlayer()
+        viewBinder.bind(renderView, player, resizeMode)
+        // Keep surface attached as soon as the view exists so prepare() can decode immediately.
+        viewBinder.attachPlayer(player)
     }
 
     override fun clearRenderBinding() {
@@ -913,7 +978,8 @@ class Media3PlayerEngine @Inject constructor(
         streamInfo: StreamInfo,
         preserveRetryState: Boolean,
         seekPositionMs: Long?,
-        autoPlay: Boolean
+        autoPlay: Boolean,
+        liveZapSwitch: Boolean = false
     ) {
         retryJob?.cancel()
         retryJob = null
@@ -1009,7 +1075,8 @@ class Media3PlayerEngine @Inject constructor(
             bufferMode = requestedPlaybackBufferMode,
             streamInfo = streamInfo,
             observedVideoFormat = _videoFormat.value,
-            qualityReasonOverride = promotedLiveHlsBufferReasonsByMediaId[mediaId]
+            qualityReasonOverride = promotedLiveHlsBufferReasonsByMediaId[mediaId],
+            fastZapBuffering = liveZapSwitch || scrubbingModeRequested
         )
         val needsRecreate = activeDecoderMode != preferredDecoderMode ||
             previousDecoderPolicy != nextDecoderPolicy ||
@@ -1042,6 +1109,8 @@ class Media3PlayerEngine @Inject constructor(
                     .build()
             }
             player.playbackParameters = PlaybackParameters(_playbackSpeed.value)
+            // Attach surface before prepare so the decoder can render the first frame as soon as data arrives.
+            viewBinder.attachPlayer(player)
 
             val mediaSource = preloadCoordinator.tryReuse(mediaId, streamInfo, currentResolvedStreamType)
                 ?: mediaSourceFactory.create(
@@ -1080,7 +1149,6 @@ class Media3PlayerEngine @Inject constructor(
             if (autoPlay && !focusGranted) {
                 _audioFocusDenied.tryEmit(Unit)
             }
-            viewBinder.attachPlayer(player)
         } catch (error: Exception) {
             handlePlaybackSetupFailure(error, streamInfo, mediaId, seekPositionMs, autoPlay)
         }
@@ -1157,6 +1225,7 @@ class Media3PlayerEngine @Inject constructor(
                 }
                 addAnalyticsListener(createAnalyticsListener())
                 addListener(createPlayerListener())
+                applyScrubbingModeToPlayer(this)
             }
     }
 
@@ -1378,6 +1447,11 @@ class Media3PlayerEngine @Inject constructor(
                 if (prepareStartMs > 0L) {
                     val ttff = System.currentTimeMillis() - prepareStartMs
                     _playerStats.value = _playerStats.value.copy(ttffMs = ttff)
+                    Log.i(
+                        TAG,
+                        "live-startup first-frame-success ttffMs=$ttff " +
+                            "target=${PlaybackLogSanitizer.sanitizeUrl(lastStreamInfo?.url)}"
+                    )
                 }
                 videoStallDetector.onVideoFrameRendered(eventTime.currentPlaybackPositionMs)
                 markPlaybackStarted("first-frame-success")
@@ -1398,6 +1472,24 @@ class Media3PlayerEngine @Inject constructor(
                 }
                 if (previousState == PlaybackState.READY && _playbackState.value == PlaybackState.BUFFERING) {
                     statsCollector.incrementRebufferCount()
+                }
+                if (_playbackState.value == PlaybackState.BUFFERING && prepareStartMs > 0L) {
+                    Log.i(
+                        TAG,
+                        "live-startup state=BUFFERING elapsedMs=${System.currentTimeMillis() - prepareStartMs} " +
+                            "target=${PlaybackLogSanitizer.sanitizeUrl(lastStreamInfo?.url)}"
+                    )
+                }
+                if (
+                    previousState == PlaybackState.BUFFERING &&
+                    _playbackState.value == PlaybackState.READY &&
+                    prepareStartMs > 0L
+                ) {
+                    Log.i(
+                        TAG,
+                        "live-startup state=READY elapsedMs=${System.currentTimeMillis() - prepareStartMs} " +
+                            "target=${PlaybackLogSanitizer.sanitizeUrl(lastStreamInfo?.url)}"
+                    )
                 }
                 if (_playbackState.value == PlaybackState.READY) {
                     _retryStatus.value = null
@@ -1929,12 +2021,22 @@ class Media3PlayerEngine @Inject constructor(
             isCurrentStreamLive = isCurrentStreamLive(),
             playbackState = _playbackState.value,
             elapsedSincePrepareMs = System.currentTimeMillis() - prepareStartMs,
-            startupTimeoutMs = TEXTURE_VIEW_STARTUP_TIMEOUT_MS,
+            startupTimeoutMs = textureViewStartupTimeoutMs(),
             bufferedDurationMs = stats.bufferedDurationMs,
-            bufferedStartupThresholdMs = TEXTURE_VIEW_BUFFERED_STARTUP_THRESHOLD_MS,
+            bufferedStartupThresholdMs = textureViewBufferedStartupThresholdMs(),
             selectedVideoDecoderName = selectedVideoDecoderName
         )
     }
+
+    private fun textureViewStartupTimeoutMs(): Long =
+        if (isLowMemoryPlaybackDevice) LOW_MEMORY_TEXTURE_VIEW_STARTUP_TIMEOUT_MS else TEXTURE_VIEW_STARTUP_TIMEOUT_MS
+
+    private fun textureViewBufferedStartupThresholdMs(): Long =
+        if (isLowMemoryPlaybackDevice) {
+            LOW_MEMORY_TEXTURE_VIEW_BUFFERED_STARTUP_THRESHOLD_MS
+        } else {
+            TEXTURE_VIEW_BUFFERED_STARTUP_THRESHOLD_MS
+        }
 
     private fun fallbackTextureViewSurface(reason: String) {
         val streamInfo = lastStreamInfo ?: return

@@ -52,7 +52,7 @@ import androidx.tv.material3.Text
 import com.streamvault.app.R
 import com.streamvault.app.device.rememberIsTelevisionDevice
 import com.streamvault.app.ui.components.FocusedMarqueeText
-import com.streamvault.app.ui.components.PlayerRenderView
+import com.streamvault.app.ui.preview.LivePreviewVideoSurface
 import com.streamvault.app.ui.interaction.TvButton
 import com.streamvault.app.ui.interaction.TvClickableSurface
 import com.streamvault.app.ui.theme.FocusBorder
@@ -125,12 +125,10 @@ internal fun LivePreviewPane(
     playerEngine: PlayerEngine?,
     isLoading: Boolean,
     errorMessage: String?,
+    errorCode: String?,
+    onPreviewClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val renderSurfaceType by (playerEngine?.renderSurfaceType)?.collectAsStateWithLifecycle(
-        initialValue = PlayerRenderSurfaceType.SURFACE_VIEW
-    ) ?: remember { mutableStateOf(PlayerRenderSurfaceType.SURFACE_VIEW) }
-
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
@@ -148,62 +146,17 @@ internal fun LivePreviewPane(
                 color = Primary
             )
 
-            Box(
+            LivePreviewVideoSurface(
+                playerEngine = playerEngine,
+                isLoading = isLoading && channel != null,
+                errorMessage = errorMessage,
+                errorCode = errorCode,
+                onPreviewClick = onPreviewClick,
+                showOpenHint = channel != null && playerEngine != null && errorMessage == null,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(Color.Black, RoundedCornerShape(16.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (playerEngine != null && errorMessage == null) {
-                    PlayerRenderView(
-                        playerEngine = playerEngine,
-                        resizeMode = PlayerSurfaceResizeMode.FIT,
-                        surfaceType = renderSurfaceType,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(horizontal = 20.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.live_preview_placeholder_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = OnBackground,
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            text = errorMessage ?: stringResource(R.string.live_preview_placeholder_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceDim,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-
-                if (isLoading && channel != null) {
-                    Row(
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            color = Primary,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.live_preview_loading),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White
-                        )
-                    }
-                }
-            }
+                    .aspectRatio(16f / 9f),
+            )
 
             if (channel != null) {
                 Text(

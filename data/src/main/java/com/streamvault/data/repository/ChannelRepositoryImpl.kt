@@ -30,6 +30,7 @@ import com.streamvault.domain.model.StreamInfo
 import com.streamvault.domain.model.StreamType
 import com.streamvault.domain.repository.ChannelRepository
 import com.streamvault.domain.util.ChannelNormalizer
+import com.streamvault.domain.util.M3uChannelDisplayName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.withContext
@@ -495,10 +496,17 @@ class ChannelRepositoryImpl @Inject constructor(
                 .let { sorted ->
                     listOf(selectedVariant) + sorted.filterNot { it.rawChannelId == selectedVariant.rawChannelId }
                 }
-            val displayName = when (settings.labelMode) {
-                GroupedChannelLabelMode.ORIGINAL_PROVIDER_LABEL -> selectedVariant.originalName
-                GroupedChannelLabelMode.CANONICAL,
-                GroupedChannelLabelMode.HYBRID -> canonicalName
+            val preserveGatewayLabel = M3uChannelDisplayName.preserveProviderLabel(
+                M3uChannelDisplayName.Input(
+                    name = selectedVariant.originalName,
+                    groupTitle = representative.groupTitle.orEmpty(),
+                    streamUrl = selectedVariant.streamUrl,
+                ),
+            )
+            val displayName = when {
+                preserveGatewayLabel -> selectedVariant.originalName
+                settings.labelMode == GroupedChannelLabelMode.ORIGINAL_PROVIDER_LABEL -> selectedVariant.originalName
+                else -> canonicalName
             }
             val qualityOptions = orderedVariants.mapNotNull(::variantQualityOption)
                 .distinctBy { option -> option.url ?: "${option.height}:${option.label}" }

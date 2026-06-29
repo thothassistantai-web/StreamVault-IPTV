@@ -22,7 +22,7 @@ class PlaybackBufferPoliciesTest {
     }
 
     @Test
-    fun `small live hls uses production live buffer baseline`() {
+    fun `small live hls uses fast startup buffer`() {
         val policy = PlaybackBufferPolicies.forPlayback(
             resolvedStreamType = ResolvedStreamType.HLS,
             compatibilityMode = false,
@@ -30,11 +30,30 @@ class PlaybackBufferPoliciesTest {
             bufferMode = PlaybackBufferMode.SMALL
         )
 
+        assertThat(policy.label).isEqualTo("small-live")
+        assertThat(policy.minBufferMs).isEqualTo(1_500)
+        assertThat(policy.maxBufferMs).isEqualTo(6_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(250)
+        assertThat(policy.rebufferMs).isEqualTo(1_500)
+        assertThat(policy.targetBufferBytes).isEqualTo(-1)
+    }
+
+    @Test
+    fun `auto live hls keeps fast baseline during zap buffering`() {
+        val policy = PlaybackBufferPolicies.forPlayback(
+            resolvedStreamType = ResolvedStreamType.HLS,
+            compatibilityMode = false,
+            lowMemoryDevice = false,
+            bufferMode = PlaybackBufferMode.AUTO,
+            streamInfo = StreamInfo(
+                url = "https://example.com/live/sports_2160p/index.m3u8",
+                title = "Sports 4K HDR"
+            ),
+            fastZapBuffering = true
+        )
+
         assertThat(policy.label).isEqualTo("stable-live")
         assertThat(policy.minBufferMs).isEqualTo(8_000)
-        assertThat(policy.maxBufferMs).isEqualTo(30_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(1_500)
-        assertThat(policy.rebufferMs).isEqualTo(5_000)
         assertThat(policy.targetBufferBytes).isEqualTo(-1)
     }
 
@@ -143,7 +162,7 @@ class PlaybackBufferPoliciesTest {
     }
 
     @Test
-    fun `auto live hls caps uhd promotion to medium on low memory devices`() {
+    fun `auto live hls keeps fast low memory baseline even with uhd metadata`() {
         val policy = PlaybackBufferPolicies.forPlayback(
             resolvedStreamType = ResolvedStreamType.HLS,
             compatibilityMode = false,
@@ -155,14 +174,13 @@ class PlaybackBufferPoliciesTest {
             )
         )
 
-        assertThat(policy.label).isEqualTo("auto-uhd-live-hls-capped")
-        assertThat(policy.minBufferMs).isEqualTo(15_000)
-        assertThat(policy.maxBufferMs).isEqualTo(45_000)
-        assertThat(policy.playbackBufferMs).isEqualTo(3_000)
-        assertThat(policy.rebufferMs).isEqualTo(10_000)
-        assertThat(policy.targetBufferBytes).isEqualTo(32 * 1024 * 1024)
-        assertThat(policy.lowMemoryCapped).isTrue()
-        assertThat(policy.qualityReason).isEqualTo("metadata-uhd")
+        assertThat(policy.label).isEqualTo("lowmem-live")
+        assertThat(policy.minBufferMs).isEqualTo(2_500)
+        assertThat(policy.maxBufferMs).isEqualTo(10_000)
+        assertThat(policy.playbackBufferMs).isEqualTo(500)
+        assertThat(policy.rebufferMs).isEqualTo(2_500)
+        assertThat(policy.targetBufferBytes).isEqualTo(-1)
+        assertThat(policy.lowMemoryCapped).isFalse()
     }
 
     @Test
@@ -191,6 +209,20 @@ class PlaybackBufferPoliciesTest {
         assertThat(policy.label).isEqualTo("auto-uhd-live-hls")
         assertThat(policy.minBufferMs).isEqualTo(30_000)
         assertThat(policy.targetBufferBytes).isEqualTo(64 * 1024 * 1024)
+    }
+
+    @Test
+    fun `low memory mpeg ts live caps byte target for 1gb devices`() {
+        val policy = PlaybackBufferPolicies.forPlayback(
+            resolvedStreamType = ResolvedStreamType.MPEG_TS_LIVE,
+            compatibilityMode = false,
+            lowMemoryDevice = true
+        )
+
+        assertThat(policy.label).isEqualTo("lowmem-mpeg-ts-live")
+        assertThat(policy.targetBufferBytes).isEqualTo(8 * 1024 * 1024)
+        assertThat(policy.minBufferMs).isEqualTo(2_500)
+        assertThat(policy.playbackBufferMs).isEqualTo(500)
     }
 
     @Test

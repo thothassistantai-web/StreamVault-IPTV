@@ -221,7 +221,7 @@ enum class AspectRatio(val modeName: String) {
     ZOOM("Zoom")
 }
 
-internal data class EpgRequestKey(
+data class EpgRequestKey(
     val providerId: Long,
     val internalChannelId: Long,
     val epgChannelId: String?,

@@ -1,5 +1,6 @@
 package com.streamvault.app.ui.screens.player
 
+import android.os.SystemClock
 import androidx.lifecycle.viewModelScope
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.ProviderType
@@ -108,26 +109,42 @@ internal fun PlayerViewModel.scheduleZapBufferWatchdog(targetIndex: Int) {
     if (!zapAutoRevertEnabled) return
     zapBufferWatchdogJob?.cancel()
     val requestVersion = prepareRequestVersion
+    val isGatewayChannel = pluginManager.isGatewayManagedUrl(currentStreamUrl)
+    val baseTimeoutMs = if (isGatewayChannel) 50_000L else 15_000L
+    val maxTimeoutMs = if (isGatewayChannel) 75_000L else 20_000L
     zapBufferWatchdogJob = viewModelScope.launch {
-        repeat(15) {
-            delay(1000)
+        var deadlineMs = SystemClock.elapsedRealtime() + baseTimeoutMs
+        while (SystemClock.elapsedRealtime() < deadlineMs) {
+            delay(1_000)
             if (!isActivePlaybackSession(requestVersion)) return@launch
             if (currentChannelIndex != targetIndex) return@launch
             val state = playerEngine.playbackState.value
             if (state == PlaybackState.READY || state == PlaybackState.ENDED) return@launch
+            if (playerEngine.retryStatus.value != null) {
+                deadlineMs = minOf(
+                    maxTimeoutMs,
+                    maxOf(deadlineMs, SystemClock.elapsedRealtime() + 10_000L)
+                )
+            }
         }
         if (!isActivePlaybackSession(requestVersion)) return@launch
         val stillOnTarget = currentChannelIndex == targetIndex
         val state = playerEngine.playbackState.value
         val stalled = state == PlaybackState.BUFFERING || state == PlaybackState.ERROR
-        if (stillOnTarget && stalled) {
+        if (stillOnTarget && stalled && playerEngine.retryStatus.value == null) {
             markStreamFailure(currentStreamUrl)
             setLastFailureReason("Channel timed out in buffering state")
             appendRecoveryAction("Buffer watchdog triggered")
-            val recovered = fallbackToPreviousChannel("Channel timed out in buffering state")
+            val recovered = if (isGatewayChannel) {
+                false
+            } else {
+                fallbackToPreviousChannel("Channel timed out in buffering state")
+            }
             showPlayerNotice(
                 message = if (recovered) {
                     "That channel stalled too long. Returned to the last channel."
+                } else if (isGatewayChannel) {
+                    "Gateway stream stalled too long. Check StepDaddy Gateway or retry this channel."
                 } else {
                     "That channel stalled too long. Try another source or open the guide."
                 },

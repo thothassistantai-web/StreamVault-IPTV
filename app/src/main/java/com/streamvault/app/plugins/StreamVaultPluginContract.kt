@@ -25,6 +25,8 @@ object StreamVaultPluginContract {
     const val MSG_GET_CONFIGURATION_VALUES = 8
     const val MSG_SET_CONFIGURATION_VALUES = 9
     const val MSG_RUN_CONFIGURATION_ACTION = 10
+    /** Ask an in-process gateway plugin to wake [ServerService] and wait for readiness. */
+    const val MSG_ENSURE_GATEWAY = 11
 
     const val KEY_API_VERSION = "api_version"
     const val KEY_REQUEST_ID = "request_id"
@@ -36,6 +38,7 @@ object StreamVaultPluginContract {
     const val KEY_STATUS_LABEL = "status_label"
     const val KEY_URL = "url"
     const val KEY_PROVIDER_NAME = "provider_name"
+    const val KEY_EPG_URL = "epg_url"
     const val KEY_INPUT_URL = "input_url"
     const val KEY_OUTPUT_URL = "output_url"
     const val KEY_STREAM_TYPE = "stream_type"
@@ -55,4 +58,8 @@ object StreamVaultPluginContract {
 
     const val CONFIGURATION_MODE_HOST_SCHEMA = "host.schema"
     const val CONFIGURATION_MODE_ACTIVITY = "activity"
+
+    const val CONFIG_KEY_GATEWAY_BASE = "gatewayBaseUrl"
+    const val CONFIG_KEY_LAN_MODE = "lanMode"
+    const val CONFIG_KEY_STATUS = "status"
 }

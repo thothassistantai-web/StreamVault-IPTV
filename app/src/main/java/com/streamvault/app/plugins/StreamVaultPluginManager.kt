@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import android.util.Log
 import com.streamvault.app.BuildConfig
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.domain.model.ActiveLiveSource
@@ -47,7 +48,8 @@ class StreamVaultPluginManager @Inject constructor(
     private val combinedM3uRepository: CombinedM3uRepository,
     private val tvInputChannelSyncManager: TvInputChannelSyncManager,
     private val okHttpClient: OkHttpClient,
-    private val json: Json
+    private val json: Json,
+    private val gatewayLifecycle: GatewayLifecycleManager,
 ) {
     private val prefs = context.getSharedPreferences("streamvault_plugins", Context.MODE_PRIVATE)
 
@@ -261,12 +263,32 @@ class StreamVaultPluginManager @Inject constructor(
         response.toPluginActionResult("Plugin action completed")
     }
 
+    fun isGatewayManagedUrl(url: String): Boolean = gatewayLifecycle.isGatewayManagedUrl(url)
+
     suspend fun preparePlaybackUrl(url: String): Result<Unit> =
         preparePlaybackStreamInfo(StreamInfo(url = url)).map { Unit }
 
     suspend fun preparePlaybackStreamInfo(streamInfo: StreamInfo): Result<StreamInfo> = withContext(Dispatchers.IO) {
         val url = streamInfo.url
         if (url.isBlank()) return@withContext Result.success(streamInfo)
+
+        if (gatewayLifecycle.isGatewayManagedUrl(url)) {
+            val base = gatewayLifecycle.resolveGatewayBase(url) ?: GatewayConstants.DEFAULT_GATEWAY_BASE
+            val gatewayPlugin = findEnabledGatewayPlugin()
+            when (
+                val ensure = gatewayLifecycle.ensureGatewayReady(
+                    baseUrl = base,
+                    source = "playback",
+                    requireCatalog = false,
+                    gatewayPlugin = gatewayPlugin,
+                )
+            ) {
+                is GatewayLifecycleManager.EnsureResult.Failed ->
+                    return@withContext Result.error(ensure.message)
+                is GatewayLifecycleManager.EnsureResult.Ready -> Unit
+            }
+        }
+
         val plugins = discoverPlugins()
             .filter { it.enabled && it.manifest.hasCapability(StreamVaultPluginContract.CAPABILITY_PLAYBACK_PREPARE) }
         for (plugin in plugins) {
@@ -393,10 +415,42 @@ class StreamVaultPluginManager @Inject constructor(
         }
     }
 
+    /**
+     * Re-sync enabled StepDaddy Gateway plugin providers after the HTTP gateway recovers.
+     * Used by [GatewayRecoveryWorker] and post-crash ensure paths.
+     */
+    suspend fun refreshEnabledGatewayPlugins(onProgress: (String) -> Unit = {}) = withContext(Dispatchers.IO) {
+        discoverPlugins()
+            .filter { it.enabled && gatewayLifecycle.isStepDaddyGatewayPlugin(it) }
+            .forEach { plugin ->
+                syncPluginProvider(plugin, onProgress)?.let { result ->
+                    Log.w(TAG, "Gateway recovery sync failed: ${result.message}")
+                }
+            }
+    }
+
+    private suspend fun findEnabledGatewayPlugin(): InstalledStreamVaultPlugin? =
+        discoverPlugins().firstOrNull { it.enabled && gatewayLifecycle.isStepDaddyGatewayPlugin(it) }
+
     private suspend fun syncPluginProvider(
         plugin: InstalledStreamVaultPlugin,
         onProgress: (String) -> Unit
     ): PluginActionResult? {
+        if (gatewayLifecycle.isStepDaddyGatewayPlugin(plugin)) {
+            val base = gatewayLifecycle.resolveBaseForPlugin(plugin)
+            when (
+                val ensure = gatewayLifecycle.ensureGatewayReady(
+                    baseUrl = base,
+                    source = "plugin-sync",
+                    gatewayPlugin = plugin,
+                )
+            ) {
+                is GatewayLifecycleManager.EnsureResult.Failed ->
+                    return PluginActionResult(false, ensure.message)
+                is GatewayLifecycleManager.EnsureResult.Ready -> Unit
+            }
+        }
+
         val providerResponse = runCatching {
             messengerClient.send(
                 packageName = plugin.packageName,
@@ -419,6 +473,7 @@ class StreamVaultPluginManager @Inject constructor(
         if (providerUrl.isBlank()) {
             return PluginActionResult(false, "Plugin did not return a provider URL")
         }
+        val pluginEpgUrl = providerResponse.getString(StreamVaultPluginContract.KEY_EPG_URL).orEmpty().trim()
         val providerName = providerResponse.getString(StreamVaultPluginContract.KEY_PROVIDER_NAME)
             ?.takeIf { it.isNotBlank() }
             ?: plugin.manifest.providerName?.takeIf { it.isNotBlank() }
@@ -431,6 +486,7 @@ class StreamVaultPluginManager @Inject constructor(
                 name = providerName,
                 serverUrl = providerUrl,
                 m3uUrl = providerUrl,
+                epgUrl = pluginEpgUrl.ifBlank { existingProvider.epgUrl },
                 epgSyncMode = ProviderEpgSyncMode.BACKGROUND,
                 m3uVodClassificationEnabled = false,
                 isActive = true,
@@ -462,7 +518,18 @@ class StreamVaultPluginManager @Inject constructor(
             )) {
                 is Result.Error -> return PluginActionResult(false, createResult.message)
                 Result.Loading -> return PluginActionResult(false, "Provider sync is still running")
-                is Result.Success -> createResult.data
+                is Result.Success -> {
+                    val created = createResult.data
+                    if (pluginEpgUrl.isNotBlank() && created.epgUrl.isBlank()) {
+                        when (val epgUpdate = providerRepository.updateProvider(created.copy(epgUrl = pluginEpgUrl))) {
+                            is Result.Error -> return PluginActionResult(false, epgUpdate.message)
+                            Result.Loading -> return PluginActionResult(false, "Provider EPG update is still running")
+                            is Result.Success -> created.copy(epgUrl = pluginEpgUrl)
+                        }
+                    } else {
+                        created
+                    }
+                }
             }
         }
 
@@ -652,6 +719,10 @@ class StreamVaultPluginManager @Inject constructor(
 
     private fun enabledKey(pluginId: String): String = "enabled.$pluginId"
     private fun providerKey(pluginId: String): String = "provider.$pluginId"
+
+    companion object {
+        private const val TAG = "StreamVaultPlugins"
+    }
 }
 
 private fun kotlinx.coroutines.CoroutineScope.launchCatching(block: suspend () -> Unit) {

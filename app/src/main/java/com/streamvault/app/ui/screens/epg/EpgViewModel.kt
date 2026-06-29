@@ -64,7 +64,9 @@ import javax.inject.Inject
 import android.app.Application
 import com.streamvault.app.R
 import com.streamvault.app.di.AuxiliaryPlayerEngine
+import com.streamvault.app.player.LivePlaybackStreamCache
 import com.streamvault.app.player.LivePreviewHandoffManager
+import com.streamvault.app.ui.preview.resolvePreparedPreviewStreamInfo
 import com.streamvault.app.player.PreviewHandoffSource
 import com.streamvault.app.plugins.StreamVaultPluginManager
 import com.streamvault.player.PlaybackState
@@ -110,6 +112,7 @@ data class EpgUiState(
     val previewPlayerEngine: PlayerEngine? = null,
     val isPreviewLoading: Boolean = false,
     val previewErrorMessage: String? = null,
+    val previewErrorCode: String? = null,
     val previewChannelId: Long? = null,
 ) {
     companion object {
@@ -268,7 +271,9 @@ class EpgViewModel @Inject constructor(
     private val recordingManager: RecordingManager,
     @param:AuxiliaryPlayerEngine private val playerEngineProvider: InjectProvider<PlayerEngine>,
     private val pluginManager: StreamVaultPluginManager,
+    private val livePlaybackStreamCache: LivePlaybackStreamCache,
     private val livePreviewHandoffManager: LivePreviewHandoffManager,
+    private val guideSessionCache: GuideSessionCache,
     application: Application,
 ) : ViewModel() {
 
@@ -396,20 +401,17 @@ class EpgViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            when (val result = channelRepository.getStreamInfo(channel)) {
+            when (
+                val result = resolvePreparedPreviewStreamInfo(
+                    channel = channel,
+                    channelRepository = channelRepository,
+                    pluginManager = pluginManager,
+                    streamCache = livePlaybackStreamCache,
+                )
+            ) {
                 is Result.Success -> {
                     if (!isActivePreviewSession(version, channel.id)) return@launch
-                    val preparedStreamInfo = when (val r = pluginManager.preparePlaybackStreamInfo(result.data)) {
-                        is Result.Success -> r.data
-                        is Result.Error -> {
-                            if (!isActivePreviewSession(version, channel.id)) return@launch
-                            _uiState.update {
-                                it.copy(isPreviewLoading = false, previewErrorMessage = r.message.ifBlank { appContext.getString(R.string.live_preview_failed) })
-                            }
-                            return@launch
-                        }
-                        Result.Loading -> result.data
-                    }
+                    val preparedStreamInfo = result.data
                     if (!isActivePreviewSession(version, channel.id)) return@launch
                     engine.stop()
                     engine.setDecoderMode(preferencesRepository.playerDecoderMode.first())
@@ -545,6 +547,19 @@ class EpgViewModel @Inject constructor(
     }
 
     fun refresh() {
+        baseGuideSnapshot.value?.let { snapshot ->
+            guideSessionCache.invalidate(
+                guideSessionCacheKey(
+                    providerId = snapshot.providerId,
+                    combinedProfileId = _uiState.value.combinedProfileId,
+                    categoryId = snapshot.selectedCategoryId,
+                    anchorTime = snapshot.guideAnchorTime,
+                    windowStart = snapshot.guideWindowStart,
+                    windowEnd = snapshot.guideWindowEnd,
+                    favoritesOnly = snapshot.showFavoritesOnly,
+                )
+            )
+        }
         refreshNonce.update { it + 1 }
     }
 
@@ -1091,9 +1106,27 @@ class EpgViewModel @Inject constructor(
                 )
             }.collectLatest { request ->
                 val categories = request.categories
-                val hasVisibleGuide = _uiState.value.channels.isNotEmpty() || _uiState.value.programsByChannel.isNotEmpty()
+                val sessionKey = guideSessionCacheKey(
+                    providerId = provider.id,
+                    combinedProfileId = null,
+                    categoryId = request.resolvedCategoryId,
+                    anchorTime = request.anchorTime,
+                    windowStart = request.windowStart,
+                    windowEnd = request.windowEnd,
+                    favoritesOnly = request.favoritesOnly,
+                )
+                val cachedSession = guideSessionCache.get(sessionKey)
+                val hasVisibleGuide = cachedSession != null ||
+                    _uiState.value.channels.isNotEmpty() ||
+                    _uiState.value.programsByChannel.isNotEmpty()
                 val providerSourceLabel = buildProviderSourceLabel(provider)
                 val providerArchiveSummary = buildProviderArchiveSummary(provider)
+                if (cachedSession != null) {
+                    restoreGuideSession(
+                        session = cachedSession,
+                        isRefreshing = !cachedSession.isFresh(System.currentTimeMillis()),
+                    )
+                }
                 _uiState.update {
                     it.copy(
                         currentProviderName = provider.name,
@@ -1107,7 +1140,11 @@ class EpgViewModel @Inject constructor(
                         guideWindowStart = request.windowStart,
                         guideWindowEnd = request.windowEnd,
                         isInitialLoading = !hasVisibleGuide,
-                        isRefreshing = hasVisibleGuide,
+                        isRefreshing = when {
+                            cachedSession != null -> !cachedSession.isFresh(System.currentTimeMillis())
+                            hasVisibleGuide -> true
+                            else -> false
+                        },
                         error = null
                     )
                 }
@@ -1203,7 +1240,25 @@ class EpgViewModel @Inject constructor(
             val categories = request.categories
             val profile = combinedM3uRepository.getProfile(profileId)
             val profileName = profile?.name ?: "Combined M3U"
-            val hasVisibleGuide = _uiState.value.channels.isNotEmpty() || _uiState.value.programsByChannel.isNotEmpty()
+            val sessionKey = guideSessionCacheKey(
+                providerId = 0L,
+                combinedProfileId = profileId,
+                categoryId = request.resolvedCategoryId,
+                anchorTime = request.anchorTime,
+                windowStart = request.windowStart,
+                windowEnd = request.windowEnd,
+                favoritesOnly = request.favoritesOnly,
+            )
+            val cachedSession = guideSessionCache.get(sessionKey)
+            val hasVisibleGuide = cachedSession != null ||
+                _uiState.value.channels.isNotEmpty() ||
+                _uiState.value.programsByChannel.isNotEmpty()
+            if (cachedSession != null) {
+                restoreGuideSession(
+                    session = cachedSession,
+                    isRefreshing = !cachedSession.isFresh(System.currentTimeMillis()),
+                )
+            }
             _uiState.update {
                 it.copy(
                     currentProviderName = profileName,
@@ -1217,7 +1272,11 @@ class EpgViewModel @Inject constructor(
                     guideWindowStart = request.windowStart,
                     guideWindowEnd = request.windowEnd,
                     isInitialLoading = !hasVisibleGuide,
-                    isRefreshing = hasVisibleGuide,
+                    isRefreshing = when {
+                        cachedSession != null -> !cachedSession.isFresh(System.currentTimeMillis())
+                        hasVisibleGuide -> true
+                        else -> false
+                    },
                     error = null
                 )
             }
@@ -1370,6 +1429,118 @@ class EpgViewModel @Inject constructor(
                 channelSelection.channels.size > visibleChannels.size
             }
         )
+        baseGuideSnapshot.value?.let { snapshot ->
+            guideSessionCache.put(
+                guideSessionCacheKey(
+                    providerId = snapshot.providerId,
+                    combinedProfileId = _uiState.value.combinedProfileId,
+                    categoryId = snapshot.selectedCategoryId,
+                    anchorTime = snapshot.guideAnchorTime,
+                    windowStart = snapshot.guideWindowStart,
+                    windowEnd = snapshot.guideWindowEnd,
+                    favoritesOnly = snapshot.showFavoritesOnly,
+                ),
+                cachedGuideSessionFromSnapshot(snapshot),
+            )
+        }
+    }
+
+    private fun guideSessionCacheKey(
+        providerId: Long,
+        combinedProfileId: Long?,
+        categoryId: Long,
+        anchorTime: Long,
+        windowStart: Long,
+        windowEnd: Long,
+        favoritesOnly: Boolean,
+    ): GuideSessionCacheKey = GuideSessionCacheKey(
+        sourceId = providerId,
+        combinedProfileId = combinedProfileId,
+        categoryId = categoryId,
+        anchorTime = anchorTime,
+        windowStart = windowStart,
+        windowEnd = windowEnd,
+        favoritesOnly = favoritesOnly,
+    )
+
+    private fun cachedGuideSessionFromSnapshot(snapshot: GuideBaseSnapshot): CachedGuideSession =
+        CachedGuideSession(
+            providerId = snapshot.providerId,
+            combinedProfileId = _uiState.value.combinedProfileId,
+            currentProviderName = snapshot.currentProviderName,
+            providerSourceLabel = snapshot.providerSourceLabel,
+            providerArchiveSummary = snapshot.providerArchiveSummary,
+            categories = snapshot.categories,
+            selectedCategoryId = snapshot.selectedCategoryId,
+            parentalControlLevel = snapshot.parentalControlLevel,
+            showFavoritesOnly = snapshot.showFavoritesOnly,
+            favoriteChannelIds = snapshot.favoriteChannelIds,
+            allChannels = snapshot.allChannels,
+            visibleChannels = snapshot.visibleChannels,
+            programsByChannel = snapshot.baseProgramsByChannel,
+            failedScheduleCount = snapshot.failedScheduleCount,
+            channelsWithSchedule = snapshot.baseChannelsWithSchedule,
+            guideAnchorTime = snapshot.guideAnchorTime,
+            guideWindowStart = snapshot.guideWindowStart,
+            guideWindowEnd = snapshot.guideWindowEnd,
+            hiddenCategoryIds = snapshot.hiddenCategoryIds,
+            nextRawChannelOffset = snapshot.nextRawChannelOffset,
+            hasMoreChannels = snapshot.hasMoreChannels,
+            savedAtMs = snapshot.lastUpdatedAt,
+        )
+
+    private fun restoreGuideSession(
+        session: CachedGuideSession,
+        isRefreshing: Boolean,
+    ) {
+        baseGuideSnapshot.value = GuideBaseSnapshot(
+            providerId = session.providerId,
+            currentProviderName = session.currentProviderName,
+            providerSourceLabel = session.providerSourceLabel,
+            providerArchiveSummary = session.providerArchiveSummary,
+            categories = session.categories,
+            selectedCategoryId = session.selectedCategoryId,
+            parentalControlLevel = session.parentalControlLevel,
+            showFavoritesOnly = session.showFavoritesOnly,
+            favoriteChannelIds = session.favoriteChannelIds,
+            allChannels = session.allChannels,
+            visibleChannels = session.visibleChannels,
+            baseProgramsByChannel = session.programsByChannel,
+            failedScheduleCount = session.failedScheduleCount,
+            lastUpdatedAt = session.savedAtMs,
+            baseChannelsWithSchedule = session.channelsWithSchedule,
+            baseGuideStale = session.visibleChannels.isNotEmpty() && session.channelsWithSchedule == 0,
+            guideAnchorTime = session.guideAnchorTime,
+            guideWindowStart = session.guideWindowStart,
+            guideWindowEnd = session.guideWindowEnd,
+            hiddenCategoryIds = session.hiddenCategoryIds,
+            nextRawChannelOffset = session.nextRawChannelOffset,
+            hasMoreChannels = session.hasMoreChannels,
+        )
+        _uiState.update {
+            it.copy(
+                currentProviderName = session.currentProviderName,
+                providerSourceLabel = session.providerSourceLabel,
+                providerArchiveSummary = session.providerArchiveSummary,
+                combinedProfileId = session.combinedProfileId,
+                categories = session.categories,
+                selectedCategoryId = session.selectedCategoryId,
+                parentalControlLevel = session.parentalControlLevel,
+                showFavoritesOnly = session.showFavoritesOnly,
+                favoriteChannelIds = session.favoriteChannelIds,
+                channels = session.visibleChannels,
+                programsByChannel = session.programsByChannel,
+                isInitialLoading = false,
+                isRefreshing = isRefreshing,
+                failedScheduleCount = session.failedScheduleCount,
+                channelsWithSchedule = session.channelsWithSchedule,
+                lastUpdatedAt = session.savedAtMs,
+                guideAnchorTime = session.guideAnchorTime,
+                guideWindowStart = session.guideWindowStart,
+                guideWindowEnd = session.guideWindowEnd,
+                hasMoreChannels = session.hasMoreChannels,
+            )
+        }
     }
 
     private fun loadEpgOverrideCandidates(channel: Channel, query: String, refreshMapping: Boolean) {

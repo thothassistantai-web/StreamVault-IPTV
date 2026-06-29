@@ -8,6 +8,8 @@ sealed class ExternalDestination : Serializable {
     data object Home : ExternalDestination()
     data object Plugins : ExternalDestination()
 
+    data class LiveTv(val categoryId: Long? = null) : ExternalDestination()
+
     data class ProviderSetup(
         val providerId: Long? = null,
         val importUri: String? = null
@@ -26,6 +28,7 @@ sealed class ExternalDestination : Serializable {
     fun toRoute(): String = when (this) {
         Home -> Routes.HOME
         Plugins -> Routes.PLUGINS
+        is LiveTv -> Routes.liveTv(categoryId = categoryId)
         is ProviderSetup -> Routes.providerSetup(providerId = providerId, importUri = importUri)
         is MovieDetail -> Routes.movieDetail(movieId = movieId, returnRoute = returnRoute)
         is SeriesDetail -> Routes.seriesDetail(seriesId = seriesId, returnRoute = returnRoute)
@@ -59,7 +62,14 @@ sealed class ExternalDestination : Serializable {
                     )
                 }
 
-                normalizedRoute.startsWith("series_detail/") -> {
+                normalizedRoute == Routes.LIVE_TV || normalizedRoute.startsWith("${Routes.LIVE_TV}?") -> {
+                    val categoryId = normalizedRoute.queryParameters()["categoryId"]
+                        ?.toLongOrNull()
+                        ?.takeIf { it > 0L }
+                    LiveTv(categoryId = categoryId)
+                }
+
+                                normalizedRoute.startsWith("series_detail/") -> {
                     val pathSegments = normalizedRoute.pathSegments()
                     val seriesId = pathSegments.getOrNull(1)?.toLongOrNull() ?: return null
                     SeriesDetail(

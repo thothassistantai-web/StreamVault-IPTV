@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.streamvault.app.ui.components.SearchInput
@@ -224,8 +226,34 @@ fun HomeScreen(
         }
     }
 
+    LaunchedEffect(uiState.pendingResumeChannel, uiState.isLoading) {
+        val channel = uiState.pendingResumeChannel ?: return@LaunchedEffect
+        if (uiState.isLoading || uiState.showDialog) return@LaunchedEffect
+        viewModel.consumePendingResumeChannel()
+        val category = uiState.selectedCategory
+        val isLocked = category != null &&
+            uiState.parentalControlLevel > 0 &&
+            (category.isUserProtected || category.isAdult) &&
+            category.id !in uiState.unlockedCategoryIds
+        if (isLocked) return@LaunchedEffect
+        if (uiState.previewChannelId == channel.id) {
+            viewModel.beginPreviewHandoff(channel)
+        }
+        onChannelClick(
+            channel,
+            category,
+            resolveProviderForChannel(channel),
+            (uiState.activeLiveSource as? ActiveLiveSource.CombinedM3uSource)?.profileId,
+            uiState.selectedCombinedSourceProviderId
+        )
+    }
+
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        viewModel.clearPreview()
+        viewModel.pausePreviewForBackground()
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        viewModel.resumePreviewAfterBackground()
     }
 
     DisposableEffect(viewModel) {
@@ -1044,6 +1072,9 @@ fun HomeScreen(
                                 ContentMetadataStrip(
                                     values = buildList {
                                         add(stringResource(R.string.live_channel_results, uiState.filteredChannels.size))
+                                        if (uiState.isRefreshingChannels) {
+                                            add(stringResource(R.string.home_loading_channels))
+                                        }
                                         uiState.lastVisitedCategory?.name?.let {
                                             add(stringResource(R.string.label_colon_value_format, stringResource(R.string.live_shell_last_group), it))
                                         }
@@ -1070,7 +1101,7 @@ fun HomeScreen(
                             animationSpec = tween(durationMillis = 200),
                             label = "category_content_transition"
                         ) { _ ->
-                        if (uiState.isLoading) {
+                        if (uiState.isLoading && uiState.filteredChannels.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -1157,7 +1188,24 @@ fun HomeScreen(
                             }
                         } else {
                             var ignoreNextClick by remember { mutableStateOf(false) }
-                            val channelListState = rememberLazyListState()
+                            val selectedCategoryId = uiState.selectedCategory?.id
+                            val savedScroll = selectedCategoryId?.let(viewModel::savedChannelScroll)
+                            val channelListState = remember(selectedCategoryId) {
+                                LazyListState(
+                                    firstVisibleItemIndex = savedScroll?.index ?: 0,
+                                    firstVisibleItemScrollOffset = savedScroll?.offset ?: 0
+                                )
+                            }
+
+                            LaunchedEffect(channelListState, selectedCategoryId) {
+                                val categoryId = selectedCategoryId ?: return@LaunchedEffect
+                                snapshotFlow {
+                                    channelListState.firstVisibleItemIndex to
+                                        channelListState.firstVisibleItemScrollOffset
+                                }.collect { (index, offset) ->
+                                    viewModel.saveChannelScroll(categoryId, index, offset)
+                                }
+                            }
 
                             LaunchedEffect(ignoreNextClick) {
                                 if (ignoreNextClick) {
@@ -1207,7 +1255,6 @@ fun HomeScreen(
                                     }
                             }
 
-                            // Load more channels when the user scrolls near the end of the list
                             LaunchedEffect(channelListState) {
                                 snapshotFlow {
                                     val info = channelListState.layoutInfo
@@ -1218,12 +1265,6 @@ fun HomeScreen(
                                     .distinctUntilChanged()
                                     .filter { it }
                                     .collect { viewModel.loadMoreChannels() }
-                            }
-
-                            DisposableEffect(Unit) {
-                                onDispose {
-                                    viewModel.updateVisibleChannelWindow(emptyList(), null)
-                                }
                             }
 
                             LazyColumn(
@@ -1357,6 +1398,22 @@ fun HomeScreen(
                             playerEngine = uiState.previewPlayerEngine,
                             isLoading = uiState.isPreviewLoading,
                             errorMessage = uiState.previewErrorMessage,
+                            errorCode = uiState.previewErrorCode,
+                            onPreviewClick = previewChannel?.let { channel ->
+                                {
+                                    val handedOff = viewModel.beginPreviewHandoff(channel)
+                                    if (!handedOff) {
+                                        viewModel.clearPreview()
+                                    }
+                                    onChannelClick(
+                                        channel,
+                                        uiState.selectedCategory,
+                                        resolveProviderForChannel(channel),
+                                        (uiState.activeLiveSource as? ActiveLiveSource.CombinedM3uSource)?.profileId,
+                                        uiState.selectedCombinedSourceProviderId
+                                    )
+                                }
+                            },
                             modifier = Modifier
                                 .weight(0.92f)
                                 .fillMaxHeight()

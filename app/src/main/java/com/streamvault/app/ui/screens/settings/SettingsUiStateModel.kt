@@ -25,6 +25,7 @@ import com.streamvault.domain.model.EpgResolutionSummary
 import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
+import com.streamvault.domain.model.PlaybackGesturePreferences
 import com.streamvault.domain.model.PlaybackBufferMode
 import com.streamvault.domain.model.VodDuplicateHandlingMode
 import com.streamvault.domain.model.VodHttpProtocolMode
@@ -144,6 +145,8 @@ data class SettingsUiState(
     val guideDefaultCategoryOptions: List<Category> = emptyList(),
     val preventStandbyDuringPlayback: Boolean = true,
     val zapAutoRevert: Boolean = true,
+    val resumeLastLiveChannelEnabled: Boolean = true,
+    val playbackGesturePreferences: PlaybackGesturePreferences = PlaybackGesturePreferences(),
     val autoPlayNextEpisode: Boolean = true,
     val categorySortModes: Map<ContentType, CategorySortMode> = emptyMap(),
     val hiddenCategories: List<Category> = emptyList(),

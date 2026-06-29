@@ -14,8 +14,11 @@ import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/Davidona/StreamVault-IPTV/releases/latest"
-private const val GITHUB_RELEASES_LIST_URL = "https://api.github.com/repos/Davidona/StreamVault-IPTV/releases?per_page=20"
+private fun githubReleasesLatestUrl(): String =
+    "https://api.github.com/repos/${BuildConfig.APP_UPDATE_GITHUB_REPO}/releases/latest"
+
+private fun githubReleasesListUrl(): String =
+    "https://api.github.com/repos/${BuildConfig.APP_UPDATE_GITHUB_REPO}/releases?per_page=20"
 
 data class GitHubReleaseInfo(
     val versionName: String,
@@ -209,9 +212,15 @@ class GitHubReleaseChecker @Inject constructor(
     }
 }
 
-enum class AppUpdateChannel(val id: String, val releaseApiUrl: String) {
-    Stable(id = "stable", releaseApiUrl = GITHUB_RELEASES_LATEST_URL),
-    Beta(id = "beta", releaseApiUrl = GITHUB_RELEASES_LIST_URL);
+enum class AppUpdateChannel(val id: String) {
+    Stable(id = "stable"),
+    Beta(id = "beta");
+
+    val releaseApiUrl: String
+        get() = when (this) {
+            Stable -> githubReleasesLatestUrl()
+            Beta -> githubReleasesListUrl()
+        }
 
     companion object {
         fun fromCurrentBuild(): AppUpdateChannel {

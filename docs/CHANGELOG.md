@@ -2,6 +2,48 @@
 
 All notable product changes are recorded in this document.
 
+## [3.0.0] - 2026-06-28
+
+### Added
+
+- **Stable suite release** — StreamVault `3.0.0` / `versionCode` 30000 paired with StepDaddy Gateway `3.0.0`
+- **Gateway alignment** — `GatewayConstants`, `GatewayLifecycleManager`, `GatewayRecoveryWorker`; `streamvault.m3u`, `epg.xml`, plugin `epg_url`, `MSG_ENSURE_GATEWAY`
+- **Special event display** — `M3uChannelDisplayName` strips health dots from browse titles while preserving M3U metadata
+- **Resume last live channel** — Settings → Playback toggle with `LiveResumeSupport`
+- **Performance caches** — live browse, EPG guide session, search results, zap stream info, VOD browse, `EpgQueryCache`, live playback stream cache
+- **Touch playback gestures** — swipe, double-tap, long-press, pinch, edge overlays (phones/tablets)
+
+### Changed
+
+- **Documentation** — `docs/GATEWAY.md`, `PLUGIN_API.md`, `RELEASE.md`; cross-link [stepdaddy-gateway-android](https://github.com/thothassistantai-web/stepdaddy-gateway-android)
+- Default in-app update source remains `thothassistantai-web/StreamVault-IPTV` GitHub Releases
+
+## [1.0.16] - 2026-06-26
+
+### Added
+
+- Added touch playback gestures on phones and tablets — swipe for channel change and seek, double-tap for controls, long-press for quick actions, pinch for full guide, and edge panels for navigation, media, status, and playback shortcuts.
+- Added touch mini guide, quick menu, program details, and full-guide overlays for live playback on non-TV devices.
+- Added configurable playback gesture settings (enable/disable, per-gesture toggles, swipe sensitivity) under Settings → Playback.
+- Added StepDaddy Gateway lifecycle coordination — auto-start, `/health` readiness probes, and catalog recovery before plugin sync and gateway-managed playback URLs.
+- Added `GatewayRecoveryWorker` to re-sync enabled Gateway plugin providers after gateway HTTP recovery.
+- Added plugin `epg_url` support so companion plugins (including StepDaddy Gateway) can supply both M3U playlist and XMLTV EPG URLs when creating a provider.
+- Added TiviMate-style stream line parsing for M3U and Xtream passthrough URLs (`url|User-Agent=...|Referer=...|Origin=...`), preserving per-stream headers and user agents for gateway and MAG-style playlists.
+
+### Fixed
+
+- Fixed Home dashboard now-playing EPG tiles to fall back to legacy guide snapshots when resolved mappings are missing, so special-event and supplement channels still show programme titles.
+- Fixed EPG guide live preview to surface underlying stream errors instead of failing silently when preview preparation throws.
+- Fixed EPG programme progress bars to use shared timestamp-based progress calculation instead of inline division that could misreport on zero-duration programmes.
+- Fixed stream URL policy to accept TiviMate pipe-suffixed playlist lines while still validating the underlying HTTP/HTTPS scheme.
+- Fixed in-app update version comparison to share one helper across Settings and Dashboard, including publish-time fallback for same-version beta builds.
+- Fixed stable update parsing to strip `-debug` suffixes from remote version names before comparison.
+
+### Changed
+
+- Changed default in-app update source to the `thothassistantai-web/StreamVault-IPTV` GitHub Releases API for this fork.
+- Changed TV remote overlay flows to dismiss touch-only overlays when opening channel browser, full guide, or closing live overlays.
+
 ## [1.0.15] - 2026-06-13
 
 ### Fixed

@@ -24,6 +24,8 @@
         android:required="false" />
 
     <queries>
+        <package android:name="com.thothassistant.stepdaddy.gateway" />
+        <package android:name="com.thothassistant.stepdaddy.gateway.debug" />
         <intent>
             <action android:name="com.streamvault.plugin.API" />
         </intent>

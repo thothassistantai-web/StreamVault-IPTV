@@ -18,6 +18,7 @@ import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
 import com.streamvault.domain.model.PlaybackBufferMode
+import com.streamvault.domain.model.PlaybackGesturePreferences
 import com.streamvault.domain.model.VodDuplicateHandlingMode
 import com.streamvault.domain.model.VodHttpProtocolMode
 import com.streamvault.domain.model.VodVariantPreferenceMode
@@ -106,6 +107,8 @@ internal fun observeSettingsPreferenceSnapshot(
             guideDefaultCategoryOptions = emptyList(),
             preventStandbyDuringPlayback = true,
             zapAutoRevert = true,
+            resumeLastLiveChannelEnabled = true,
+            playbackGesturePreferences = PlaybackGesturePreferences(),
             autoPlayNextEpisode = true,
             autoCheckAppUpdates = true,
             autoDownloadAppUpdates = false,
@@ -243,6 +246,10 @@ internal fun observeSettingsPreferenceSnapshot(
         snapshot.copy(preventStandbyDuringPlayback = preventStandby)
     }.combine(preferencesRepository.zapAutoRevert) { snapshot, zapAutoRevert ->
         snapshot.copy(zapAutoRevert = zapAutoRevert)
+    }.combine(preferencesRepository.resumeLastLiveChannelEnabled) { snapshot, resumeLastLiveChannelEnabled ->
+        snapshot.copy(resumeLastLiveChannelEnabled = resumeLastLiveChannelEnabled)
+    }.combine(preferencesRepository.playbackGesturePreferences) { snapshot, playbackGesturePreferences ->
+        snapshot.copy(playbackGesturePreferences = playbackGesturePreferences)
     }.combine(preferencesRepository.autoPlayNextEpisode) { snapshot, autoPlayNextEpisode ->
         snapshot.copy(autoPlayNextEpisode = autoPlayNextEpisode)
     }.combine(preferencesRepository.autoCheckAppUpdates) { snapshot, autoCheckAppUpdates ->

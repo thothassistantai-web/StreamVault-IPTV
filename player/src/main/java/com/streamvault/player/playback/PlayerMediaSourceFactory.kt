@@ -64,7 +64,10 @@ class PlayerMediaSourceFactory(
             vodHttpProtocolMode = vodHttpProtocolMode,
             preload = preload
         )
-        val mediaItem = buildMediaItem(streamInfo)
+        val mediaItem = buildMediaItem(
+            streamInfo = streamInfo,
+            isLive = resolvedStreamType in LIVE_STREAM_TYPES,
+        )
         val mediaSource = when {
             streamInfo.streamType == StreamType.RTSP || resolvedStreamType == ResolvedStreamType.RTSP ->
                 RtspMediaSource.Factory().createMediaSource(mediaItem)
@@ -118,7 +121,7 @@ class PlayerMediaSourceFactory(
         return timeoutProfile to mediaSource
     }
 
-    private fun buildMediaItem(streamInfo: StreamInfo): MediaItem {
+    private fun buildMediaItem(streamInfo: StreamInfo, isLive: Boolean): MediaItem {
         return MediaItem.Builder()
             .setUri(Uri.parse(streamInfo.url))
             .setMediaId(mediaIdFor(streamInfo))
@@ -128,6 +131,13 @@ class PlayerMediaSourceFactory(
                     .build()
             )
             .apply {
+                if (isLive) {
+                    setLiveConfiguration(
+                        MediaItem.LiveConfiguration.Builder()
+                            .setTargetOffsetMs(LIVE_TARGET_OFFSET_MS)
+                            .build()
+                    )
+                }
                 streamInfo.drmInfo?.let { drmInfo ->
                     setDrmConfiguration(
                         MediaItem.DrmConfiguration.Builder(drmInfo.scheme.toUuid())
@@ -156,5 +166,12 @@ class PlayerMediaSourceFactory(
 
     companion object {
         private const val TAG = "PlayerMediaSourceFactory"
+        private const val LIVE_TARGET_OFFSET_MS = 2_500L
+        private val LIVE_STREAM_TYPES = setOf(
+            ResolvedStreamType.HLS,
+            ResolvedStreamType.SMOOTH_STREAMING,
+            ResolvedStreamType.MPEG_TS_LIVE,
+            ResolvedStreamType.RTSP,
+        )
     }
 }

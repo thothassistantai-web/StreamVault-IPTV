@@ -67,6 +67,36 @@ class SettingsAppUpdateModelsTest {
     }
 
     @Test
+    fun debugBuildIgnoresSameVersionStableRelease() {
+        val result = isRemoteVersionNewerForBuild(
+            remoteVersionCode = 16,
+            remoteVersionName = "1.0.15",
+            remotePublishedAt = null,
+            currentVersionCode = 16,
+            currentVersionName = "1.0.15-debug",
+            currentBuildTimestampUtc = 0L,
+            currentChannel = AppUpdateChannel.Stable
+        )
+
+        assertThat(result).isFalse()
+    }
+
+    @Test
+    fun debugBuildAcceptsHigherVersionCodeRelease() {
+        val result = isRemoteVersionNewerForBuild(
+            remoteVersionCode = 17,
+            remoteVersionName = "1.0.16",
+            remotePublishedAt = null,
+            currentVersionCode = 16,
+            currentVersionName = "1.0.15-debug",
+            currentBuildTimestampUtc = 0L,
+            currentChannel = AppUpdateChannel.Stable
+        )
+
+        assertThat(result).isTrue()
+    }
+
+    @Test
     fun betaBuildRejectsSameVersionBetaReleaseWhenNotPublishedLater() {
         val result = isRemoteVersionNewerForBuild(
             remoteVersionCode = 12,

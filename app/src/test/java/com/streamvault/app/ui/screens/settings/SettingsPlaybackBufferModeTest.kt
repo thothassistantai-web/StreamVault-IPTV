@@ -16,6 +16,11 @@ class SettingsPlaybackBufferModeTest {
     }
 
     @Test
+    fun `settings ui state defaults resume last live channel to enabled`() {
+        assertThat(SettingsUiState().resumeLastLiveChannelEnabled).isTrue()
+    }
+
+    @Test
     fun `formatPlaybackBufferModeLabel maps modes to settings labels`() {
         val context: Context = mock()
         whenever(context.getString(R.string.settings_live_buffer_auto)).thenReturn("Auto")

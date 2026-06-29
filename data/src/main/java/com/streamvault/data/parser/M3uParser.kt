@@ -4,6 +4,7 @@ import com.streamvault.domain.model.Channel
 import com.streamvault.domain.model.Movie
 import com.streamvault.domain.util.ChannelNormalizer
 import com.streamvault.domain.util.StreamEntryUrlPolicy
+import com.streamvault.domain.util.TiviMateStreamLineParser
 import java.io.BufferedReader
 import java.io.InputStream
 import java.io.InputStreamReader
@@ -152,9 +153,11 @@ class M3uParser {
         }
     }
 
-    private fun parseEntry(extinf: ParsedExtinf, url: String, globalUserAgent: String?): M3uEntry? {
-        if (url.isBlank() || extinf.name.isBlank()) return null
-        if (!isAllowedStreamUrl(url)) return null
+    private fun parseEntry(extinf: ParsedExtinf, rawLine: String, globalUserAgent: String?): M3uEntry? {
+        val trimmedLine = rawLine.trim()
+        val streamLine = TiviMateStreamLineParser.parse(trimmedLine)
+        if (streamLine.url.isBlank() || extinf.name.isBlank()) return null
+        if (!isAllowedStreamUrl(trimmedLine)) return null
         return M3uEntry(
             name = extinf.name.take(500),
             groupTitle = (extinf.groupTitle ?: "Uncategorized").take(200),
@@ -168,8 +171,8 @@ class M3uParser {
             catchUpDays = extinf.catchUpDays?.toIntOrNull()?.takeIf { it in 0..365 },
             catchUpSource = extinf.catchUpSource,
             timeshift = extinf.timeshift,
-            url = url,
-            userAgent = extinf.userAgent ?: globalUserAgent,
+            url = trimmedLine,
+            userAgent = extinf.userAgent ?: streamLine.userAgent ?: globalUserAgent,
             rating = extinf.rating,
             year = extinf.year,
             genre = extinf.genre,

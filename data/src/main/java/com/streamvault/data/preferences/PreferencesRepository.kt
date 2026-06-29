@@ -32,6 +32,7 @@ import com.streamvault.domain.model.LiveStreamFormatMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
 import com.streamvault.domain.model.AppTopLevelDestination
 import com.streamvault.domain.model.PlaybackBufferMode
+import com.streamvault.domain.model.PlaybackGesturePreferences
 import com.streamvault.domain.model.VodDuplicateHandlingMode
 import com.streamvault.domain.model.VodHttpProtocolMode
 import com.streamvault.domain.model.VodVariantObservation
@@ -75,6 +76,15 @@ private fun sanitizePlaybackTimerMinutes(minutes: Int): Int = when (minutes) {
 internal fun parsePlaybackBufferModePreference(saved: String?): PlaybackBufferMode =
     saved?.let { value -> PlaybackBufferMode.entries.firstOrNull { it.name == value } }
         ?: PlaybackBufferMode.AUTO
+
+internal fun sanitizePlaybackGestureSwipeSensitivity(percent: Int): Int = when (percent) {
+    in PlaybackGesturePreferences.MIN_SWIPE_SENSITIVITY..PlaybackGesturePreferences.MAX_SWIPE_SENSITIVITY -> percent
+    in Int.MIN_VALUE..62 -> 50
+    in 63..87 -> 75
+    in 88..112 -> 100
+    in 113..137 -> 125
+    else -> 150
+}
 
 @Singleton
 class PreferencesRepository @Inject constructor(
@@ -186,6 +196,7 @@ class PreferencesRepository @Inject constructor(
         val XTREAM_BASE64_TEXT_COMPATIBILITY = booleanPreferencesKey("xtream_base64_text_compatibility")
         val XTREAM_TEXT_IMPORT_GENERATION = longPreferencesKey("xtream_text_import_generation")
         val ZAP_AUTO_REVERT = booleanPreferencesKey("zap_auto_revert")
+        val RESUME_LAST_LIVE_CHANNEL_ENABLED = booleanPreferencesKey("resume_last_live_channel_enabled")
         val PREVENT_STANDBY_DURING_PLAYBACK = booleanPreferencesKey("prevent_standby_during_playback")
         val AUTO_PLAY_NEXT_EPISODE = booleanPreferencesKey("auto_play_next_episode")
         val AUTO_CHECK_APP_UPDATES = booleanPreferencesKey("auto_check_app_updates")
@@ -222,6 +233,18 @@ class PreferencesRepository @Inject constructor(
         val LAST_MAINTENANCE_EPG_PROGRAMME_ROWS = longPreferencesKey("last_maintenance_epg_programme_rows")
         val LAST_MAINTENANCE_PLAYBACK_HISTORY_ROWS = longPreferencesKey("last_maintenance_playback_history_rows")
         val LAST_MAINTENANCE_FAVORITE_ROWS = longPreferencesKey("last_maintenance_favorite_rows")
+        val PLAYBACK_GESTURES_ENABLED = booleanPreferencesKey("playback_gestures_enabled")
+        val PLAYBACK_GESTURE_SWIPE_CHANNEL = booleanPreferencesKey("playback_gesture_swipe_channel")
+        val PLAYBACK_GESTURE_SWIPE_OVERLAYS = booleanPreferencesKey("playback_gesture_swipe_overlays")
+        val PLAYBACK_GESTURE_PINCH = booleanPreferencesKey("playback_gesture_pinch")
+        val PLAYBACK_GESTURE_DOUBLE_TAP_SKIP = booleanPreferencesKey("playback_gesture_double_tap_skip")
+        val PLAYBACK_GESTURE_LONG_PRESS = booleanPreferencesKey("playback_gesture_long_press")
+        val PLAYBACK_GESTURE_EDGE_PANELS = booleanPreferencesKey("playback_gesture_edge_panels")
+        val PLAYBACK_GESTURE_TWO_FINGER_SWIPE = booleanPreferencesKey("playback_gesture_two_finger_swipe")
+        val PLAYBACK_GESTURE_TWO_FINGER_PROGRAM_DETAILS = booleanPreferencesKey("playback_gesture_two_finger_program_details")
+        val PLAYBACK_GESTURE_EDGE_HOLD_ZONES = booleanPreferencesKey("playback_gesture_edge_hold_zones")
+        val PLAYBACK_GESTURE_CORNER_HOLD_ZONES = booleanPreferencesKey("playback_gesture_corner_hold_zones")
+        val PLAYBACK_GESTURE_SWIPE_SENSITIVITY = intPreferencesKey("playback_gesture_swipe_sensitivity")
     }
 
     private object ParentalSessionKeys {
@@ -652,6 +675,10 @@ class PreferencesRepository @Inject constructor(
         preferences[PreferencesKeys.ZAP_AUTO_REVERT] ?: true
     }
 
+    val resumeLastLiveChannelEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.RESUME_LAST_LIVE_CHANNEL_ENABLED] ?: true
+    }
+
     val recordingWifiOnly: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.RECORDING_WIFI_ONLY] ?: false
     }
@@ -677,6 +704,12 @@ class PreferencesRepository @Inject constructor(
     suspend fun setZapAutoRevert(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.ZAP_AUTO_REVERT] = enabled
+        }
+    }
+
+    suspend fun setResumeLastLiveChannelEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.RESUME_LAST_LIVE_CHANNEL_ENABLED] = enabled
         }
     }
 
@@ -1266,6 +1299,113 @@ class PreferencesRepository @Inject constructor(
         val key = longPreferencesKey("last_live_category_id_$providerId")
         context.dataStore.edit { preferences ->
             preferences[key] = categoryId
+        }
+    }
+
+    fun getLastLiveChannelId(scopeKey: String): Flow<Long?> {
+        val key = longPreferencesKey("last_live_channel_id_$scopeKey")
+        return context.dataStore.data.map { preferences ->
+            preferences[key]
+        }
+    }
+
+    suspend fun setLastLiveChannelId(scopeKey: String, channelId: Long) {
+        val key = longPreferencesKey("last_live_channel_id_$scopeKey")
+        context.dataStore.edit { preferences ->
+            preferences[key] = channelId
+        }
+    }
+
+    val playbackGesturePreferences: Flow<PlaybackGesturePreferences> = context.dataStore.data.map { preferences ->
+        PlaybackGesturePreferences(
+            enabled = preferences[PreferencesKeys.PLAYBACK_GESTURES_ENABLED] ?: true,
+            swipeChannelChangeEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_SWIPE_CHANNEL] ?: true,
+            swipeOverlayNavigationEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_SWIPE_OVERLAYS] ?: true,
+            pinchZoomEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_PINCH] ?: true,
+            doubleTapSkipEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_DOUBLE_TAP_SKIP] ?: true,
+            longPressQuickMenuEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_LONG_PRESS] ?: true,
+            edgePanelsEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_EDGE_PANELS] ?: true,
+            twoFingerSwipeEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_TWO_FINGER_SWIPE] ?: true,
+            twoFingerProgramDetailsEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_TWO_FINGER_PROGRAM_DETAILS] ?: true,
+            edgeHoldZonesEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_EDGE_HOLD_ZONES] ?: true,
+            cornerHoldZonesEnabled = preferences[PreferencesKeys.PLAYBACK_GESTURE_CORNER_HOLD_ZONES] ?: true,
+            swipeSensitivityPercent = sanitizePlaybackGestureSwipeSensitivity(
+                preferences[PreferencesKeys.PLAYBACK_GESTURE_SWIPE_SENSITIVITY]
+                    ?: PlaybackGesturePreferences.DEFAULT_SWIPE_SENSITIVITY_PERCENT
+            ),
+        )
+    }
+
+    suspend fun setPlaybackGesturesEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURES_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureSwipeChannelChangeEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_SWIPE_CHANNEL] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureSwipeOverlayNavigationEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_SWIPE_OVERLAYS] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGesturePinchZoomEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_PINCH] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureDoubleTapSkipEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_DOUBLE_TAP_SKIP] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureLongPressQuickMenuEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_LONG_PRESS] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureEdgePanelsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_EDGE_PANELS] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureTwoFingerSwipeEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_TWO_FINGER_SWIPE] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureTwoFingerProgramDetailsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_TWO_FINGER_PROGRAM_DETAILS] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureEdgeHoldZonesEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_EDGE_HOLD_ZONES] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureCornerHoldZonesEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_CORNER_HOLD_ZONES] = enabled
+        }
+    }
+
+    suspend fun setPlaybackGestureSwipeSensitivityPercent(percent: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.PLAYBACK_GESTURE_SWIPE_SENSITIVITY] =
+                sanitizePlaybackGestureSwipeSensitivity(percent)
         }
     }
 

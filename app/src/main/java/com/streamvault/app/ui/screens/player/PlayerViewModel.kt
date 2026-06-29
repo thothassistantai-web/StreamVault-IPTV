@@ -9,6 +9,7 @@ import com.streamvault.app.cast.CastManager
 import com.streamvault.app.cast.CastMediaRequest
 import com.streamvault.app.cast.CastStartResult
 import com.streamvault.app.di.MainPlayerEngine
+import com.streamvault.app.player.LivePlaybackStreamCache
 import com.streamvault.app.player.LivePreviewHandoffManager
 import com.streamvault.app.player.LiveTranslationSession
 import com.streamvault.app.plugins.StreamVaultPluginManager
@@ -109,6 +110,8 @@ class PlayerViewModel @Inject constructor(
     internal val xtreamStreamUrlResolver: XtreamStreamUrlResolver,
     internal val seekThumbnailProvider: SeekThumbnailProvider,
     internal val livePreviewHandoffManager: LivePreviewHandoffManager,
+    internal val livePlaybackStreamCache: LivePlaybackStreamCache,
+    internal val playerEpgTimelineCache: PlayerEpgTimelineCache,
     internal val syncManager: SyncManager,
     private val downloadManager: DownloadManager,
     internal val okHttpClient: OkHttpClient,
@@ -186,6 +189,19 @@ class PlayerViewModel @Inject constructor(
     internal val showFullGuideOverlayFlow = MutableStateFlow(false)
     val showFullGuideOverlay: StateFlow<Boolean> = showFullGuideOverlayFlow.asStateFlow()
 
+    internal val showMiniGuideOverlayFlow = MutableStateFlow(false)
+    val showMiniGuideOverlay: StateFlow<Boolean> = showMiniGuideOverlayFlow.asStateFlow()
+
+    internal val showQuickMenuOverlayFlow = MutableStateFlow(false)
+    val showQuickMenuOverlay: StateFlow<Boolean> = showQuickMenuOverlayFlow.asStateFlow()
+
+    internal val showProgramDetailsOverlayFlow = MutableStateFlow(false)
+    val showProgramDetailsOverlay: StateFlow<Boolean> = showProgramDetailsOverlayFlow.asStateFlow()
+
+    internal val touchEdgePanelFlow = MutableStateFlow(com.streamvault.app.ui.screens.player.gesture.TouchEdgePanel.NONE)
+    val touchEdgePanel: StateFlow<com.streamvault.app.ui.screens.player.gesture.TouchEdgePanel> =
+        touchEdgePanelFlow.asStateFlow()
+
     internal val currentChannelFlowList = MutableStateFlow<List<com.streamvault.domain.model.Channel>>(emptyList())
     val currentChannelList: StateFlow<List<com.streamvault.domain.model.Channel>> = currentChannelFlowList.asStateFlow()
 
@@ -240,6 +256,8 @@ class PlayerViewModel @Inject constructor(
     val sleepTimerExitEvent: StateFlow<Int> = _sleepTimerExitEvent.asStateFlow()
     val remoteShortcutPreferences = preferencesRepository.remoteShortcutPreferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), com.streamvault.domain.model.RemoteShortcutPreferences())
+    val playbackGesturePreferences = preferencesRepository.playbackGesturePreferences
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), com.streamvault.domain.model.PlaybackGesturePreferences())
     private val _playerPreferencesUiState = MutableStateFlow(PlayerPreferencesUiState())
     val playerPreferencesUiState: StateFlow<PlayerPreferencesUiState> = _playerPreferencesUiState.asStateFlow()
     private val _externalPlaybackUrl = MutableStateFlow("")
@@ -261,6 +279,7 @@ class PlayerViewModel @Inject constructor(
     internal var hasRetriedWithAvcMovieVariant = false
     internal var hasRetriedXtreamAuthRefresh = false
     internal val probePassedPlaybackKeys = mutableSetOf<String>()
+    internal var playbackPreferencesSynced = false
     private val notifiedRecordingFailureIds = mutableSetOf<String>()
     internal var lastRecordedLivePlaybackKey: Pair<Long, Long>? = null
     private var currentStreamClassLabel: String = "Primary"
@@ -336,6 +355,9 @@ class PlayerViewModel @Inject constructor(
     private var lastObservedPlaybackState: PlaybackState = PlaybackState.IDLE
 
     internal var epgJob: Job? = null
+    internal var epgDebounceJob: Job? = null
+    internal val zapStreamInfoCache: LivePlaybackStreamCache
+        get() = livePlaybackStreamCache
     internal var playlistJob: Job? = null
     internal var recentChannelsJob: Job? = null
     internal var lastVisitedCategoryJob: Job? = null
@@ -915,11 +937,15 @@ class PlayerViewModel @Inject constructor(
             val switched = when (recoveryType) {
                 PlayerRecoveryType.NETWORK,
                 PlayerRecoveryType.SOURCE,
-                PlayerRecoveryType.BUFFER_TIMEOUT -> tryAlternateStreamInternal(
-                    channel = channel,
-                    preferXtreamTsFallback = recoveryType == PlayerRecoveryType.SOURCE,
-                    allowXtreamTsFallback = !livePlaybackReadyForCurrentSession
-                )
+                PlayerRecoveryType.BUFFER_TIMEOUT -> if (pluginManager.isGatewayManagedUrl(currentStreamUrl)) {
+                    false
+                } else {
+                    tryAlternateStreamInternal(
+                        channel = channel,
+                        preferXtreamTsFallback = recoveryType == PlayerRecoveryType.SOURCE,
+                        allowXtreamTsFallback = !livePlaybackReadyForCurrentSession
+                    )
+                }
                 else -> false
             }
 
@@ -938,6 +964,16 @@ class PlayerViewModel @Inject constructor(
                 "PlayerVM",
                 "recovery-no-switch type=$recoveryType hasLastChannel=${hasLastChannel()}"
             )
+
+            val isGatewayChannel = pluginManager.isGatewayManagedUrl(currentStreamUrl)
+            if (isGatewayChannel) {
+                showPlayerNotice(
+                    message = resolvePlaybackErrorMessage(error),
+                    recoveryType = recoveryType,
+                    actions = buildRecoveryActions(recoveryType)
+                )
+                return@launch
+            }
 
             if (fallbackToPreviousChannel("Recovery path exhausted for ${recoveryType.name.lowercase()}")) {
                 appendRecoveryAction("Returned to last channel")
@@ -1134,6 +1170,7 @@ class PlayerViewModel @Inject constructor(
         val normalizedChannelId = epgChannelId?.trim()?.takeIf { it.isNotEmpty() }
         if (providerId <= 0L || (internalChannelId <= 0L && normalizedChannelId == null && streamId <= 0L)) {
             activeEpgRequestKey = null
+            epgDebounceJob?.cancel()
             fetchEpg(providerId = -1L, internalChannelId = 0L, epgChannelId = null)
             return
         }
@@ -1146,11 +1183,11 @@ class PlayerViewModel @Inject constructor(
         )
         if (key == activeEpgRequestKey) return
         activeEpgRequestKey = key
-        fetchEpg(
+        scheduleEpgFetch(
             providerId = key.providerId,
             internalChannelId = key.internalChannelId,
             epgChannelId = key.epgChannelId,
-            streamId = key.streamId
+            streamId = key.streamId,
         )
     }
 
@@ -1260,7 +1297,9 @@ class PlayerViewModel @Inject constructor(
     internal suspend fun preparePlayer(
         streamInfo: com.streamvault.domain.model.StreamInfo,
         requestVersion: Long,
-        probeBeforePlayback: Boolean = true
+        probeBeforePlayback: Boolean = true,
+        liveZap: Boolean = false,
+        skipPreferenceSync: Boolean = false
     ): Boolean {
         if (!isActivePlaybackSession(requestVersion)) return false
 
@@ -1314,12 +1353,19 @@ class PlayerViewModel @Inject constructor(
                 )
             )
         }
-        applyPlaybackPreferences()
+        if (!skipPreferenceSync) {
+            applyPlaybackPreferences()
+            playbackPreferencesSynced = true
+        }
         if (!isActivePlaybackSession(requestVersion)) return false
         currentResolvedPlaybackUrl = preparedStreamInfo.url
         currentResolvedStreamInfo = preparedStreamInfo
         readySideEffectsRequestVersion = requestVersion
-        playerEngine.prepare(preparedStreamInfo)
+        if (liveZap) {
+            playerEngine.switchLiveStream(preparedStreamInfo)
+        } else {
+            playerEngine.prepare(preparedStreamInfo)
+        }
         refreshLiveTranslationAvailability()
         startTokenRenewalMonitoring(preparedStreamInfo.expirationTime)
         maybeStartLiveTimeshift(preparedStreamInfo)

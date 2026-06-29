@@ -39,6 +39,12 @@ class PlayerErrorClassifierTest {
     }
 
     @Test
+    fun `404 maps to server`() {
+        assertThat(PlayerErrorClassifier.classify(IOException("HTTP 404")))
+            .isEqualTo(PlaybackErrorCategory.HTTP_SERVER)
+    }
+
+    @Test
     fun `ssl exception maps to ssl`() {
         assertThat(PlayerErrorClassifier.classify(SSLHandshakeException("certificate verify failed")))
             .isEqualTo(PlaybackErrorCategory.SSL)

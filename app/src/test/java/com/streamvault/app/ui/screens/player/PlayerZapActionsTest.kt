@@ -126,4 +126,17 @@ class PlayerZapActionsTest {
 
         assertThat(shouldPreload).isFalse()
     }
+
+    @Test
+    fun `shouldPreloadAdjacentChannel skips gateway loopback proxy streams`() {
+        val shouldPreload = shouldPreloadAdjacentChannel(
+            streamUrl = "http://127.0.0.1:3000/tivimate-stream/espn.m3u8",
+            providerType = ProviderType.M3U,
+            maxConnections = 1,
+            preloadCoolingDown = false,
+            isGatewayManaged = true,
+        )
+
+        assertThat(shouldPreload).isFalse()
+    }
 }

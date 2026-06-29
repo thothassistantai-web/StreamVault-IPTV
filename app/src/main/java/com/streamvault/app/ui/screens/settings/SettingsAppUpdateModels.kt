@@ -140,8 +140,14 @@ private fun parseAppVersionDescriptor(versionName: String): ParsedAppVersionDesc
             channel = AppUpdateChannel.Beta
         )
     } else {
+        val debugIndex = normalized.indexOf("-debug", ignoreCase = true)
+        val baseVersionName = if (debugIndex >= 0) {
+            normalized.substring(0, debugIndex)
+        } else {
+            normalized
+        }
         ParsedAppVersionDescriptor(
-            baseVersionName = normalized,
+            baseVersionName = baseVersionName,
             channel = AppUpdateChannel.Stable
         )
     }

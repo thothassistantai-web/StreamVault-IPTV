@@ -17,6 +17,7 @@ import com.streamvault.domain.model.DecoderMode
 import com.streamvault.domain.model.GroupedChannelLabelMode
 import com.streamvault.domain.model.LiveChannelGroupingMode
 import com.streamvault.domain.model.LiveVariantPreferenceMode
+import com.streamvault.domain.model.PlaybackGesturePreferences
 import com.streamvault.domain.model.PlaybackBufferMode
 import com.streamvault.domain.model.VodDuplicateHandlingMode
 import com.streamvault.domain.model.VodHttpProtocolMode
@@ -108,6 +109,8 @@ internal data class SettingsPreferenceSnapshot(
     val guideDefaultCategoryOptions: List<Category>,
     val preventStandbyDuringPlayback: Boolean,
     val zapAutoRevert: Boolean,
+    val resumeLastLiveChannelEnabled: Boolean,
+    val playbackGesturePreferences: PlaybackGesturePreferences,
     val autoPlayNextEpisode: Boolean,
     val autoCheckAppUpdates: Boolean,
     val autoDownloadAppUpdates: Boolean,

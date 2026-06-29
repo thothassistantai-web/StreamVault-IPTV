@@ -75,6 +75,22 @@ class M3uParserTest {
     }
 
     @Test
+    fun `parse_tivimatePipeSuffix_preservesRawUrlAndUserAgent`() {
+        val m3u = """
+            #EXTM3U
+            #EXTINF:-1 tvg-id="DLHD.Guide.nhl" group-title="Special Events",NHL Schedule
+            http://127.0.0.1:3000/dlhd-event-guide/nhl.mp4|User-Agent=TiviMate/4.7.0|Referer=https://daddylive.org/
+        """.trimIndent()
+
+        val entry = parseEntries(m3u).single()
+
+        assertThat(entry.url).isEqualTo(
+            "http://127.0.0.1:3000/dlhd-event-guide/nhl.mp4|User-Agent=TiviMate/4.7.0|Referer=https://daddylive.org/"
+        )
+        assertThat(entry.userAgent).isEqualTo("TiviMate/4.7.0")
+    }
+
+    @Test
     fun `parse_emptyInputStream_returnsEmptyList`() {
         val entries = parseEntries("")
         assertThat(entries).isEmpty()

@@ -8,6 +8,8 @@ import com.streamvault.app.plugins.PluginConfigurationAction
 import com.streamvault.app.plugins.PluginConfigurationField
 import com.streamvault.app.plugins.PluginConfigurationSchema
 import com.streamvault.app.plugins.StreamVaultPluginManager
+import com.streamvault.app.ui.cache.PluginConfigurationCache
+import com.streamvault.app.ui.cache.PluginsListCache
 import com.streamvault.domain.model.Result
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -53,9 +55,16 @@ data class ActivePluginConfiguration(
 
 @HiltViewModel
 class PluginsViewModel @Inject constructor(
-    private val pluginManager: StreamVaultPluginManager
+    private val pluginManager: StreamVaultPluginManager,
+    private val pluginsListCache: PluginsListCache,
+    private val pluginConfigurationCache: PluginConfigurationCache,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(PluginsUiState(isLoading = true))
+    private val _uiState = MutableStateFlow(
+        PluginsUiState(
+            plugins = pluginsListCache.get().orEmpty(),
+            isLoading = pluginsListCache.get() == null
+        )
+    )
     val uiState: StateFlow<PluginsUiState> = _uiState.asStateFlow()
 
     init {
@@ -68,14 +77,27 @@ class PluginsViewModel @Inject constructor(
 
     fun refreshPlugins() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, syncProgress = null) }
+            val cachedPlugins = pluginsListCache.get()
+            if (cachedPlugins != null) {
+                _uiState.update {
+                    it.copy(
+                        plugins = cachedPlugins,
+                        isLoading = false,
+                        syncProgress = null
+                    )
+                }
+            } else {
+                _uiState.update { it.copy(isLoading = true, syncProgress = null) }
+            }
             val result = runCatching { pluginManager.discoverPlugins() }
+            val refreshedPlugins = result.getOrDefault(cachedPlugins ?: emptyList())
+            pluginsListCache.put(refreshedPlugins)
             _uiState.update {
                 it.copy(
-                    plugins = result.getOrDefault(emptyList()),
+                    plugins = refreshedPlugins,
                     isLoading = false,
                     configuration = it.configuration?.let { configuration ->
-                        val refreshedPlugin = result.getOrDefault(emptyList())
+                        val refreshedPlugin = refreshedPlugins
                             .firstOrNull { plugin -> plugin.manifest.id == configuration.plugin.manifest.id }
                             ?: configuration.plugin
                         configuration.copy(plugin = refreshedPlugin)
@@ -132,6 +154,7 @@ class PluginsViewModel @Inject constructor(
                 _uiState.update { it.copy(syncProgress = progress) }
             }
             val refreshed = runCatching { pluginManager.discoverPlugins() }.getOrDefault(_uiState.value.plugins)
+            pluginsListCache.put(refreshed)
             _uiState.update {
                 it.copy(
                     plugins = refreshed,
@@ -147,6 +170,36 @@ class PluginsViewModel @Inject constructor(
         if (plugin.manifest.usesActivityConfiguration || !plugin.manifest.supportsHostRenderedConfiguration) {
             val result = pluginManager.openPluginConfiguration(plugin)
             _uiState.update { it.copy(userMessage = result.message) }
+            return
+        }
+
+        val cachedConfiguration = pluginConfigurationCache.get(plugin.manifest.id)
+        if (cachedConfiguration != null) {
+            _uiState.update {
+                it.copy(
+                    isConfigurationLoading = false,
+                    activePluginId = null,
+                    configuration = cachedConfiguration.copy(plugin = plugin),
+                    userMessage = null
+                )
+            }
+            viewModelScope.launch {
+                when (val result = pluginManager.loadPluginConfiguration(plugin)) {
+                    is Result.Success -> {
+                        val refreshed = ActivePluginConfiguration(
+                            plugin = result.data.plugin,
+                            schema = result.data.schema,
+                            values = result.data.values,
+                            draftValues = result.data.schema.toDraftValues(result.data.values)
+                        )
+                        pluginConfigurationCache.put(plugin.manifest.id, refreshed)
+                        if (_uiState.value.configuration?.plugin?.manifest?.id == plugin.manifest.id) {
+                            _uiState.update { it.copy(configuration = refreshed) }
+                        }
+                    }
+                    else -> Unit
+                }
+            }
             return
         }
 
@@ -171,16 +224,18 @@ class PluginsViewModel @Inject constructor(
                 Result.Loading -> Unit
                 is Result.Success -> {
                     val snapshot = result.data
+                    val configuration = ActivePluginConfiguration(
+                        plugin = snapshot.plugin,
+                        schema = snapshot.schema,
+                        values = snapshot.values,
+                        draftValues = snapshot.schema.toDraftValues(snapshot.values)
+                    )
+                    pluginConfigurationCache.put(plugin.manifest.id, configuration)
                     _uiState.update {
                         it.copy(
                             isConfigurationLoading = false,
                             activePluginId = null,
-                            configuration = ActivePluginConfiguration(
-                                plugin = snapshot.plugin,
-                                schema = snapshot.schema,
-                                values = snapshot.values,
-                                draftValues = snapshot.schema.toDraftValues(snapshot.values)
-                            )
+                            configuration = configuration
                         )
                     }
                 }
@@ -234,6 +289,9 @@ class PluginsViewModel @Inject constructor(
                     isSaving = false
                 )
             }
+            _uiState.value.configuration?.let { updated ->
+                pluginConfigurationCache.put(updated.plugin.manifest.id, updated)
+            }
             _uiState.update { it.copy(userMessage = result.message) }
         }
     }
@@ -249,16 +307,14 @@ class PluginsViewModel @Inject constructor(
                 }
                 Result.Loading -> Unit
                 is Result.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            configuration = ActivePluginConfiguration(
-                                plugin = result.data.plugin,
-                                schema = result.data.schema,
-                                values = result.data.values,
-                                draftValues = result.data.schema.toDraftValues(result.data.values)
-                            )
-                        )
-                    }
+                    val refreshed = ActivePluginConfiguration(
+                        plugin = result.data.plugin,
+                        schema = result.data.schema,
+                        values = result.data.values,
+                        draftValues = result.data.schema.toDraftValues(result.data.values)
+                    )
+                    pluginConfigurationCache.put(configuration.plugin.manifest.id, refreshed)
+                    _uiState.update { it.copy(configuration = refreshed) }
                 }
             }
         }
@@ -271,16 +327,14 @@ class PluginsViewModel @Inject constructor(
             val result = pluginManager.runPluginConfigurationAction(configuration.plugin, action.id)
             if (result.success && action.refreshAfterRun) {
                 pluginManager.loadPluginConfiguration(configuration.plugin).getOrNull()?.let { snapshot ->
-                    _uiState.update {
-                        it.copy(
-                            configuration = ActivePluginConfiguration(
-                                plugin = snapshot.plugin,
-                                schema = snapshot.schema,
-                                values = snapshot.values,
-                                draftValues = snapshot.schema.toDraftValues(snapshot.values)
-                            )
-                        )
-                    }
+                    val refreshed = ActivePluginConfiguration(
+                        plugin = snapshot.plugin,
+                        schema = snapshot.schema,
+                        values = snapshot.values,
+                        draftValues = snapshot.schema.toDraftValues(snapshot.values)
+                    )
+                    pluginConfigurationCache.put(configuration.plugin.manifest.id, refreshed)
+                    _uiState.update { it.copy(configuration = refreshed) }
                 }
             }
             _uiState.updateConfiguration { it.copy(runningActionId = null) }

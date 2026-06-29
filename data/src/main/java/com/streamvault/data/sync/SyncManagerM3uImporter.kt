@@ -12,6 +12,7 @@ import com.streamvault.data.util.AdultContentClassifier
 import com.streamvault.data.util.UrlSecurityPolicy
 import com.streamvault.domain.model.ContentType
 import com.streamvault.domain.model.Provider
+import com.streamvault.domain.util.M3uChannelDisplayName
 import com.streamvault.domain.sync.Section
 import com.streamvault.domain.sync.SyncProgress
 import okhttp3.OkHttpClient
@@ -160,12 +161,21 @@ internal class SyncManagerM3uImporter(
                         } else {
                             if (!includeLive) return@parseStreaming
                             val groupTitle = entry.groupTitle.ifBlank { "Uncategorized" }
+                            val displayName = M3uChannelDisplayName.resolve(
+                                M3uChannelDisplayName.Input(
+                                    name = entry.name,
+                                    groupTitle = groupTitle,
+                                    streamUrl = entry.url,
+                                    tvgLanguage = entry.tvgLanguage,
+                                    tvgCountry = entry.tvgCountry,
+                                ),
+                            )
                             val stableStreamId = stableId(
                                 providerId = provider.id,
                                 contentType = ContentType.LIVE,
                                 tvgId = entry.tvgId,
                                 url = entry.url,
-                                title = entry.name,
+                                title = displayName,
                                 groupTitle = groupTitle,
                                 hasher = stableLongHasher
                             )
@@ -175,7 +185,7 @@ internal class SyncManagerM3uImporter(
                             channelBatch.add(
                                 ChannelEntity(
                                     streamId = stableStreamId,
-                                    name = entry.name,
+                                    name = displayName,
                                     logoUrl = safeLogoUrl,
                                     groupTitle = groupTitle,
                                     categoryId = categoryId,

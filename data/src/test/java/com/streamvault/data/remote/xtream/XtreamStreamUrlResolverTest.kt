@@ -311,6 +311,35 @@ class XtreamStreamUrlResolverTest {
     }
 
     @Test
+    fun resolveWithMetadata_strips_tivimate_pipe_suffix_for_m3u_provider() {
+        runBlocking {
+            val resolver = XtreamStreamUrlResolver(
+                providerDao = FakeProviderDao(
+                    ProviderEntity(
+                        id = 31,
+                        name = "Gateway",
+                        type = ProviderType.M3U,
+                        serverUrl = "http://127.0.0.1:3000",
+                    )
+                ),
+                credentialCrypto = credentialCrypto,
+                stalkerApiService = stalkerApiService,
+                preferencesRepository = preferencesRepository()
+            )
+
+            val resolved = resolver.resolveWithMetadata(
+                url = "http://127.0.0.1:3000/dlhd-event-stream/abc.m3u8|User-Agent=TiviMate/4.7.0|Referer=https://embed.example/|Origin=https://embed.example",
+                fallbackProviderId = 31,
+            )
+
+            assertThat(resolved?.url).isEqualTo("http://127.0.0.1:3000/dlhd-event-stream/abc.m3u8")
+            assertThat(resolved?.userAgent).isEqualTo("TiviMate/4.7.0")
+            assertThat(resolved?.headers).containsEntry("Referer", "https://embed.example/")
+            assertThat(resolved?.headers).containsEntry("Origin", "https://embed.example")
+        }
+    }
+
+    @Test
     fun resolveWithMetadata_applies_provider_request_profile_to_direct_m3u_urls() {
         runBlocking {
         val resolver = XtreamStreamUrlResolver(

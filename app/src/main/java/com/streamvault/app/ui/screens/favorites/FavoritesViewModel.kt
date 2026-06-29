@@ -22,6 +22,8 @@ import com.streamvault.domain.repository.SeriesRepository
 import com.streamvault.domain.usecase.ContinueWatchingResult
 import com.streamvault.domain.usecase.ContinueWatchingScope
 import com.streamvault.domain.usecase.GetContinueWatching
+import com.streamvault.app.ui.cache.CachedSavedLibrary
+import com.streamvault.app.ui.cache.SavedLibraryCache
 import com.streamvault.data.preferences.PreferencesRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -135,10 +137,11 @@ class FavoritesViewModel @Inject constructor(
     private val playbackHistoryRepository: PlaybackHistoryRepository,
     private val providerRepository: ProviderRepository,
     private val preferencesRepository: PreferencesRepository,
-    private val getContinueWatching: GetContinueWatching
+    private val getContinueWatching: GetContinueWatching,
+    private val savedLibraryCache: SavedLibraryCache
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(FavoritesUiState())
+    private val _uiState = MutableStateFlow(savedLibraryCache.get().toInitialUiState())
     val uiState: StateFlow<FavoritesUiState> = _uiState.asStateFlow()
 
     init {
@@ -329,6 +332,33 @@ class FavoritesViewModel @Inject constructor(
                         isLoading = false
                     )
                 }
+                savedLibraryCache.put(
+                    CachedSavedLibrary(
+                        sections = sections,
+                        continueWatching = historySnapshot.continueWatching,
+                        recentLive = historySnapshot.recentLive,
+                        managedGroups = managedGroups,
+                        summary = SavedLibrarySummary(
+                            totalItems = globalItems.size,
+                            liveCount = globalItems.count { it.favorite.contentType == ContentType.LIVE },
+                            movieCount = globalItems.count { it.favorite.contentType == ContentType.MOVIE },
+                            seriesCount = globalItems.count { it.favorite.contentType == ContentType.SERIES },
+                            customGroupCount = sections.count { it.key != GLOBAL_SECTION_KEY },
+                            continueWatchingCount = historySnapshot.continueWatching.size,
+                            recentLiveCount = historySnapshot.recentLive.size
+                        ),
+                        presetSummary = SavedLibraryPresetSummary(
+                            allSavedCount = globalItems.size,
+                            watchNextCount = historySnapshot.continueWatching.size,
+                            liveRecallCount = historySnapshot.recentLive.size,
+                            movieCount = globalItems.count { it.favorite.contentType == ContentType.MOVIE },
+                            seriesCount = globalItems.count { it.favorite.contentType == ContentType.SERIES },
+                            customGroupCount = sections.count { it.key != GLOBAL_SECTION_KEY }
+                        ),
+                        activeProviderId = snapshot.activeProviderId,
+                        activeProviderName = snapshot.activeProviderName
+                    )
+                )
             }
         }
     }
@@ -800,3 +830,20 @@ private data class SavedLibrarySnapshot(
     val activeProviderId: Long?,
     val activeProviderName: String?
 )
+
+private fun CachedSavedLibrary?.toInitialUiState(): FavoritesUiState {
+    if (this == null) {
+        return FavoritesUiState(isLoading = true)
+    }
+    return FavoritesUiState(
+        sections = sections,
+        continueWatching = continueWatching,
+        recentLive = recentLive,
+        managedGroups = managedGroups,
+        summary = summary,
+        presetSummary = presetSummary,
+        activeProviderId = activeProviderId,
+        activeProviderName = activeProviderName,
+        isLoading = false
+    )
+}

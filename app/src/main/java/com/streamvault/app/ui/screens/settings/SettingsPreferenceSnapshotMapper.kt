@@ -74,6 +74,8 @@ internal fun SettingsUiState.applyPreferenceSnapshot(snapshot: SettingsPreferenc
         guideDefaultCategoryOptions = guideDefaultCategoryOptions,
         preventStandbyDuringPlayback = snapshot.preventStandbyDuringPlayback,
         zapAutoRevert = snapshot.zapAutoRevert,
+        resumeLastLiveChannelEnabled = snapshot.resumeLastLiveChannelEnabled,
+        playbackGesturePreferences = snapshot.playbackGesturePreferences,
         autoPlayNextEpisode = snapshot.autoPlayNextEpisode,
         autoCheckAppUpdates = snapshot.autoCheckAppUpdates,
         autoDownloadAppUpdates = snapshot.autoDownloadAppUpdates,

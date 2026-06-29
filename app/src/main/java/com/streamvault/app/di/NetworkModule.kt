@@ -16,10 +16,11 @@ import com.streamvault.data.remote.xtream.XtreamApiService
 import com.streamvault.data.remote.xtream.OkHttpXtreamApiService
 import com.streamvault.data.remote.xtream.XtreamUrlFactory
 import com.streamvault.data.parser.XmltvParser
-import com.streamvault.player.AudioCompatibilityMemoryStore
+import com.streamvault.app.player.LivePlaybackStreamCache
 import com.streamvault.player.Media3PlayerEngine
 import com.streamvault.player.PlayerEngine
 import com.streamvault.player.PlaybackSupportSnapshotStore
+import com.streamvault.player.AudioCompatibilityMemoryStore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -166,4 +167,8 @@ object NetworkModule {
         enableMediaSession = false
         bypassAudioFocus = true
     }
+
+    @Provides
+    @Singleton
+    fun provideLivePlaybackStreamCache(): LivePlaybackStreamCache = LivePlaybackStreamCache()
 }

@@ -69,6 +69,28 @@ interface PlayerEngine {
 
     /** Stop playback and release the active media source/network connection. */
     fun stop()
+
+    /**
+     * Tear down the active live stream without releasing the player instance or render surface.
+     * Used during channel zapping so the next stream can attach to the same decoder pipeline.
+     * When [targetStreamUrl] matches a preloaded source, the preload cache is preserved.
+     */
+    fun prepareForLiveZap(targetStreamUrl: String? = null) {
+        stop()
+    }
+
+    /**
+     * Switch to another live stream while reusing the existing player instance and surface.
+     */
+    fun switchLiveStream(streamInfo: StreamInfo) {
+        prepare(streamInfo)
+    }
+
+    /**
+     * Ensure the render surface is bound to a player before media preparation begins.
+     */
+    fun ensureRenderSurfaceAttached() {}
+
     fun seekTo(positionMs: Long)
     fun seekForward(ms: Long = 10_000)
     fun seekBackward(ms: Long = 10_000)
