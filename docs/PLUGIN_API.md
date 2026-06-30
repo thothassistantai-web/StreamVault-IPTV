@@ -159,6 +159,7 @@ player. When `handled=true` and `success=true`, the plugin can return:
   `SMOOTH_STREAMING`, `MPEG_TS`, `PROGRESSIVE`, and `RTSP`.
 - `headers_json`: JSON object with HTTP request headers for the media request.
 - `user_agent`: optional user agent applied to the media request.
+- `audio_json`: optional gateway audio preferences, e.g. `{"volumeNormalization":false,"amplificationGainDb":0.0}`. StreamVault applies amplification gain to ExoPlayer volume when present.
 - `drm_json`: JSON object with DRM information:
 
 ```json

@@ -629,6 +629,10 @@ class Media3PlayerEngine @Inject constructor(
         audioFocusController.setVolume(volume)
     }
 
+    override fun setGatewayGainLinear(linear: Float) {
+        audioFocusController.setGatewayGainLinear(linear)
+    }
+
     override fun setMuted(muted: Boolean) {
         audioFocusController.setMuted(muted)
     }

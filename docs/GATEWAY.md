@@ -4,7 +4,7 @@ StreamVault in this fork pairs with **StepDaddy Gateway** (`com.thothassistant.s
 
 ## Quick setup (same device)
 
-1. Install [StepDaddy Gateway](https://github.com/thothassistantai-web/stepdaddy-gateway-android/releases/tag/v3.0.0) **3.0.0** release (`com.thothassistant.stepdaddy.gateway`) and wait until the HUD shows channel count ready.
+1. Install [StepDaddy Gateway](https://github.com/thothassistantai-web/stepdaddy-gateway-android/releases/tag/v3.0.11) **3.0.11** release (`com.thothassistant.stepdaddy.gateway`) and wait until the HUD shows channel count ready.
 2. Install StreamVault from this fork's GitHub Release.
 3. Open **Plugins** → enable **StepDaddy Gateway** → **Test connection** → **Add provider**.
 4. StreamVault imports `streamvault.m3u` and `epg.xml` from the gateway automatically (legacy `streamvault-setup-playlist.m3u8` still works).

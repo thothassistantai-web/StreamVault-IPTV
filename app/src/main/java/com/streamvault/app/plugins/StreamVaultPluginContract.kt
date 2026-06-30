@@ -45,6 +45,7 @@ object StreamVaultPluginContract {
     const val KEY_HEADERS_JSON = "headers_json"
     const val KEY_USER_AGENT = "user_agent"
     const val KEY_DRM_JSON = "drm_json"
+    const val KEY_AUDIO_JSON = "audio_json"
     const val KEY_CONFIGURATION_SCHEMA_JSON = "configuration_schema_json"
     const val KEY_CONFIGURATION_VALUES_JSON = "configuration_values_json"
     const val KEY_CONFIGURATION_ACTION_ID = "configuration_action_id"

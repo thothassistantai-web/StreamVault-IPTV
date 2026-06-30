@@ -53,6 +53,7 @@ import com.streamvault.domain.usecase.UnlockParentalCategory
 import com.streamvault.domain.usecase.UnlockParentalCategoryCommand
 import com.streamvault.player.PlaybackState
 import com.streamvault.player.PlayerEngine
+import com.streamvault.player.playback.applyGatewayPlaybackAudio
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.streamvault.app.ui.preview.adjacentPreviewChannels
 import com.streamvault.app.ui.preview.resolveLivePreviewErrorFromMessage
@@ -1298,6 +1299,7 @@ class HomeViewModel @Inject constructor(
                     )
                     engine.prepare(preparedStreamInfo)
                     engine.setVolume(1f)
+                    engine.applyGatewayPlaybackAudio(preparedStreamInfo.gatewayAudio)
                     engine.play()
                     cacheCurrentPreviewState(channel.id)
                     livePreviewHandoffManager.registerPreviewSession(

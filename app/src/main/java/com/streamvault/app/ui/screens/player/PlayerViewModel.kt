@@ -65,6 +65,7 @@ import com.streamvault.player.timeshift.LiveTimeshiftBackend
 import com.streamvault.player.timeshift.LiveTimeshiftState
 import com.streamvault.player.timeshift.LiveTimeshiftStatus
 import com.streamvault.player.timeshift.TimeshiftConfig
+import com.streamvault.player.playback.applyGatewayPlaybackAudio
 import com.streamvault.player.playback.applyUnsafeTlsBypass
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -1253,6 +1254,7 @@ class PlayerViewModel @Inject constructor(
                 it.constrainResolutionForMultiView = false
             }
             applyPlaybackPreferences()
+            playerEngine.applyGatewayPlaybackAudio(session.streamInfo.gatewayAudio)
             if (!isActivePlaybackSession(requestVersion)) {
                 setActivePlayerEngine(mainPlayerEngine)
                 adoptedEngine.release()
@@ -1357,6 +1359,7 @@ class PlayerViewModel @Inject constructor(
             applyPlaybackPreferences()
             playbackPreferencesSynced = true
         }
+        playerEngine.applyGatewayPlaybackAudio(preparedStreamInfo.gatewayAudio)
         if (!isActivePlaybackSession(requestVersion)) return false
         currentResolvedPlaybackUrl = preparedStreamInfo.url
         currentResolvedStreamInfo = preparedStreamInfo

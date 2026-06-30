@@ -1,8 +1,8 @@
 # StreamVault × StepDaddy Gateway Integration Plan
 
 **Fork:** [thothassistantai-web/StreamVault-IPTV](https://github.com/thothassistantai-web/StreamVault-IPTV)  
-**Gateway:** [stepdaddy-gateway-android](https://github.com/thothassistantai-web/stepdaddy-gateway-android) **v3.0.0**  
-**StreamVault:** **v3.0.0**  
+**Gateway:** [stepdaddy-gateway-android](https://github.com/thothassistantai-web/stepdaddy-gateway-android) **v3.0.11**  
+**StreamVault:** **v3.0.1**  
 **Updated:** 2026-06-28
 
 See the gateway repo copy for the full phase map: [STREAMVAULT-GATEWAY-PLAN.md](https://github.com/thothassistantai-web/stepdaddy-gateway-android/blob/main/docs/STREAMVAULT-GATEWAY-PLAN.md).

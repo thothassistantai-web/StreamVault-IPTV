@@ -1,6 +1,6 @@
 # Tiered Special Events (Gateway)
 
-Special Events tiers **1–5** shipped in StepDaddy Gateway **v3.0.0**. StreamVault **3.0.0** consumes gateway M3U titles (including health dots) and strips display prefixes for browse UI.
+Special Events tiers **1–5** shipped in StepDaddy Gateway **v3.0.11**. StreamVault **3.0.1** consumes gateway M3U titles (including health dots) and strips display prefixes for browse UI.
 
 Full tier documentation: [stepdaddy-gateway-android/docs/TIER-RELEASES.md](https://github.com/thothassistantai-web/stepdaddy-gateway-android/blob/main/docs/TIER-RELEASES.md).
 

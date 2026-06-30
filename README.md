@@ -15,7 +15,7 @@ StreamVault is a TV-first IPTV player for Android TV built with Kotlin, Jetpack 
 
 This repository is a **StepDaddy suite fork** of [Davidona/StreamVault-IPTV](https://github.com/Davidona/StreamVault-IPTV), maintained at [thothassistantai-web/StreamVault-IPTV](https://github.com/thothassistantai-web/StreamVault-IPTV) with gateway integration, TiviMate-style stream line support, and touch playback gestures for phones and tablets.
 
-**Suite partner:** [StepDaddy Gateway](https://github.com/thothassistantai-web/stepdaddy-gateway-android) **v3.0.0** — local M3U/EPG on port 3000.
+**Suite partner:** [StepDaddy Gateway](https://github.com/thothassistantai-web/stepdaddy-gateway-android) **v3.0.11** — local M3U/EPG on port 3000; audio settings flow to StreamVault playback.
 
 It is designed for large playlists, remote-friendly browsing, fast provider switching, and a polished living-room playback experience. StreamVault supports `M3U` playlists, `Xtream Codes`, `Stalker Portal`, and `Jellyfin` providers, with dedicated flows for `Live TV`, `Movies`, and `Series`.
 

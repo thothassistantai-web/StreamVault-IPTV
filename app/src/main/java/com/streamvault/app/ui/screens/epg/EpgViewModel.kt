@@ -71,6 +71,7 @@ import com.streamvault.app.player.PreviewHandoffSource
 import com.streamvault.app.plugins.StreamVaultPluginManager
 import com.streamvault.player.PlaybackState
 import com.streamvault.player.PlayerEngine
+import com.streamvault.player.playback.applyGatewayPlaybackAudio
 import javax.inject.Provider as InjectProvider
 
 data class RecordingConflictInfo(
@@ -419,6 +420,7 @@ class EpgViewModel @Inject constructor(
                     engine.setPlaybackBufferMode(preferencesRepository.playerPlaybackBufferMode.first())
                     engine.prepare(preparedStreamInfo)
                     engine.setVolume(1f)
+                    engine.applyGatewayPlaybackAudio(preparedStreamInfo.gatewayAudio)
                     engine.play()
                     livePreviewHandoffManager.registerPreviewSession(
                         channel = channel,

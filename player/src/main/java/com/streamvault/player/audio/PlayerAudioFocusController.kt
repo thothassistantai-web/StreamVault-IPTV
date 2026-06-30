@@ -5,6 +5,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.util.Log
+import com.streamvault.domain.model.GatewayPlaybackAudio
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +22,7 @@ class PlayerAudioFocusController(
     private var shouldResumeOnAudioFocusGain = false
     private var isDucked = false
     private var currentVolume = 1f
+    private var gatewayGainLinear = 1f
     private var volumeBeforeMute = 1f
     private var currentOsContentType = android.media.AudioAttributes.CONTENT_TYPE_MOVIE
 
@@ -122,6 +124,11 @@ class PlayerAudioFocusController(
         dispatchVolume()
     }
 
+    fun setGatewayGainLinear(linear: Float) {
+        gatewayGainLinear = linear.coerceIn(0f, GatewayPlaybackAudio.MAX_LINEAR_VOLUME)
+        dispatchVolume()
+    }
+
     fun setMuted(muted: Boolean) {
         if (muted == _isMuted.value) {
             dispatchVolume()
@@ -163,13 +170,12 @@ class PlayerAudioFocusController(
     }
 
     private fun dispatchVolume() {
-        applyVolume(
-            when {
-                _isMuted.value -> 0f
-                isDucked -> (currentVolume * 0.2f).coerceAtLeast(0.05f)
-                else -> currentVolume
-            }
-        )
+        val base = when {
+            _isMuted.value -> 0f
+            isDucked -> (currentVolume * 0.2f).coerceAtLeast(0.05f)
+            else -> currentVolume
+        }
+        applyVolume((base * gatewayGainLinear).coerceIn(0f, GatewayPlaybackAudio.MAX_LINEAR_VOLUME))
     }
 
     private fun abandonAudioFocusIfHeld() {

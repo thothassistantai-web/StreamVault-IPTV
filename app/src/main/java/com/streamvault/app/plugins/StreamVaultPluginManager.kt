@@ -16,6 +16,7 @@ import com.streamvault.app.BuildConfig
 import com.streamvault.app.tvinput.TvInputChannelSyncManager
 import com.streamvault.domain.model.ActiveLiveSource
 import com.streamvault.domain.model.DrmInfo
+import com.streamvault.domain.model.GatewayPlaybackAudio
 import com.streamvault.domain.model.DrmScheme
 import com.streamvault.domain.model.Provider
 import com.streamvault.domain.model.ProviderEpgSyncMode
@@ -350,13 +351,16 @@ class StreamVaultPluginManager @Inject constructor(
             ?: streamInfo.streamType
         val drmInfo = parsePluginDrmInfo(response.getString(StreamVaultPluginContract.KEY_DRM_JSON))
             ?: streamInfo.drmInfo
+        val gatewayAudio = parsePluginAudioJson(response.getString(StreamVaultPluginContract.KEY_AUDIO_JSON))
+            ?: streamInfo.gatewayAudio
         return streamInfo.copy(
             url = outputUrl,
             headers = streamInfo.headers + responseHeaders,
             userAgent = responseUserAgent ?: streamInfo.userAgent,
             streamType = streamType,
             containerExtension = streamInfo.containerExtension ?: streamType.defaultContainerExtension(),
-            drmInfo = drmInfo
+            drmInfo = drmInfo,
+            gatewayAudio = gatewayAudio,
         )
     }
 
@@ -371,6 +375,19 @@ class StreamVaultPluginManager @Inject constructor(
             }
             headers
         }.getOrDefault(emptyMap())
+
+    private fun parsePluginAudioJson(raw: String?): GatewayPlaybackAudio? =
+        runCatching {
+            if (raw.isNullOrBlank()) return@runCatching null
+            val jsonObject = JSONObject(raw)
+            GatewayPlaybackAudio(
+                volumeNormalization = jsonObject.optBoolean("volumeNormalization", false),
+                amplificationGainDb = GatewayPlaybackAudio.clampGainDb(
+                    jsonObject.optDouble("amplificationGainDb", GatewayPlaybackAudio.DEFAULT_GAIN_DB.toDouble())
+                        .toFloat()
+                ),
+            )
+        }.getOrNull()
 
     private fun parsePluginDrmInfo(raw: String?): DrmInfo? =
         runCatching {

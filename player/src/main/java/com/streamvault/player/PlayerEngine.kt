@@ -101,6 +101,8 @@ interface PlayerEngine {
     fun setMediaSessionEnabled(enabled: Boolean)
     fun setFastRetryOnTransientFailures(enabled: Boolean)
     fun setVolume(volume: Float)
+    /** Linear gain from gateway `audio_json` amplification (1.0 = unity, max 2.0). */
+    fun setGatewayGainLinear(linear: Float) {}
     fun setMuted(muted: Boolean)
     fun setPlaybackSpeed(speed: Float)
     fun setAudioVideoSyncEnabled(enabled: Boolean)

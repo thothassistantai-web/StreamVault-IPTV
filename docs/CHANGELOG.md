@@ -2,6 +2,17 @@
 
 All notable product changes are recorded in this document.
 
+## [3.0.1] - 2026-06-30
+
+### Added
+
+- **Gateway audio playback** — applies StepDaddy Gateway `audio_json` from plugin `playback.prepare` (amplification gain on ExoPlayer volume; loudness metadata when present in stream)
+- **Suite pairing** — pairs with [StepDaddy Gateway 3.0.11](https://github.com/thothassistantai-web/stepdaddy-gateway-android/releases/tag/v3.0.11)
+
+### Changed
+
+- **Documentation** — `PLUGIN_API.md`, `GATEWAY.md`, README cross-links updated for Gateway 3.0.11
+
 ## [3.0.0] - 2026-06-28
 
 ### Added
